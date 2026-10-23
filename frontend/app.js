@@ -528,7 +528,9 @@ function setupUpload() {
 
 function selectSong(song) {
   if (state.current && state.current.id === song.id) return;
-  if (isDirty() && !confirm(`Ci sono modifiche non salvate su "${state.current.name}". Continuare senza salvare?`)) return;
+  if (state.current) flushAutosave();
+  state.ab = 'custom';
+  state.customSnap = null;
   engine.init();
   engine.clear();
   state.current = song;
@@ -723,7 +725,7 @@ function setupControls() {
     scheduleReload();
   });
   $('#master').addEventListener('input', (e) => setMaster(Number(e.target.value)));
-  $('#save').addEventListener('click', saveSettings);
+  document.querySelectorAll('#ab button').forEach((b) => b.addEventListener('click', () => setAB(b.dataset.ab)));
   $('#reset-all').addEventListener('click', resetSettings);
 
   document.addEventListener('keydown', (e) => {
@@ -1144,14 +1146,68 @@ function currentSettings() {
 
 const isDirty = () => !!state.current && JSON.stringify(currentSettings()) !== state.saved;
 
+// ------------------------------------------------ salvataggio automatico + confronto A/B
+//
+// Le impostazioni si salvano da sole. Il selettore "Le mie impostazioni | Originale" permette di
+// ascoltare il brano originale (tonalità, velocità, mix) senza perdere le proprie impostazioni.
+// Posizione, selezione e loop restano invariati, per confrontare lo stesso passaggio.
+
+state.ab = 'custom';
+state.customSnap = null;
+let autosaveTimer = null, autosaveStatus = 'idle', autosaveRetryAt = 0;
+
+/** Solo la parte "sonora" delle impostazioni: è quella che cambia nel confronto A/B. */
+function soundOf(cfg) {
+  const n = normalizeSettings(cfg || {});
+  return JSON.stringify({ pitch: n.pitch, tempo: n.tempo, master: n.master, tracks: n.tracks });
+}
+
+function scheduleAutosave() {
+  if (autosaveTimer || Date.now() < autosaveRetryAt) return;
+  autosaveTimer = setTimeout(() => { autosaveTimer = null; saveSettings(); }, 800);
+}
+
+/** Salva subito, se c'è qualcosa in sospeso (cambio brano, uscita, chiusura pagina). */
+function flushAutosave(keepalive = false) {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  if (state.ab !== 'custom' || state.pending || !isDirty()) return;
+  if (keepalive) {
+    fetch(`/api/songs/${state.current.id}/settings`, {
+      method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(currentSettings()),
+    }).catch(() => {});
+  } else {
+    saveSettings();
+  }
+}
+
 function updateSaveUI() {
-  const dirty = isDirty();
-  const btn = $('#save');
-  btn.classList.toggle('dirty', dirty);
-  btn.textContent = dirty ? '💾 Salva' : '✓ Salvato';
-  btn.disabled = !dirty;
+  if (!state.current) return;
+  const custom = state.ab === 'custom';
+  if (custom && !state.pending && engine.tracks.length && isDirty()) scheduleAutosave();
+  const mine = custom ? currentSettings() : state.customSnap;
+  const differs = soundOf(mine) !== soundOf({});
+  document.querySelectorAll('#ab button').forEach((b) => b.classList.toggle('on', b.dataset.ab === state.ab));
+  $('#ab').classList.toggle('original', !custom);
+  $('#ab [data-ab=original]').disabled = custom && !differs;
+  $('#ab [data-ab=original]').title = custom && !differs
+    ? 'Le tue impostazioni coincidono con l\'originale'
+    : 'Ascolta il brano originale senza perdere le tue impostazioni';
+  const st = $('#autosave');
+  if (!custom) {
+    st.textContent = 'Stai ascoltando l\'originale';
+    st.className = 'autosave orig';
+  } else if (autosaveStatus === 'error') {
+    st.textContent = '⚠ Non salvato';
+    st.className = 'autosave err';
+  } else {
+    const pending = isDirty() || autosaveStatus === 'saving';
+    st.textContent = pending ? 'Salvataggio…' : '✓ Salvato';
+    st.className = `autosave ${pending ? 'busy' : ''}`;
+  }
   const isDefault = JSON.stringify(currentSettings()) === JSON.stringify(normalizeSettings({}));
-  $('#reset-all').disabled = isDefault && !(state.current && state.current.settings);
+  $('#reset-all').disabled = custom && isDefault && !(state.current && state.current.settings);
 }
 
 function storeSongSettings(settings) {
@@ -1163,15 +1219,54 @@ function storeSongSettings(settings) {
 
 async function saveSettings() {
   const song = state.current;
-  if (!song) return;
+  if (!song || state.ab !== 'custom') return;
   const cfg = currentSettings();
+  autosaveStatus = 'saving';
   try {
     await api(`/api/songs/${song.id}/settings`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg),
     });
     if (state.current === song) storeSongSettings(cfg);
+    autosaveStatus = 'idle';
   } catch (e) {
-    alert(`Salvataggio fallito: ${e.message}`);
+    autosaveStatus = 'error';
+    autosaveRetryAt = Date.now() + 5000; // nuovo tentativo tra 5 s
+    $('#autosave').title = e.message;
+  }
+  updateSaveUI();
+}
+
+/** Applica tonalità, velocità, master e mix (non tocca posizione, selezione e loop). */
+function applySound(cfg) {
+  const n = normalizeSettings(cfg || {});
+  for (const t of engine.tracks) {
+    const v = n.tracks[t.name];
+    Object.assign(t, { muted: v ? v.muted : false, solo: v ? v.solo : false, volume: v ? v.volume : 1 });
+    const slider = t.row && t.row.querySelector('input[type=range]');
+    if (slider) slider.value = t.volume;
+  }
+  syncTrackButtons();
+  setMaster(n.master);
+  if (n.pitch !== state.pitch || n.tempo !== state.tempo) {
+    state.pitch = n.pitch;
+    state.tempo = n.tempo;
+    scheduleReload();
+  } else {
+    updateKnobs();
+  }
+}
+
+function setAB(mode) {
+  if (mode === state.ab || !engine.tracks.length || state.pending) return;
+  if (mode === 'original') {
+    flushAutosave();
+    state.customSnap = currentSettings();
+    state.ab = 'original';
+    applySound({});
+  } else {
+    state.ab = 'custom';
+    applySound(state.customSnap);
+    state.customSnap = null;
   }
   updateSaveUI();
 }
@@ -1179,6 +1274,10 @@ async function saveSettings() {
 async function resetSettings() {
   const song = state.current;
   if (!song || !confirm('Ripristinare tutte le impostazioni originali del brano?\n(tonalità, velocità, volumi, muto/solo, selezione e loop; le impostazioni salvate verranno eliminate)')) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  state.ab = 'custom';
+  state.customSnap = null;
   for (const t of engine.tracks) Object.assign(t, { muted: false, solo: false, volume: 1 });
   if (engine.tracks.length) buildTracks();
   state.pending = null;
@@ -1743,7 +1842,7 @@ function startApp() {
   setupScore();
   updateSelectionUI();
   setInterval(() => state.current && updateSaveUI(), 250);
-  window.addEventListener('beforeunload', (e) => { if (isDirty()) e.preventDefault(); });
+  window.addEventListener('pagehide', () => state.current && flushAutosave(true));
   refreshSongs();
   requestAnimationFrame(tick);
 }

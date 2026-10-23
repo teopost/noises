@@ -162,7 +162,7 @@ function setupUserMenu() {
     if (!menu.classList.contains('hidden') && !menu.contains(e.target) && !e.target.closest('#user-btn')) menu.classList.add('hidden');
   });
   $('#logout').addEventListener('click', async () => {
-    if (isDirty() && !confirm('Ci sono modifiche non salvate. Uscire comunque?')) return;
+    if (state.current) flushAutosave(true);
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
     location.href = '/';
   });
