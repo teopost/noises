@@ -390,15 +390,34 @@ async fn verify_password(pw: String, hash: String) -> bool {
 
 // ----------------------------------------------------------------------- cookie
 
-fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
+/// Tutti i valori di un cookie: il browser può inviarne più d'uno con lo stesso nome
+/// (es. altre app su `localhost`, che condivide i cookie tra le porte).
+fn cookies(headers: &HeaderMap, name: &str) -> Vec<String> {
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|kv| kv.trim().split_once('='))
-        .find(|(k, _)| *k == name)
+        .filter(|(k, _)| *k == name)
         .map(|(_, v)| v.to_owned())
+        .collect()
+}
+
+fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
+    cookies(headers, name).into_iter().next()
+}
+
+/// Utente della sessione: prova tutti i cookie di sessione ricevuti e usa quello valido.
+fn current_user(st: &AppState, headers: &HeaderMap) -> Option<User> {
+    let all = cookies(headers, SESSION_COOKIE);
+    let user = all.iter().find_map(|t| st.0.auth.session_user(t));
+    if user.is_none() && !all.is_empty() {
+        warn!("richiesta con {} cookie di sessione, nessuno valido (scaduto o di un'altra istanza)", all.len());
+    } else if all.len() > 1 {
+        info!("ricevuti {} cookie di sessione: usato quello valido", all.len());
+    }
+    user
 }
 
 fn set_cookie(cfg: &AuthConfig, name: &str, value: &str, max_age: u64, path: &str) -> HeaderValue {
@@ -424,8 +443,7 @@ pub async fn require_user(State(st): State<AppState>, mut req: Request, next: Ne
     if !path.starts_with("/api/") || path.starts_with("/api/auth/") || path == "/api/health" {
         return next.run(req).await;
     }
-    let user = cookie(req.headers(), SESSION_COOKIE).and_then(|t| st.0.auth.session_user(&t));
-    let Some(user) = user else {
+    let Some(user) = current_user(&st, req.headers()) else {
         return AppError(StatusCode::UNAUTHORIZED, "accesso richiesto".into()).into_response();
     };
     if !crate::owns_path(&st, &user, &path) {
@@ -454,8 +472,7 @@ pub async fn config(State(st): State<AppState>) -> Json<AuthInfo> {
 }
 
 pub async fn me(State(st): State<AppState>, headers: HeaderMap) -> Result<Json<User>, AppError> {
-    cookie(&headers, SESSION_COOKIE)
-        .and_then(|t| st.0.auth.session_user(&t))
+    current_user(&st, &headers)
         .map(Json)
         .ok_or_else(|| AppError(StatusCode::UNAUTHORIZED, "accesso richiesto".into()))
 }
@@ -606,7 +623,7 @@ pub async fn login(State(st): State<AppState>, Json(b): Json<LoginBody>) -> Resu
 }
 
 pub async fn logout(State(st): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
-    if let Some(t) = cookie(&headers, SESSION_COOKIE) {
+    for t in cookies(&headers, SESSION_COOKIE) {
         st.0.auth.exec("DELETE FROM sessions WHERE token_hash = ?1", params![sha256_hex(&t)])?;
     }
     let mut resp = StatusCode::NO_CONTENT.into_response();
