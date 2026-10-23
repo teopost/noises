@@ -1,0 +1,39 @@
+services:
+  noises:
+    build: .
+    image: noises:latest
+    container_name: noises
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${NOISES_PORT:-8080}:8080"
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      # cpu | cuda (cuda richiede un'immagine torch con supporto GPU)
+      DEMUCS_DEVICE: ${DEMUCS_DEVICE:-cpu}
+      # Thread PyTorch per Demucs: su CPU ibride/laptop 4 è spesso più veloce del default
+      OMP_NUM_THREADS: ${DEMUCS_THREADS:-4}
+      # Vuoto = motore R2 (veloce). "-3" = motore R3 (qualità superiore, ~6x più lento)
+      RUBBERBAND_ARGS: ${RUBBERBAND_ARGS:-}
+      # Elaborazioni pitch/tempo in parallelo (0 = numero di CPU)
+      RENDER_JOBS: ${RENDER_JOBS:-0}
+      # --- autenticazione ---
+      # URL con cui gli utenti raggiungono l'app (link nelle email e redirect di Google)
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      EMAIL_VERIFICATION: ${EMAIL_VERIFICATION:-true}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      # Google SSO (opzionale): credenziali OAuth "Applicazione web" da Google Cloud Console
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # SMTP (opzionale): senza, i link di verifica/reset finiscono nei log (make logs)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-Noises <noreply@localhost>}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
+    volumes:
+      - noises-data:/data
+
+volumes:
+  noises-data:

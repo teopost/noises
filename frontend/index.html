@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Noises — Stem Splitter</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="auth" class="auth hidden">
+    <div class="auth-card">
+      <div class="brand big"><span class="logo">◉</span> Noises</div>
+      <p class="auth-sub">Separa le tracce, studia e suona i tuoi brani.</p>
+      <div id="auth-msg" class="auth-msg hidden"></div>
+
+      <form id="f-login" class="auth-form">
+        <label>Email<input id="l-email" type="email" autocomplete="username" required></label>
+        <label>Password<input id="l-password" type="password" autocomplete="current-password" required></label>
+        <button class="primary wide" type="submit">Accedi</button>
+        <div class="auth-links">
+          <button type="button" id="to-forgot" class="link">Password dimenticata?</button>
+          <button type="button" id="to-register" class="link">Crea un account</button>
+        </div>
+      </form>
+
+      <form id="f-register" class="auth-form hidden">
+        <label>Nome<input id="r-name" type="text" autocomplete="name" maxlength="80"></label>
+        <label>Email<input id="r-email" type="email" autocomplete="email" required></label>
+        <label>Password<input id="r-password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>Ripeti la password<input id="r-password2" type="password" autocomplete="new-password" minlength="8" required></label>
+        <p class="hint">Almeno 8 caratteri, con lettere e almeno un numero o simbolo. Riceverai un'email per confermare l'indirizzo.</p>
+        <button class="primary wide" type="submit">Registrati</button>
+        <div class="auth-links"><button type="button" class="link to-login">Hai già un account? Accedi</button></div>
+      </form>
+
+      <form id="f-forgot" class="auth-form hidden">
+        <p class="hint">Inserisci l'email dell'account: ti invieremo un link per reimpostare la password.</p>
+        <label>Email<input id="fg-email" type="email" autocomplete="email" required></label>
+        <button class="primary wide" type="submit">Invia il link</button>
+        <div class="auth-links"><button type="button" class="link to-login">Torna all'accesso</button></div>
+      </form>
+
+      <form id="f-reset" class="auth-form hidden">
+        <p class="hint">Scegli una nuova password.</p>
+        <label>Nuova password<input id="rs-password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>Ripeti la password<input id="rs-password2" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="primary wide" type="submit">Imposta la password</button>
+        <div class="auth-links"><button type="button" class="link to-login">Torna all'accesso</button></div>
+      </form>
+
+      <div id="google-box" class="hidden">
+        <div class="sep"><span>oppure</span></div>
+        <a class="google-btn" href="/api/auth/google/login">
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.2C1 16.5 0 20.1 0 24s1 7.5 2.7 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
+          Accedi con Google
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <aside id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand"><span class="logo">◉</span> Noises</div>
+      <button id="user-btn" class="user-btn" title="Account"><span id="user-avatar" class="avatar"></span></button>
+    </div>
+    <div id="user-menu" class="menu user-menu hidden">
+      <div class="user-info">
+        <strong id="user-name"></strong>
+        <span id="user-email"></span>
+        <span id="user-badges" class="count"></span>
+      </div>
+      <button id="change-pw" class="menu-item">🔑 Password…</button>
+      <button id="logout" class="menu-item">⎋ Esci</button>
+    </div>
+
+    <form id="upload" class="dropzone">
+      <input type="file" id="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus" multiple hidden>
+      <div class="dz-text">
+        <strong>Trascina qui i file audio</strong>
+        <span>oppure <button type="button" id="pick" class="link">sfoglia</button></span>
+      </div>
+      <span class="dz-hint">I brani restano in attesa: l'elaborazione la avvii tu.</span>
+      <div id="upload-progress" class="bar hidden"><div></div></div>
+    </form>
+
+    <form id="yt" class="yt">
+      <label for="yt-url">Importa da YouTube</label>
+      <div class="yt-row">
+        <input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" required>
+        <button id="yt-btn" type="submit" title="Scarica e separa">▶ Importa</button>
+      </div>
+    </form>
+
+    <div class="sec-head">
+      <h3>Playlist</h3>
+      <button id="pl-new" class="icon" title="Nuova playlist">＋</button>
+    </div>
+    <ul id="playlists"></ul>
+
+    <div class="sec-head">
+      <h3 id="lib-title">Libreria</h3>
+      <button id="process-all" class="icon hidden" title="Elabora tutti i brani in attesa">▶ Elabora tutti</button>
+      <span id="lib-count" class="count"></span>
+    </div>
+    <input id="search" class="search" type="search" placeholder="Cerca brano…" autocomplete="off">
+    <ul id="songs"></ul>
+  </aside>
+
+  <main id="main">
+    <div id="empty" class="empty">
+      <p>Carica un brano e selezionalo dalla libreria per aprire il mixer.</p>
+    </div>
+
+    <section id="player" class="hidden">
+      <header class="song-head">
+        <h1 id="title"></h1>
+        <div id="chord-now" class="chord-now hidden" title="Accordo corrente → successivo">
+          <span id="cn-cur" class="cn-cur">–</span>
+          <span class="cn-next">→ <span id="cn-next"></span></span>
+        </div>
+      </header>
+
+      <div class="controls">
+        <div class="transport">
+          <button id="back" title="Indietro 5s">⏪</button>
+          <button id="play" class="play" title="Play/Pausa (spazio)">▶</button>
+          <button id="stop" title="Stop">⏹</button>
+          <button id="fwd" title="Avanti 5s">⏩</button>
+          <span class="time"><span id="pos">0:00</span> / <span id="dur">0:00</span></span>
+        </div>
+
+        <div class="knob">
+          <span class="lbl">Tonalità</span>
+          <button data-pitch="-1">−</button>
+          <output id="pitch">0</output>
+          <button data-pitch="1">+</button>
+          <span class="unit">semitoni</span>
+        </div>
+
+        <div class="knob">
+          <span class="lbl">Velocità</span>
+          <button data-tempo="-5">−</button>
+          <output id="tempo">100%</output>
+          <button data-tempo="5">+</button>
+          <input id="tempo-range" type="range" min="50" max="150" step="5" value="100">
+        </div>
+
+        <button id="reset" class="ghost" title="Riporta tonalità e velocità ai valori originali">Azzera</button>
+
+        <div class="knob rhythm">
+          <span class="lbl">Ritmo</span>
+          <span id="bpm" class="unit"></span>
+          <button id="meter-btn" title="Metro, primo tempo della battuta e correzione del battito">4/4 ▾</button>
+          <button id="analyze-notes" class="hidden" title="Rileva battiti e trascrive le note di tutte le tracce">🎼 Analizza ritmo e note</button>
+          <button id="click" class="toggle" title="Click che segue i battiti rilevati nel brano (accento sul primo tempo)">🥁 Click</button>
+          <input id="click-vol" type="range" min="0" max="1.5" step="0.05" title="Volume del click">
+          <select id="countin-sel" title="Pre-conteggio prima dell'avvio">
+            <option value="0">Nessun pre-conteggio</option>
+            <option value="1">Pre-conteggio 1 battuta</option>
+            <option value="2">Pre-conteggio 2 battute</option>
+          </select>
+        </div>
+
+        <div class="actions">
+          <button id="save" title="Salva tonalità, velocità, volumi, muto/solo, selezione e loop di questo brano">✓ Salvato</button>
+          <button id="reset-all" title="Ripristina tutte le impostazioni originali del brano">↺ Reset</button>
+          <button id="export" class="primary" title="Esporta le tracce attive">⤓ Esporta</button>
+        </div>
+
+        <div class="knob master">
+          <span class="lbl">Master</span>
+          <input id="master" type="range" min="0" max="1.5" step="0.01" value="1">
+        </div>
+      </div>
+
+      <div class="selbar">
+        <button id="play-sel" title="Riproduci la selezione">▶ Selezione</button>
+        <button id="loop" title="Ripeti la selezione in loop (L)">⟳ Loop</button>
+        <span id="sel-info" class="sel-info"></span>
+        <button id="sel-clear" class="ghost" title="Annulla selezione (Esc)">✕</button>
+        <span class="grow"></span>
+        <div class="zoombar" title="Unità della timeline (Ctrl + rotella sulla timeline)">
+          <span class="lbl">Zoom</span>
+          <button id="zoom-out" title="Riduci">−</button>
+          <input id="zoom" type="range" min="0" max="1000" step="1">
+          <button id="zoom-in" title="Ingrandisci">+</button>
+          <output id="zoom-val"></output>
+          <button id="zoom-fit" title="Adatta il brano alla finestra">⤢ Adatta</button>
+          <label class="follow" title="Scorre automaticamente seguendo la riproduzione"><input id="follow" type="checkbox" checked> Segui</label>
+        </div>
+      </div>
+
+      <div id="loader" class="loader hidden">
+        <span class="spinner"></span>
+        <div class="loader-body">
+          <div class="loader-text"><span id="loader-text">Caricamento…</span><span id="loader-detail"></span></div>
+          <div class="bar"><div id="loader-bar"></div></div>
+        </div>
+      </div>
+
+      <div class="tl-card">
+      <div id="overview" class="overview" title="Panoramica: trascina il riquadro per scorrere, i bordi per lo zoom · Ctrl + rotella: zoom">
+        <div class="ov-label">Panoramica</div>
+        <canvas id="ov-canvas" class="ov-canvas"></canvas>
+        <div id="ov-sel" class="ov-sel hidden"></div>
+        <div id="ov-head" class="ov-head"></div>
+        <div id="ov-win" class="ov-win"><span class="ov-h l"></span><span class="ov-h r"></span></div>
+      </div>
+      <div id="timeline" class="timeline">
+       <div id="tl-inner" class="tl-inner">
+        <div class="ruler-row">
+          <div class="track-head"></div>
+          <div class="lane"><canvas id="ruler" class="ruler vcanvas"></canvas></div>
+        </div>
+        <div class="chord-row">
+          <div class="track-head chord-head">
+            <div class="track-title">Accordi <span id="chord-key" class="count"></span></div>
+            <div class="track-btns">
+              <select id="chord-notation" title="Notazione">
+                <option value="en">C D E</option>
+                <option value="it">Do Re Mi</option>
+              </select>
+              <button id="chord-restore" class="hidden" title="Annulla le correzioni e ripristina gli accordi rilevati">↺ Rilevati</button>
+            </div>
+          </div>
+          <div id="chord-lane" class="lane chord-lane"></div>
+        </div>
+        <div id="tracks"></div>
+        <div id="selection" class="selection hidden"></div>
+        <div id="playhead" class="playhead"></div>
+       </div>
+      </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="countin" class="countin hidden"></div>
+  <div id="meter-menu" class="menu meter-menu hidden">
+    <div class="menu-title">Metro</div>
+    <div id="meter-opts" class="ce-grid meters">
+      <button data-ts="2/4">2/4</button><button data-ts="3/4">3/4</button><button data-ts="4/4">4/4</button>
+      <button data-ts="5/4">5/4</button><button data-ts="6/8">6/8</button><button data-ts="12/8">12/8</button>
+    </div>
+    <div class="menu-title">Primo tempo della battuta</div>
+    <div class="meter-row">
+      <button data-shift="-1" title="Anticipa di un battito">◀ Anticipa</button>
+      <button data-shift="1" title="Posticipa di un battito">Posticipa ▶</button>
+    </div>
+    <div class="menu-title">Battito rilevato</div>
+    <div class="meter-row">
+      <button data-mult="0.5" title="Il click è troppo veloce: dimezza">÷2 metà</button>
+      <button data-mult="1" title="Battito originale">×1</button>
+      <button data-mult="2" title="Il click è troppo lento: raddoppia">×2 doppio</button>
+    </div>
+    <p class="menu-hint">Ascolta col 🥁 Click: l'accento deve cadere sul primo tempo di ogni battuta.</p>
+  </div>
+
+  <dialog id="process-dlg">
+    <form method="dialog">
+      <h2>Elabora brano</h2>
+      <p id="proc-names" class="hint"></p>
+      <label class="field">Separazione delle tracce
+        <select id="proc-model">
+          <option value="htdemucs">4 tracce — veloce</option>
+          <option value="htdemucs_ft">4 tracce — alta qualità (4× più lento)</option>
+          <option value="htdemucs_6s">6 tracce (+ chitarra, piano)</option>
+        </select>
+      </label>
+      <div class="field">Analisi dopo la separazione
+        <label class="check"><input id="proc-chords" type="checkbox" checked> Riconoscimento accordi (pochi secondi)</label>
+        <label class="check"><input id="proc-notes" type="checkbox" checked> Ritmo e trascrizione note (~1 minuto): click, pre-conteggio, spartito, MIDI</label>
+      </div>
+      <p class="hint">Le analisi non scelte si possono avviare anche dopo, dall'editor.</p>
+      <menu>
+        <button value="cancel" formnovalidate>Annulla</button>
+        <button value="ok" class="primary">▶ Avvia</button>
+      </menu>
+    </form>
+  </dialog>
+  <div id="pl-menu" class="menu hidden"></div>
+  <div id="chord-menu" class="menu chord-menu hidden"></div>
+
+  <dialog id="export-dlg">
+    <form method="dialog">
+      <h2>Esporta brano</h2>
+      <div class="field">
+        <span>Tracce incluse <small>(usa M / S nel mixer per escluderle)</small></span>
+        <div id="exp-tracks" class="chips"></div>
+        <p id="exp-warn" class="warn hidden">Nessuna traccia attiva.</p>
+      </div>
+      <label class="field">Porzione
+        <select id="exp-range">
+          <option value="all">Brano intero</option>
+          <option value="sel">Selezione</option>
+        </select>
+      </label>
+      <div class="field">Per le basi
+        <label class="check"><input id="exp-click" type="checkbox"> Click per tutto il brano</label>
+        <select id="exp-countin">
+          <option value="0">Nessun pre-conteggio</option>
+          <option value="1">Pre-conteggio 1 battuta</option>
+          <option value="2">Pre-conteggio 2 battute</option>
+        </select>
+      </div>
+      <label class="field">Formato
+        <select id="exp-format">
+          <option value="mp3">MP3 320 kbps</option>
+          <option value="wav">WAV 16 bit</option>
+          <option value="flac">FLAC (lossless)</option>
+          <option value="mid">MIDI (note trascritte)</option>
+        </select>
+      </label>
+      <label class="field">Nome file
+        <input id="exp-name" type="text">
+      </label>
+      <p class="hint">Tonalità, velocità e volumi correnti vengono applicati al file.</p>
+      <menu>
+        <button value="cancel" formnovalidate>Annulla</button>
+        <button id="exp-go" value="ok" class="primary">⤓ Esporta</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="score-view" class="score-view hidden">
+    <header class="score-head">
+      <button id="score-play" class="play-sm" title="Play/Pausa (spazio)">▶</button>
+      <span id="score-pos" class="count"></span>
+      <strong>𝄞 Spartito</strong>
+      <select id="score-stem" title="Traccia"></select>
+      <div id="score-mode" class="seg">
+        <button data-mode="score">Spartito</button>
+        <button data-mode="tab">Tablatura</button>
+        <button data-mode="both">Entrambi</button>
+      </div>
+      <select id="score-tuning" title="Accordatura"></select>
+      <select id="score-div" title="Quantizzazione ritmica">
+        <option value="4">Griglia 1/16</option>
+        <option value="2">Griglia 1/8</option>
+        <option value="1">Griglia 1/4</option>
+      </select>
+      <span id="score-info" class="count"></span>
+      <span class="grow"></span>
+      <button id="score-xml" title="Scarica il file MusicXML (MuseScore, Sibelius, Finale…)">⤓ MusicXML</button>
+      <button id="score-print" title="Stampa o salva in PDF">🖨 Stampa</button>
+      <button id="score-close" title="Chiudi (Esc)">✕</button>
+    </header>
+    <div class="score-body">
+      <div id="score-status" class="score-status"></div>
+      <div id="score-osmd" class="paper"></div>
+      <div id="score-tab" class="paper"></div>
+    </div>
+  </div>
+
+  <dialog id="pw-dlg">
+    <form id="cp-form" method="dialog">
+      <h2 id="cp-title">Cambia password</h2>
+      <label id="cp-current-wrap" class="field">Password attuale<input id="cp-current" type="password" autocomplete="current-password"></label>
+      <label class="field">Nuova password<input id="cp-new" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="field">Ripeti la nuova password<input id="cp-new2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p id="cp-msg" class="warn"></p>
+      <menu>
+        <button value="cancel" formnovalidate>Annulla</button>
+        <button value="ok" class="primary">Salva</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="vendor/opensheetmusicdisplay.min.js" defer></script>
+  <script src="auth.js"></script>
+  <script src="notes.js"></script>
+  <script src="score.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+COMPOSE ?= docker compose
+SERVICE ?= noises
+PORT    ?= 8080
+export NOISES_PORT := $(PORT)
+
+.DEFAULT_GOAL := help
+.PHONY: help build rebuild update-ytdlp up start down stop restart logs ps shell status open clean purge
+
+help: ## Mostra questo aiuto
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+build: ## Costruisce l'immagine
+	$(COMPOSE) build
+
+rebuild: ## Ricostruisce l'immagine senza cache
+	$(COMPOSE) build --no-cache
+
+update-ytdlp: ## Aggiorna yt-dlp all'ultima versione e riavvia
+	$(COMPOSE) build --build-arg YTDLP_CACHEBUST=$$(date +%s)
+	$(COMPOSE) up -d
+
+up: ## Avvia in background (costruisce se necessario)
+	$(COMPOSE) up -d --build
+	@echo "Noises in esecuzione su http://localhost:$(PORT)"
+
+start: up ## Alias di up
+
+down: ## Ferma e rimuove i container (i dati restano)
+	$(COMPOSE) down
+
+stop: ## Ferma i container senza rimuoverli
+	$(COMPOSE) stop
+
+restart: ## Riavvia il servizio
+	$(COMPOSE) restart $(SERVICE)
+
+logs: ## Segue i log
+	$(COMPOSE) logs -f --tail=200 $(SERVICE)
+
+ps: ## Stato dei container
+	$(COMPOSE) ps
+
+status: ps ## Alias di ps
+
+shell: ## Apre una shell nel container
+	$(COMPOSE) exec $(SERVICE) bash
+
+open: ## Apre l'applicazione nel browser
+	@xdg-open http://localhost:$(PORT) 2>/dev/null || explorer.exe http://localhost:$(PORT) 2>/dev/null || echo "Apri http://localhost:$(PORT)"
+
+clean: ## Rimuove container, immagine e volume dati (CANCELLA i brani!)
+	$(COMPOSE) down -v --rmi local --remove-orphans
+
+purge: clean ## clean + pulizia della build cache di Docker
+	docker builder prune -f
