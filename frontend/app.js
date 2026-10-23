@@ -700,6 +700,7 @@ function updateKnobs() {
 function setupControls() {
   $('#play').addEventListener('click', togglePlay);
   $('#stop').addEventListener('click', () => engine.stop());
+  $('#to-start').addEventListener('click', goToStart);
   $('#back').addEventListener('click', () => engine.seek(engine.position() - 5));
   $('#fwd').addEventListener('click', () => engine.seek(engine.position() + 5));
 
@@ -730,6 +731,7 @@ function setupControls() {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.code === 'ArrowLeft') engine.seek(engine.position() - 5);
     else if (e.code === 'ArrowRight') engine.seek(engine.position() + 5);
+    else if (e.code === 'Home') { e.preventDefault(); goToStart(); }
     else if (e.code === 'KeyL') toggleLoop();
     else if (e.code === 'Escape') setSelection(null);
   });
@@ -744,6 +746,14 @@ function setupControls() {
 
   let rt;
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(layoutTimeline, 120); });
+}
+
+/** Torna all'inizio del brano (o del loop, se attivo) e riporta la vista all'inizio. */
+function goToStart() {
+  engine.stopAt = null;
+  engine.seek(engine.loop ? engine.loop.start : 0);
+  const tl = tlEl();
+  tl.scrollLeft = Math.max(0, engine.position() * state.zoom - 40);
 }
 
 function togglePlay() {
