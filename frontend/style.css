@@ -100,7 +100,7 @@ select {
 .knob .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
 .knob output { min-width: 46px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
 .knob .unit { color: var(--muted); font-size: 12px; }
-.knob button { width: 30px; padding: 4px 0; }
+.knob button[data-pitch], .knob button[data-tempo] { width: 30px; padding: 4px 0; }
 .master { margin-left: auto; }
 input[type=range] { accent-color: var(--accent); }
 
@@ -415,7 +415,6 @@ dialog .check input { accent-color: var(--accent); }
 .tab-svg .tab-cursor { stroke: #7c5cff; stroke-width: 3; stroke-linecap: round; opacity: .85; }
 
 .knob button { white-space: nowrap; }
-#click { width: auto; padding: 4px 10px; }
 
 /* ---- elaborazione manuale / metro ---- */
 .dz-hint { color: var(--muted); font-size: 11px; text-align: center; }
