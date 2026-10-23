@@ -6,6 +6,8 @@
 * Battute: beat tracking di librosa su batteria + basso; fase della battuta (4/4) stimata dalla cassa.
 
 Uso: python3 transcribe.py <output.json> <stems_dir> <stem> [stem ...]
+     python3 transcribe.py --refine-grid <notes.json> <stems_dir> <stem> [stem ...]
+       (riallinea ai colpi reali i battiti di una trascrizione esistente, senza toccare le note)
 """
 
 import glob
@@ -124,6 +126,79 @@ def transcribe_drums(path):
     return notes, {"times": times, "snare": hits["snare"]}
 
 
+# ------------------------------------------------------- allineamento battiti
+#
+# Il beat tracker lavora a bassa risoluzione e misura il picco dell'energia: i battiti risultano
+# in ritardo di ~40 ms rispetto all'inizio dei colpi e oscillano di ±25 ms. Qui ogni battito viene
+# agganciato all'attacco reale più vicino (rilevato a ~1,5 ms) e la griglia viene levigata con una
+# regressione lineare robusta su finestre di ±16 battiti, che segue i cambi di tempo graduali.
+
+REFINE_SR, REFINE_HOP = 44100, 64
+GRID_VERSION = 2
+
+
+def attacks(y, lo, hi):
+    """Inizi degli attacchi (risalendo al minimo di energia) e loro forza, nella banda [lo, hi) Hz."""
+    S = np.abs(librosa.stft(y, n_fft=1024, hop_length=REFINE_HOP)) ** 2
+    f = librosa.fft_frequencies(sr=REFINE_SR, n_fft=1024)
+    band = S[(f >= lo) & (f < hi)]
+    env = librosa.onset.onset_strength(S=librosa.power_to_db(band), sr=REFINE_SR, hop_length=REFINE_HOP)
+    peaks = librosa.onset.onset_detect(onset_envelope=env, sr=REFINE_SR, hop_length=REFINE_HOP, delta=0.08, wait=40)
+    starts = librosa.onset.onset_backtrack(peaks, band.sum(axis=0))
+    t = librosa.frames_to_time(starts, sr=REFINE_SR, hop_length=REFINE_HOP)
+    return t, env[peaks] / max(env.max(), 1e-9)
+
+
+def refine_beats(beats, stems_dir, stems, win=0.07, half=16):
+    beats = np.asarray(beats, float)
+    if len(beats) < 8:
+        return beats
+    # riferimento ritmico: la cassa se c'è la batteria, altrimenti tutti gli attacchi di basso + altro
+    if "drums" in stems:
+        y, _ = librosa.load(os.path.join(stems_dir, "drums.flac"), sr=REFINE_SR, mono=True)
+        on, strength = attacks(y, 30, 150)
+        if len(on) < len(beats) // 4:
+            on, strength = attacks(y, 30, 11000)
+    else:
+        mix = None
+        for s in [x for x in ("bass", "other", "guitar", "piano") if x in stems] or stems:
+            y, _ = librosa.load(os.path.join(stems_dir, f"{s}.flac"), sr=REFINE_SR, mono=True)
+            n = len(y) if mix is None else min(len(mix), len(y))
+            mix = y if mix is None else mix[:n] + y[:n]
+        on, strength = attacks(mix, 30, 11000)
+    if len(on) == 0:
+        return beats
+
+    snapped = np.full(len(beats), np.nan)
+    for i, b in enumerate(beats):
+        lo, hi = np.searchsorted(on, b - win), np.searchsorted(on, b + win)
+        if hi > lo:
+            snapped[i] = on[lo + np.argmax(strength[lo:hi])]
+    # dove non ci sono attacchi vicini si corregge almeno il ritardo medio del tracker
+    shift = np.nanmedian(snapped - beats) if np.isfinite(snapped).any() else 0.0
+    out = beats + shift
+    idx = np.arange(len(beats))
+    for i in idx:
+        s, e = max(0, i - half), min(len(beats), i + half + 1)
+        x, y = idx[s:e], snapped[s:e]
+        ok = np.isfinite(y)
+        if ok.sum() < 6:
+            continue
+        for _ in range(4):  # scarta i colpi fuori tempo (fill, sincopi) e rifà il fit
+            c1, c0 = np.polyfit(x[ok], y[ok], 1)
+            ok2 = ok & (np.abs(y - (c0 + c1 * x)) < 0.025)
+            if ok2.sum() < 6 or (ok2 == ok).all():
+                break
+            ok = ok2
+        c1, c0 = np.polyfit(x[ok], y[ok], 1)
+        out[i] = c0 + c1 * i
+    # la griglia deve restare strettamente crescente
+    for i in range(1, len(out)):
+        if out[i] <= out[i - 1] + 0.05:
+            out[i] = out[i - 1] + max(0.05, np.median(np.diff(beats)))
+    return out
+
+
 def beat_grid(stems_dir, stems, drum_info, bass_notes):
     paths = [os.path.join(stems_dir, f"{s}.flac") for s in ("drums", "bass") if s in stems]
     if not paths:
@@ -153,11 +228,31 @@ def beat_grid(stems_dir, stems, drum_info, bass_notes):
         bp = phase_counts([n["start"] for n in bass_notes])
         score += 0.5 * bp
     downbeat = int(np.argmax(score)) if len(beats) >= 8 else 0
-    return {"bpm": round(bpm, 2), "beats": [round(float(b), 3) for b in beats], "downbeat": downbeat,
-            "time_signature": [4, 4]}
+    beats = refine_beats(beats, stems_dir, stems)
+    if len(beats) > 1:
+        bpm = 60.0 / float(np.median(np.diff(beats)))
+    return {"bpm": round(bpm, 2), "beats": [round(float(b), 4) for b in beats], "downbeat": downbeat,
+            "time_signature": [4, 4], "version": GRID_VERSION}
+
+
+def refine_existing(path, stems_dir, stems):
+    data = json.load(open(path))
+    grid = data["grid"]
+    grid["beats"] = [round(float(b), 4) for b in refine_beats(grid["beats"], stems_dir, stems)]
+    if len(grid["beats"]) > 1:
+        grid["bpm"] = round(60.0 / float(np.median(np.diff(grid["beats"]))), 2)
+    grid["version"] = GRID_VERSION
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+    log(f"griglia riallineata: {len(grid['beats'])} battiti, {grid['bpm']} BPM")
 
 
 def main():
+    if len(sys.argv) >= 4 and sys.argv[1] == "--refine-grid":
+        refine_existing(sys.argv[2], sys.argv[3], sys.argv[4:])
+        return
     if len(sys.argv) < 4:
         sys.exit("uso: transcribe.py <output.json> <stems_dir> <stem> [stem ...]")
     out, stems_dir, stems = sys.argv[1], sys.argv[2], sys.argv[3:]

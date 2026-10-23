@@ -718,6 +718,32 @@ async fn transcribe(st: &AppState, id: &str, stems: &[String]) -> anyhow::Result
     Ok(out)
 }
 
+async fn refine_grid(st: &AppState, id: &str, stems: &[String], path: &Path) -> anyhow::Result<()> {
+    let lock = st.render_lock(path);
+    let _guard = lock.lock().await;
+    let current: serde_json::Value = serde_json::from_slice(&tokio::fs::read(path).await?)?;
+    if current["grid"]["version"].as_u64().unwrap_or(1) >= 2 {
+        return Ok(()); // già fatto da una richiesta concorrente
+    }
+    let t0 = std::time::Instant::now();
+    let output = Command::new("python3")
+        .arg(st.0.analysis_dir.join("transcribe.py"))
+        .arg("--refine-grid")
+        .arg(path)
+        .arg(st.song_dir(id).join("stems"))
+        .args(stems)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .context("avvio riallineamento battiti")?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        bail!("riallineamento battiti fallito: {}", err.lines().last().unwrap_or("errore sconosciuto"));
+    }
+    info!("battiti {id} riallineati in {:.1}s", t0.elapsed().as_secs_f32());
+    Ok(())
+}
+
 fn edited_notes_path(st: &AppState, id: &str, stem: &str) -> PathBuf {
     st.song_dir(id).join("notes.edited").join(format!("{stem}.json"))
 }
@@ -731,6 +757,11 @@ async fn load_notes(st: &AppState, song: &Song, run: bool) -> Result<Transcripti
     }
     let path = transcribe(st, &song.id, &song.stems).await?;
     let mut t: Transcription = serde_json::from_slice(&tokio::fs::read(&path).await?)?;
+    if t.grid["version"].as_u64().unwrap_or(1) < 2 {
+        // trascrizione di una versione precedente: riallinea i battiti ai colpi reali (una volta sola)
+        refine_grid(st, &song.id, &song.stems, &path).await?;
+        t = serde_json::from_slice(&tokio::fs::read(&path).await?)?;
+    }
     t.edited.clear();
     for stem in &song.stems {
         let p = edited_notes_path(st, &song.id, stem);
