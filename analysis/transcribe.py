@@ -134,7 +134,7 @@ def transcribe_drums(path):
 # regressione lineare robusta su finestre di ±16 battiti, che segue i cambi di tempo graduali.
 
 REFINE_SR, REFINE_HOP = 44100, 64
-GRID_VERSION = 2
+GRID_VERSION = 3
 
 
 def attacks(y, lo, hi):
@@ -150,9 +150,14 @@ def attacks(y, lo, hi):
 
 
 def refine_beats(beats, stems_dir, stems, win=0.07, half=16):
+    """Restituisce (griglia levigata, griglia aderente).
+
+    La levigata è stabile come un metronomo; l'aderente aggancia ogni battito al colpo reale
+    e segue le irregolarità dell'esecuzione (click "quantizzato" sulla base).
+    """
     beats = np.asarray(beats, float)
     if len(beats) < 8:
-        return beats
+        return beats, beats.copy()
     # riferimento ritmico: la cassa se c'è la batteria, altrimenti tutti gli attacchi di basso + altro
     if "drums" in stems:
         y, _ = librosa.load(os.path.join(stems_dir, "drums.flac"), sr=REFINE_SR, mono=True)
@@ -167,7 +172,7 @@ def refine_beats(beats, stems_dir, stems, win=0.07, half=16):
             mix = y if mix is None else mix[:n] + y[:n]
         on, strength = attacks(mix, 30, 11000)
     if len(on) == 0:
-        return beats
+        return beats, beats.copy()
 
     snapped = np.full(len(beats), np.nan)
     for i, b in enumerate(beats):
@@ -196,7 +201,33 @@ def refine_beats(beats, stems_dir, stems, win=0.07, half=16):
     for i in range(1, len(out)):
         if out[i] <= out[i - 1] + 0.05:
             out[i] = out[i - 1] + max(0.05, np.median(np.diff(beats)))
-    return out
+    return out, tight_beats(out, on, strength)
+
+
+def tight_beats(smooth, on, strength):
+    """Aggancia ogni battito al colpo reale vicino, in una finestra stretta attorno alla griglia
+    levigata (così fill, ghost note e sincopi non vengono scambiati per battiti)."""
+    period = float(np.median(np.diff(smooth)))
+    w = min(0.06, period * 0.2)
+    tight = smooth.copy()
+    for i, b in enumerate(smooth):
+        lo, hi = np.searchsorted(on, b - w), np.searchsorted(on, b + w)
+        if hi <= lo:
+            continue
+        j = max(range(lo, hi), key=lambda k: strength[k] - 0.5 * abs(on[k] - b) / w)
+        if strength[j] >= 0.12:
+            tight[i] = on[j]
+    # la deriva di un musicista è graduale: uno spostamento isolato, diverso da quello dei
+    # battiti vicini, è un colpo sbagliato (fill, ghost note) e viene annullato
+    dev = tight - smooth
+    for i in range(len(dev)):
+        nb = [dev[j] for j in range(max(0, i - 2), min(len(dev), i + 3)) if j != i]
+        if nb and abs(dev[i] - np.median(nb)) > 0.03:
+            tight[i] = smooth[i] + np.median(nb)
+    for i in range(1, len(tight)):
+        if tight[i] <= tight[i - 1] + 0.5 * period:
+            tight[i] = smooth[i]
+    return tight
 
 
 def beat_grid(stems_dir, stems, drum_info, bass_notes):
@@ -228,17 +259,20 @@ def beat_grid(stems_dir, stems, drum_info, bass_notes):
         bp = phase_counts([n["start"] for n in bass_notes])
         score += 0.5 * bp
     downbeat = int(np.argmax(score)) if len(beats) >= 8 else 0
-    beats = refine_beats(beats, stems_dir, stems)
+    beats, tight = refine_beats(beats, stems_dir, stems)
     if len(beats) > 1:
         bpm = 60.0 / float(np.median(np.diff(beats)))
-    return {"bpm": round(bpm, 2), "beats": [round(float(b), 4) for b in beats], "downbeat": downbeat,
+    return {"bpm": round(bpm, 2), "beats": [round(float(b), 4) for b in beats],
+            "beats_tight": [round(float(b), 4) for b in tight], "downbeat": downbeat,
             "time_signature": [4, 4], "version": GRID_VERSION}
 
 
 def refine_existing(path, stems_dir, stems):
     data = json.load(open(path))
     grid = data["grid"]
-    grid["beats"] = [round(float(b), 4) for b in refine_beats(grid["beats"], stems_dir, stems)]
+    smooth, tight = refine_beats(grid["beats"], stems_dir, stems)
+    grid["beats"] = [round(float(b), 4) for b in smooth]
+    grid["beats_tight"] = [round(float(b), 4) for b in tight]
     if len(grid["beats"]) > 1:
         grid["bpm"] = round(60.0 / float(np.median(np.diff(grid["beats"]))), 2)
     grid["version"] = GRID_VERSION

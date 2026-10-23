@@ -235,8 +235,7 @@ function lowerBoundNum(arr, t) {
 // --------------------------------------------------------------- griglia ritmica
 
 /** Posizione in battiti (frazionaria) di un tempo originale, interpolando la griglia. */
-function beatPos(t) {
-  const b = state.notes && state.notes.grid && state.notes.grid.beats;
+function beatPos(t, b = state.notes && state.notes.grid && state.notes.grid.beats) {
   if (!b || b.length < 2) return t * 2; // fallback 120 BPM
   const period = (b[b.length - 1] - b[0]) / (b.length - 1);
   if (t <= b[0]) return (t - b[0]) / period;
@@ -245,8 +244,7 @@ function beatPos(t) {
   return i + (t - b[i]) / (b[i + 1] - b[i]);
 }
 
-function beatTime(pos) {
-  const b = state.notes && state.notes.grid && state.notes.grid.beats;
+function beatTime(pos, b = state.notes && state.notes.grid && state.notes.grid.beats) {
   if (!b || b.length < 2) return pos / 2;
   const period = (b[b.length - 1] - b[0]) / (b.length - 1);
   if (pos <= 0) return b[0] + pos * period;
@@ -565,12 +563,21 @@ const hasGrid = () => !!(state.notes && state.notes.grid && state.notes.grid.bea
  * Battiti (tempo della timeline corrente) in [from, to): seguono la griglia rilevata,
  * quindi anche le variazioni di tempo di un'esecuzione dal vivo; oltre i bordi si estrapola.
  */
+/**
+ * Battiti usati dal click: "fluido" = griglia levigata, stabile come un metronomo;
+ * "aderente" (click quantizzato sulla base) = ogni battito agganciato al colpo reale.
+ */
+function clickBeats() {
+  const g = state.notes.grid;
+  return state.clickMode === 'tight' && g.beats_tight && g.beats_tight.length === g.beats.length ? g.beats_tight : g.beats;
+}
+
 function clickTimes(from, to) {
   if (!hasGrid()) return [];
-  const k = dispK(), db = state.notes.grid.downbeat, bpb = gridBpb();
+  const k = dispK(), db = state.notes.grid.downbeat, bpb = gridBpb(), cb = clickBeats();
   const out = [];
-  for (let i = Math.ceil(beatPos(from / k) - 1e-6); ; i++) {
-    const t = beatTime(i) * k;
+  for (let i = Math.ceil(beatPos(from / k, cb) - 1e-6); ; i++) {
+    const t = beatTime(i, cb) * k;
     if (t >= to) break;
     if (t >= from - 1e-6 && t >= 0) out.push({ t, accent: (((i - db) % bpb) + bpb) % bpb === 0 });
     if (out.length > 5000) break;
@@ -601,10 +608,10 @@ let countTimers = [];
 
 /** Dati del pre-conteggio per una partenza da `p` (tempo timeline): durata e colpi. */
 function countInPlan(p, bars) {
-  const k = dispK();
-  const iNext = Math.ceil(beatPos(p / k) - 1e-3);         // primo battito della musica dopo p
-  const bNext = beatTime(iNext) * k;
-  const period = (beatTime(iNext) - beatTime(iNext - 1)) * k;
+  const k = dispK(), cb = clickBeats();
+  const iNext = Math.ceil(beatPos(p / k, cb) - 1e-3);     // primo battito della musica dopo p
+  const bNext = beatTime(iNext, cb) * k;
+  const period = (beatTime(iNext, cb) - beatTime(iNext - 1, cb)) * k;
   const bpb = gridBpb();
   const n = bars * bpb;
   const lead = Math.max(0, bNext - p);                    // musica prima del primo battito
@@ -683,14 +690,16 @@ function setupClick() {
     state.click = localStorage.getItem('noises.click') === '1';
     state.clickVol = Number(localStorage.getItem('noises.clickVol') || 0.8);
     state.countIn = Number(localStorage.getItem('noises.countIn') || 0);
+    state.clickMode = localStorage.getItem('noises.clickMode') || 'smooth';
   } catch {
-    state.click = false; state.clickVol = 0.8; state.countIn = 0;
+    state.click = false; state.clickVol = 0.8; state.countIn = 0; state.clickMode = 'smooth';
   }
   const save = () => {
     try {
       localStorage.setItem('noises.click', state.click ? '1' : '0');
       localStorage.setItem('noises.clickVol', String(state.clickVol));
       localStorage.setItem('noises.countIn', String(state.countIn));
+      localStorage.setItem('noises.clickMode', state.clickMode);
     } catch {}
   };
   $('#click').classList.toggle('on', state.click);
@@ -704,12 +713,18 @@ function setupClick() {
   });
   $('#click-vol').addEventListener('input', (e) => { state.clickVol = Number(e.target.value); save(); });
   $('#countin-sel').addEventListener('change', (e) => { state.countIn = Number(e.target.value); save(); });
+  $('#click-mode').value = state.clickMode;
+  $('#click-mode').addEventListener('change', (e) => {
+    state.clickMode = e.target.value;
+    schedHorizon = null; // riprogramma i click con la nuova griglia
+    save();
+  });
 }
 
 /** Abilita i comandi del ritmo quando la griglia è disponibile. */
 function updateRhythmControls() {
   const ok = hasGrid();
-  for (const id of ['#click', '#countin-sel', '#meter-btn']) {
+  for (const id of ['#click', '#click-mode', '#countin-sel', '#meter-btn']) {
     $(id).disabled = !ok;
     $(id).classList.toggle('hidden', !ok && (state.notesMissing || state.notesBusy));
   }

@@ -155,6 +155,10 @@
           <button id="analyze-notes" class="hidden" title="Rileva battiti e trascrive le note di tutte le tracce">🎼 Analizza ritmo e note</button>
           <button id="click" class="toggle" title="Click che segue i battiti rilevati nel brano (accento sul primo tempo)">🥁 Click</button>
           <input id="click-vol" type="range" min="0" max="1.5" step="0.05" title="Volume del click">
+          <select id="click-mode" title="Fluido: stabile come un metronomo. Aderente (quantizzato sulla base): ogni colpo segue il battito reale della registrazione, anche se il tempo non è regolare.">
+            <option value="smooth">Click fluido</option>
+            <option value="tight">Click aderente</option>
+          </select>
           <select id="countin-sel" title="Pre-conteggio prima dell'avvio">
             <option value="0">Nessun pre-conteggio</option>
             <option value="1">Pre-conteggio 1 battuta</option>

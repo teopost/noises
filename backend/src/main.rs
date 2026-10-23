@@ -126,6 +126,9 @@ struct Rhythm {
     multiplier: f32,
 }
 
+/// Versione della griglia ritmica prodotta da analysis/transcribe.py (le precedenti vengono aggiornate).
+const GRID_VERSION: u64 = 3;
+
 const METERS: &[[u8; 2]] = &[[2, 4], [3, 4], [4, 4], [5, 4], [6, 8], [12, 8]];
 
 /// Battiti per battuta e durata del battito in quarti (6/8 → 2 battiti da un quarto puntato).
@@ -140,26 +143,37 @@ fn meter_info(ts: [u8; 2]) -> (u32, f64) {
 /// Griglia effettiva: battiti rilevati + correzioni dell'utente (doppio/metà, primo tempo, metro).
 fn effective_grid(raw: &serde_json::Value, rhythm: Option<Rhythm>) -> serde_json::Value {
     let r = rhythm.unwrap_or(Rhythm { time_signature: [4, 4], offset: 0, multiplier: 1.0 });
-    let mut beats: Vec<f64> = raw["beats"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_f64()).collect())
-        .unwrap_or_default();
-    let mut downbeat = raw["downbeat"].as_i64().unwrap_or(0);
-    let mut bpm = raw["bpm"].as_f64().unwrap_or(120.0);
-    if r.multiplier >= 2.0 && beats.len() > 1 {
-        let mut b2 = Vec::with_capacity(beats.len() * 2);
-        for w in beats.windows(2) {
-            b2.push(w[0]);
-            b2.push((w[0] + w[1]) / 2.0);
+    let read = |k: &str| -> Vec<f64> {
+        raw[k]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_f64()).collect())
+            .unwrap_or_default()
+    };
+    let raw_down = raw["downbeat"].as_i64().unwrap_or(0);
+    // stessa trasformazione (doppio/metà) per la griglia levigata e per quella aderente
+    let transform = |beats: Vec<f64>| -> (Vec<f64>, i64) {
+        if r.multiplier >= 2.0 && beats.len() > 1 {
+            let mut b2 = Vec::with_capacity(beats.len() * 2);
+            for w in beats.windows(2) {
+                b2.push(w[0]);
+                b2.push((w[0] + w[1]) / 2.0);
+            }
+            b2.push(*beats.last().unwrap());
+            (b2, raw_down * 2)
+        } else if r.multiplier <= 0.5 && beats.len() > 3 {
+            let phase = raw_down.rem_euclid(2) as usize;
+            (beats.iter().skip(phase).step_by(2).cloned().collect(), (raw_down - phase as i64) / 2)
+        } else {
+            (beats, raw_down)
         }
-        b2.push(*beats.last().unwrap());
-        beats = b2;
-        downbeat *= 2;
+    };
+    let (beats, downbeat) = transform(read("beats"));
+    let tight = read("beats_tight");
+    let tight = if tight.is_empty() { beats.clone() } else { transform(tight).0 };
+    let mut bpm = raw["bpm"].as_f64().unwrap_or(120.0);
+    if r.multiplier >= 2.0 {
         bpm *= 2.0;
-    } else if r.multiplier <= 0.5 && beats.len() > 3 {
-        let phase = downbeat.rem_euclid(2) as usize;
-        beats = beats.iter().skip(phase).step_by(2).cloned().collect();
-        downbeat = (downbeat - phase as i64) / 2;
+    } else if r.multiplier <= 0.5 {
         bpm /= 2.0;
     }
     let (bpb, bq) = meter_info(r.time_signature);
@@ -167,6 +181,7 @@ fn effective_grid(raw: &serde_json::Value, rhythm: Option<Rhythm>) -> serde_json
     serde_json::json!({
         "bpm": bpm,
         "beats": beats,
+        "beats_tight": tight,
         "downbeat": downbeat,
         "time_signature": r.time_signature,
         "beats_per_bar": bpb,
@@ -722,7 +737,7 @@ async fn refine_grid(st: &AppState, id: &str, stems: &[String], path: &Path) -> 
     let lock = st.render_lock(path);
     let _guard = lock.lock().await;
     let current: serde_json::Value = serde_json::from_slice(&tokio::fs::read(path).await?)?;
-    if current["grid"]["version"].as_u64().unwrap_or(1) >= 2 {
+    if current["grid"]["version"].as_u64().unwrap_or(1) >= GRID_VERSION {
         return Ok(()); // già fatto da una richiesta concorrente
     }
     let t0 = std::time::Instant::now();
@@ -757,7 +772,7 @@ async fn load_notes(st: &AppState, song: &Song, run: bool) -> Result<Transcripti
     }
     let path = transcribe(st, &song.id, &song.stems).await?;
     let mut t: Transcription = serde_json::from_slice(&tokio::fs::read(&path).await?)?;
-    if t.grid["version"].as_u64().unwrap_or(1) < 2 {
+    if t.grid["version"].as_u64().unwrap_or(1) < GRID_VERSION {
         // trascrizione di una versione precedente: riallinea i battiti ai colpi reali (una volta sola)
         refine_grid(st, &song.id, &song.stems, &path).await?;
         t = serde_json::from_slice(&tokio::fs::read(&path).await?)?;
