@@ -112,6 +112,7 @@
     </div>
 
     <section id="player" class="hidden">
+      <div class="drop-overlay"><span>Rilascia per aggiungere una traccia audio</span></div>
       <header class="song-head">
         <h1 id="title"></h1>
         <div id="chord-now" class="chord-now hidden" title="Accordo corrente → successivo">
@@ -196,6 +197,8 @@
         <button id="loop" title="Ripeti la selezione in loop (L)">⟳ Loop</button>
         <span id="sel-info" class="sel-info"></span>
         <button id="sel-clear" class="ghost" title="Annulla selezione (Esc)">✕</button>
+        <button id="add-track" title="Aggiungi un file audio come nuova traccia, dalla posizione della testina (oppure trascina il file sull'editor)">＋ Traccia audio</button>
+        <input id="add-track-file" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.aif,.aiff,.wma" multiple hidden>
         <span class="grow"></span>
         <div class="zoombar" title="Unità della timeline (Ctrl + rotella sulla timeline)">
           <span class="lbl">Zoom</span>

@@ -289,28 +289,60 @@ function setupUserRow(t, row) {
 
 // --------------------------------------------------- trascinamento dal disco
 
+const AUDIO_RE = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus|aiff?|wma|webm|mp4|caf)$/i;
+
+/** Aggiunge i file audio come nuove tracce; `startDisplay` = posizione (null → testina). */
+async function addAudioFiles(files, startDisplay) {
+  if (!state.current || !engine.tracks.length) {
+    alert('Apri prima un brano: le tracce audio si aggiungono al brano aperto nell\'editor.');
+    return;
+  }
+  const audio = files.filter((f) => f.type.startsWith('audio/') || AUDIO_RE.test(f.name));
+  const rejected = files.filter((f) => !audio.includes(f));
+  if (rejected.length) alert(`Non sono file audio: ${rejected.map((f) => f.name).join(', ')}`);
+  for (const f of audio) await addUserTrackFromFile(f, startDisplay ?? engine.position());
+}
+
 function setupUserTracks() {
-  const tl = $('#timeline');
+  const player = $('#player'), tl = $('#timeline');
   const isFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
-  // fuori dalle zone previste il browser non deve aprire il file al posto dell'app
+  /** Sopra le corsie della timeline il file parte dal punto indicato, altrove dalla testina. */
+  const overLanes = (e) => {
+    const r = tl.getBoundingClientRect();
+    return e.clientY >= r.top && e.clientY <= r.bottom && e.clientX >= r.left + headWidth() && e.clientX <= r.right;
+  };
+  // fuori dall'editor il browser non deve aprire il file al posto dell'app
   window.addEventListener('dragover', (e) => { if (isFiles(e)) e.preventDefault(); });
   window.addEventListener('drop', (e) => { if (isFiles(e)) e.preventDefault(); });
-  tl.addEventListener('dragover', (e) => {
-    if (!isFiles(e) || !engine.tracks.length) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    tl.classList.add('drop-target');
-    $('#drop-hint').style.left = `${headWidth() + Math.max(0, timeAt(e.clientX)) * state.zoom}px`;
-  });
-  tl.addEventListener('dragleave', (e) => { if (!tl.contains(e.relatedTarget)) tl.classList.remove('drop-target'); });
-  tl.addEventListener('drop', async (e) => {
+  let leaveTimer = null;
+  player.addEventListener('dragover', (e) => {
     if (!isFiles(e)) return;
     e.preventDefault();
-    tl.classList.remove('drop-target');
-    const start = timeAt(e.clientX);
-    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('audio/') || /\.(mp3|wav|flac|ogg|m4a|aac|opus|aiff?|wma)$/i.test(f.name));
-    if (!files.length) { alert('Trascina un file audio (mp3, wav, flac, ogg, m4a…).'); return; }
-    for (const f of files) await addUserTrackFromFile(f, start);
+    e.dataTransfer.dropEffect = 'copy';
+    clearTimeout(leaveTimer);
+    player.classList.add('drop-target');
+    const lanes = overLanes(e) && engine.tracks.length;
+    tl.classList.toggle('drop-lanes', !!lanes);
+    if (lanes) $('#drop-hint').style.left = `${headWidth() + Math.max(0, timeAt(e.clientX)) * state.zoom}px`;
+  });
+  player.addEventListener('dragleave', () => {
+    // dragleave scatta anche passando sopra gli elementi interni: si chiude solo se non riprende
+    leaveTimer = setTimeout(() => { player.classList.remove('drop-target'); tl.classList.remove('drop-lanes'); }, 80);
+  });
+  player.addEventListener('drop', async (e) => {
+    if (!isFiles(e)) return;
+    e.preventDefault();
+    const start = overLanes(e) && engine.tracks.length ? timeAt(e.clientX) : null;
+    player.classList.remove('drop-target');
+    tl.classList.remove('drop-lanes');
+    await addAudioFiles([...e.dataTransfer.files], start);
+  });
+  // alternativa al trascinamento: scelta del file
+  $('#add-track').addEventListener('click', () => $('#add-track-file').click());
+  $('#add-track-file').addEventListener('change', async (e) => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    await addAudioFiles(files, null);
   });
   document.addEventListener('keydown', (e) => {
     if (!state.current || e.target.matches('input:not([type=range]):not([type=checkbox]), select, textarea')) return;
