@@ -30,61 +30,104 @@ async function api(path, opts) {
 
 // =================================================================== audio engine
 
+// Le tracce restano alla velocità e tonalità originali: il motore in tempo reale
+// (stretch-worklet.js) le mixa e applica velocità/tonalità mentre suona.
+// Le posizioni esposte (offset, duration, loop, stopAt) sono nella "timeline corrente",
+// cioè già scalate per la velocità: 1 secondo di timeline = 1 secondo reale di ascolto.
 const engine = {
-  ctx: null, master: null,
-  tracks: [],          // { name, buffer, gain, muted, solo, volume }
-  sources: [],
-  playing: false, startAt: 0, offset: 0, duration: 0,
-  tempo: 100,          // tempo dei buffer attualmente caricati
-  pitch: 0,            // trasposizione dei buffer attualmente caricati
+  ctx: null, master: null, node: null, ready: null,
+  tracks: [],          // { name, peaks, muted, solo, volume, row, canvas, color }
+  sr: 44100,
+  origDuration: 0,     // durata originale (s)
+  playing: false, offset: 0, duration: 0, t0: 0,
+  tempo: 100,          // velocità corrente (%)
+  pitch: 0,            // tonalità corrente (semitoni)
   loop: null,          // { start, end } quando il loop è attivo
   stopAt: null,        // fine di "riproduci selezione"
+  rep: null,           // ultima posizione comunicata dal motore { src, frame }
+  repMinFrame: 0,
 
   init() {
     if (this.ctx) return;
-    this.ctx = new AudioContext();
+    this.ctx = new AudioContext({ latencyHint: 'interactive' });
+    this.sr = this.ctx.sampleRate;
     this.master = this.ctx.createGain();
     this.master.connect(this.ctx.destination);
+    this.ready = this.ctx.audioWorklet.addModule('stretch-worklet.js').then(() => {
+      this.node = new AudioWorkletNode(this.ctx, 'stretch-player', {
+        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+      });
+      this.node.connect(this.master);
+      this.node.port.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'pos') {
+          if (this.playing && m.frame >= this.repMinFrame) this.rep = m;
+        } else if (m.type === 'ended' && this.playing) {
+          this.stop();
+        }
+      };
+    });
   },
 
-  setTracks(list, tempo, keepMix, initialMix) {
+  post(msg, transfer) {
+    this.node.port.postMessage(msg, transfer || []);
+  },
+
+  /** secondi della timeline corrente ↔ campioni del brano originale */
+  k() { return 100 / this.tempo; },
+  toSrc(t) { return (t / this.k()) * this.sr; },
+
+  /** list: [{ name, l, r, peaks }] con canali già alla stessa lunghezza. */
+  setTracks(list, keepMix, initialMix) {
     const prev = keepMix ? Object.fromEntries(this.tracks.map((t) => [t.name, t])) : (initialMix || {});
-    this.tracks.forEach((t) => t.gain.disconnect());
-    this.tracks = list.map(({ name, buffer }) => {
-      const gain = this.ctx.createGain();
-      gain.connect(this.master);
+    this.tracks = list.map(({ name, peaks }) => {
       const p = prev[name];
-      return { name, buffer, gain, muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1 };
+      return { name, peaks, muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1 };
     });
-    this.tempo = tempo;
-    this.duration = Math.max(0, ...list.map((t) => t.buffer.duration));
-    this.updateGains(true);
+    const length = Math.max(0, ...list.map((t) => t.l.length));
+    this.origDuration = length / this.sr;
+    this.duration = this.origDuration * this.k();
+    this.post({
+      type: 'load', length,
+      stems: list.map((t, i) => ({ l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]) })),
+    }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
   },
 
   clear() {
     this.stop();
-    this.tracks.forEach((t) => t.gain.disconnect());
+    if (this.node) this.post({ type: 'load', length: 0, stems: [] });
     this.tracks = [];
     this.duration = 0;
+    this.origDuration = 0;
   },
 
   position() {
     if (!this.playing) return this.offset;
-    if (this.ctx.currentTime < this.t0) return this.offset; // durante il pre-conteggio
-    let p = Math.max(0, this.ctx.currentTime - this.startAt);
+    const now = this.ctx.currentTime;
+    if (now < this.t0) return this.offset; // durante il pre-conteggio
+    let p;
+    if (this.rep) {
+      // posizione esatta comunicata dal motore + tempo trascorso da allora
+      const orig = this.rep.src / this.sr + Math.max(0, now - this.rep.frame / this.sr) * (this.tempo / 100);
+      p = orig * this.k();
+    } else {
+      p = this.offset + (now - this.t0);
+    }
     const L = this.loop;
     if (L && p >= L.end) p = L.start + ((p - L.start) % (L.end - L.start));
-    return Math.min(p, this.duration);
+    return Math.min(Math.max(0, p), this.duration);
   },
 
-  /** Attiva/disattiva il loop; se in riproduzione riparte senza salti di posizione. */
+  /** Attiva/disattiva il loop (sample-accurate nel motore). */
   setLoop(range) {
-    const was = this.playing;
-    const pos = this.position();
-    this.pause();
     this.loop = range;
-    this.offset = pos;
-    if (was) this.play();
+    if (this.node) {
+      this.post({ type: 'loop', loop: range ? { s: Math.round(this.toSrc(range.start)), e: Math.round(this.toSrc(range.end)) } : null });
+    }
+    if (range && this.playing) {
+      const pos = this.position();
+      if (pos < range.start || pos >= range.end) this.seek(range.start);
+    }
   },
 
   /** Posizione effettiva da cui partirà la riproduzione (inizio brano/loop se fuori). */
@@ -96,33 +139,20 @@ const engine = {
   },
 
   play(delay = 0) {
-    if (!this.tracks.length || this.playing) return;
+    if (!this.tracks.length || this.playing || !this.node) return;
     this.ctx.resume();
     this.offset = this.startOffset();
-    const L = this.loop;
-    const t0 = this.ctx.currentTime + 0.05 + delay;
-    this.t0 = t0;
-    for (const t of this.tracks) {
-      const src = this.ctx.createBufferSource();
-      src.buffer = t.buffer;
-      if (L) {
-        // Loop nativo e sample-accurate: tutte le tracce restano sincronizzate.
-        src.loop = true;
-        src.loopStart = L.start;
-        src.loopEnd = Math.min(L.end, t.buffer.duration);
-      }
-      src.connect(t.gain);
-      src.start(t0, Math.min(this.offset, t.buffer.duration));
-      this.sources.push(src);
-    }
-    this.startAt = t0 - this.offset;
+    this.t0 = this.ctx.currentTime + 0.05 + delay;
+    this.rep = null;
+    this.repMinFrame = Math.round(this.t0 * this.sr);
+    this.post({ type: 'play', at: this.t0, pos: this.toSrc(this.offset) });
     this.playing = true;
   },
 
   pause() {
     if (!this.playing) return;
     this.offset = this.position();
-    this.killSources();
+    this.post({ type: 'pause' });
     this.playing = false;
     synthStopAll();
     countInStop();
@@ -135,18 +165,41 @@ const engine = {
   },
 
   seek(t) {
-    const was = this.playing;
-    this.pause();
     this.offset = Math.min(Math.max(0, t), this.duration);
-    if (was) this.play();
+    if (!this.playing) return;
+    if (this.ctx.currentTime < this.t0) { // durante il pre-conteggio: cambia solo il punto di partenza
+      this.post({ type: 'play', at: this.t0, pos: this.toSrc(this.offset) });
+      return;
+    }
+    this.post({ type: 'seek', pos: this.toSrc(this.offset) });
+    this.t0 = this.ctx.currentTime;
+    this.rep = null;
+    this.repMinFrame = Math.round(this.t0 * this.sr);
+    synthStopAll();
   },
 
-  killSources() {
-    for (const s of this.sources) {
-      try { s.stop(); } catch {}
-      s.disconnect();
+  /** Cambia velocità (%) e tonalità (semitoni) all'istante, senza interrompere l'ascolto. */
+  setRate(tempo, pitch) {
+    if (tempo === this.tempo && pitch === this.pitch) return 1;
+    const pos = this.position();
+    const ratio = (100 / tempo) / this.k(); // fattore di scala della timeline
+    this.tempo = tempo;
+    this.pitch = pitch;
+    this.duration = this.origDuration * this.k();
+    this.offset = Math.min(pos * ratio, this.duration);
+    if (this.stopAt != null) this.stopAt *= ratio;
+    if (this.loop) this.loop = { start: this.loop.start * ratio, end: this.loop.end * ratio };
+    if (this.node) {
+      this.post({ type: 'rate', rate: tempo / 100, pitch: Math.pow(2, pitch / 12) });
+      if (this.loop) this.setLoop(this.loop);
     }
-    this.sources = [];
+    if (this.playing) {
+      this.t0 = this.ctx.currentTime;
+      this.rep = null;
+      this.repMinFrame = Math.round(this.t0 * this.sr);
+      synthStopAll();
+    }
+    return ratio;
   },
 
   isAudible(t) {
@@ -154,13 +207,12 @@ const engine = {
     return anySolo ? t.solo : !t.muted;
   },
 
-  updateGains(immediate) {
-    const now = this.ctx.currentTime;
-    for (const t of this.tracks) {
-      const g = this.isAudible(t) ? t.volume : 0;
-      if (immediate) t.gain.gain.setValueAtTime(g, now);
-      else t.gain.gain.setTargetAtTime(g, now, 0.015);
-    }
+  gainOf(t) {
+    return this.isAudible(t) ? t.volume : 0;
+  },
+
+  updateGains() {
+    if (this.node) this.post({ type: 'gains', gains: this.tracks.map((t) => this.gainOf(t)) });
   },
 };
 
@@ -614,16 +666,13 @@ function stemUrl(song, name) {
 }
 
 /** Scarica (ed eventualmente fa elaborare al server) le tracce per la tonalità/velocità correnti. */
+/** Scarica e decodifica le tracce originali del brano (una volta sola per brano). */
 async function loadStems(keepMix) {
   const seq = ++state.loadSeq;
   const song = state.current;
-  const { tempo, pitch } = state;
-  const processed = state.pitch !== 0 || tempo !== 100;
   const n = song.stems.length;
   const prog = song.stems.map(() => ({ started: false, got: 0, total: 0 }));
   let decoded = 0;
-
-  // Fasi: (1) elaborazione sul server se pitch/tempo ≠ default, (2) download, (3) decodifica.
   const report = () => {
     if (seq !== state.loadSeq) return;
     const started = prog.filter((p) => p.started).length;
@@ -631,8 +680,6 @@ async function loadStems(keepMix) {
     const total = prog.reduce((a, p) => a + p.total, 0);
     if (decoded > 0 || (started === n && got >= total && total > 0)) {
       setLoader('Preparazione delle tracce…', `${decoded}/${n}`, 0.85 + 0.15 * (decoded / n));
-    } else if (started < n && processed) {
-      setLoader('Elaborazione tonalità/velocità sul server…', `${started}/${n} tracce pronte`, null);
     } else if (total > 0 && started === n) {
       setLoader('Caricamento tracce…', `${mb(got)} / ${mb(total)}`, 0.85 * (got / total));
     } else {
@@ -641,8 +688,9 @@ async function loadStems(keepMix) {
   };
   report();
   try {
+    await engine.ready;
     const list = await Promise.all(song.stems.map(async (name, i) => {
-      const data = await fetchWithProgress(stemUrl(song, name), (got, total) => {
+      const data = await fetchWithProgress(`/api/songs/${song.id}/stems/${encodeURIComponent(name)}`, (got, total) => {
         Object.assign(prog[i], { started: true, got, total });
         report();
       }).catch((e) => { throw new Error(`${name}: ${e.message}`); });
@@ -651,31 +699,35 @@ async function loadStems(keepMix) {
       report();
       return { name, buffer };
     }));
-    if (seq !== state.loadSeq) return; // superato da una richiesta più recente
+    if (seq !== state.loadSeq) return;
 
-    // Mantiene la posizione musicale: la durata scala con 100/tempo.
-    const wasPlaying = engine.playing;
-    const ratio = engine.tempo / tempo; // conversione dei tempi verso la nuova velocità
-    const musical = engine.position() * ratio;
-    engine.pause();
+    // canali copiati in array propri (stessa lunghezza) da passare al motore audio
+    const length = Math.max(...list.map((t) => t.buffer.length));
+    const stems = list.map(({ name, buffer }) => {
+      const l = new Float32Array(length);
+      l.set(buffer.getChannelData(0));
+      let r = l;
+      if (buffer.numberOfChannels > 1) {
+        r = new Float32Array(length);
+        r.set(buffer.getChannelData(1));
+      }
+      return { name, l, r, peaks: computePeaks(l, r) };
+    });
+
     const pending = state.pending;
     state.pending = null;
-    engine.setTracks(list, tempo, keepMix, pending && pending.tracks);
-    engine.pitch = pitch;
-    engine.offset = Math.min(musical, engine.duration);
+    engine.setTracks(stems, keepMix, pending && pending.tracks);
+    engine.setRate(state.tempo, state.pitch);
+    engine.offset = 0;
     if (pending && pending.selection) {
       // la selezione è salvata in tempo originale (velocità 100%)
-      const k = 100 / tempo;
+      const k = 100 / state.tempo;
       state.sel = { start: pending.selection.start * k, end: Math.min(pending.selection.end * k, engine.duration) };
       state.loopOn = pending.loop;
-    } else if (state.sel) {
-      state.sel = { start: state.sel.start * ratio, end: Math.min(state.sel.end * ratio, engine.duration) };
-      if (engine.stopAt != null) engine.stopAt = state.sel.end;
     }
-    engine.loop = state.loopOn && state.sel ? { ...state.sel } : null;
+    engine.setLoop(state.loopOn && state.sel ? { ...state.sel } : null);
     updateSelectionUI();
     buildTracks();
-    if (wasPlaying) engine.play();
     setLoader(null);
   } catch (e) {
     if (seq !== state.loadSeq) return;
@@ -685,11 +737,25 @@ async function loadStems(keepMix) {
   }
 }
 
-function scheduleReload() {
+/** Applica subito tonalità e velocità correnti (motore in tempo reale). */
+function applyRate() {
   updateKnobs();
-  clearTimeout(state.debounce);
-  setLoader('Applico tonalità/velocità…', '', null);
-  state.debounce = setTimeout(() => loadStems(true), 450);
+  if (!engine.tracks.length) return;
+  const tl = tlEl();
+  const ratio = engine.setRate(state.tempo, state.pitch);
+  schedHorizon = null;
+  if (typeof layoutRoll === 'function') for (const stem of Object.keys(rolls)) layoutRoll(stem);
+  for (const t of engine.tracks) { // i download delle tracce usano tonalità/velocità correnti
+    const a = t.row && t.row.querySelector('a[download]');
+    if (a) a.href = stemUrl(state.current, t.name);
+  }
+  if (ratio === 1) { requestRedraw(); return; }
+  if (state.sel) state.sel = { start: state.sel.start * ratio, end: Math.min(state.sel.end * ratio, engine.duration) };
+  const centre = tl.scrollLeft + (tl.clientWidth - headWidth()) / 2;
+  layoutTimeline();
+  tl.scrollLeft = Math.max(0, centre * ratio - (tl.clientWidth - headWidth()) / 2);
+  updateSelectionUI();
+  if (typeof updateRhythmControls === 'function') updateRhythmControls();
 }
 
 function updateKnobs() {
@@ -708,21 +774,21 @@ function setupControls() {
 
   document.querySelectorAll('[data-pitch]').forEach((b) => b.addEventListener('click', () => {
     const v = Math.max(-12, Math.min(12, state.pitch + Number(b.dataset.pitch)));
-    if (v !== state.pitch) { state.pitch = v; scheduleReload(); }
+    if (v !== state.pitch) { state.pitch = v; applyRate(); }
   }));
   document.querySelectorAll('[data-tempo]').forEach((b) => b.addEventListener('click', () => {
     const v = Math.max(50, Math.min(150, state.tempo + Number(b.dataset.tempo)));
-    if (v !== state.tempo) { state.tempo = v; scheduleReload(); }
+    if (v !== state.tempo) { state.tempo = v; applyRate(); }
   }));
   $('#tempo-range').addEventListener('input', (e) => {
     state.tempo = Number(e.target.value);
-    scheduleReload();
+    applyRate();
   });
   $('#reset').addEventListener('click', () => {
     if (state.pitch === 0 && state.tempo === 100) return;
     state.pitch = 0;
     state.tempo = 100;
-    scheduleReload();
+    applyRate();
   });
   $('#master').addEventListener('input', (e) => setMaster(Number(e.target.value)));
   document.querySelectorAll('#ab button').forEach((b) => b.addEventListener('click', () => setAB(b.dataset.ab)));
@@ -909,12 +975,11 @@ function drawOverview() {
   const c = $('#ov-canvas');
   const [ctx, w, h] = fitCanvas(c);
   if (!engine.tracks.length || !engine.duration) return;
-  for (const t of engine.tracks) if (!t.peaks) computePeaks(t);
   const mid = h / 2;
   // forma d'onda complessiva (massimo tra le tracce udibili, in grigio quelle mute)
   const cols = new Float32Array(w), colsAll = new Float32Array(w);
   for (const t of engine.tracks) {
-    const bps = t.buffer.sampleRate / PEAK_BLOCK, p = t.peaks;
+    const bps = engine.sr / PEAK_BLOCK / engine.k(), p = t.peaks;
     const audible = engine.isAudible(t);
     for (let x = 0; x < w; x++) {
       const b0 = Math.floor((x / w) * engine.duration * bps), b1 = Math.max(b0 + 1, Math.floor(((x + 1) / w) * engine.duration * bps));
@@ -1250,7 +1315,7 @@ function applySound(cfg) {
   if (n.pitch !== state.pitch || n.tempo !== state.tempo) {
     state.pitch = n.pitch;
     state.tempo = n.tempo;
-    scheduleReload();
+    applyRate();
   } else {
     updateKnobs();
   }
@@ -1286,7 +1351,7 @@ async function resetSettings() {
   const reload = state.pitch !== 0 || state.tempo !== 100;
   state.pitch = 0;
   state.tempo = 100;
-  if (reload) scheduleReload(); else updateKnobs();
+  if (reload) applyRate(); else updateKnobs();
   try {
     if (song.settings) await api(`/api/songs/${song.id}/settings`, { method: 'DELETE' });
     if (state.current === song) storeSongSettings(null);
@@ -1395,12 +1460,10 @@ function fitCanvas(c) {
 
 /** Picchi pre-calcolati (max assoluto ogni 128 campioni): il ridisegno a ogni zoom/scroll è immediato. */
 const PEAK_BLOCK = 128;
-function computePeaks(t) {
-  const b = t.buffer;
-  const n = Math.ceil(b.length / PEAK_BLOCK);
+function computePeaks(l, r) {
+  const n = Math.ceil(l.length / PEAK_BLOCK);
   const peaks = new Float32Array(n);
-  for (let c = 0; c < b.numberOfChannels; c++) {
-    const d = b.getChannelData(c);
+  for (const d of r && r !== l ? [l, r] : [l]) {
     for (let i = 0; i < n; i++) {
       let m = peaks[i];
       const end = Math.min((i + 1) * PEAK_BLOCK, d.length);
@@ -1411,14 +1474,14 @@ function computePeaks(t) {
       peaks[i] = m;
     }
   }
-  t.peaks = peaks;
+  return peaks;
 }
 
 function drawWave(t) {
   const [ctx, w, h, dpr] = fitCanvas(t.canvas);
-  if (!t.peaks) computePeaks(t);
   const peaks = t.peaks;
-  const bps = t.buffer.sampleRate / PEAK_BLOCK;
+  // le tracce sono alla velocità originale: timeline corrente → tempo originale
+  const bps = engine.sr / PEAK_BLOCK / engine.k();
   const sl = tlEl().scrollLeft, z = state.zoom;
   const mid = h / 2;
   ctx.fillStyle = t.color;
