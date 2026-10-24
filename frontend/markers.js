@@ -61,7 +61,7 @@ function renderMarkers() {
   const k = mk(), z = state.zoom, hw = headWidth();
   lane.innerHTML = state.markers.length
     ? state.markers.map((m) => `
-      <div class="marker ${m.id === markerMenuId ? 'editing' : ''}" data-id="${m.id}" style="left:${m.t * k * z}px"
+      <div class="marker ${m.id === markerMenuId ? 'editing' : ''} ${m.t * k * z < 50 ? 'edge' : ''}" data-id="${m.id}" style="left:${m.t * k * z}px"
         title="${esc(m.name)} — ${fmt(m.t * k)} · clic: vai e modifica · trascina: sposta (Shift: senza griglia)">
         <span class="flag">${esc(m.name || '—')}</span>
       </div>`).join('')

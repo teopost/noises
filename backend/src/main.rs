@@ -1834,7 +1834,16 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/google/login", get(auth::google_login))
         .route("/api/auth/google/callback", get(auth::google_callback))
         .route("/api/account/password", post(auth::change_password))
-        .fallback_service(ServeDir::new(static_dir))
+        // file dell'interfaccia: il browser deve sempre verificare se sono cambiati (304 se uguali),
+        // così dopo un aggiornamento non mescola CSS/JS vecchi e nuovi
+        .fallback_service(
+            tower::ServiceBuilder::new()
+                .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-cache"),
+                ))
+                .service(ServeDir::new(static_dir)),
+        )
         .layer(axum::middleware::from_fn_with_state(st.clone(), auth::require_user))
         .layer(TraceLayer::new_for_http())
         .with_state(st);
