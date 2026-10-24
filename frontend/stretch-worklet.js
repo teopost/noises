@@ -16,7 +16,7 @@ const FIFO = 1 << 15;
 class StretchPlayer extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.stems = [];        // { l, r, gain, target }
+    this.stems = [];        // { l, r, gain, target, clips? } — clips: tracce utente [{ s, o, d }] in campioni
     this.len = 0;
     this.playing = false;
     this.startFrame = 0;
@@ -54,9 +54,21 @@ class StretchPlayer extends AudioWorkletProcessor {
   onMessage(m) {
     switch (m.type) {
       case 'load':
-        this.stems = m.stems.map((s) => ({ l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain }));
+        this.stems = m.stems.map((s) => ({ l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, clips: s.clips || null }));
         this.len = m.length;
         this.playing = false;
+        break;
+      case 'add':
+        this.stems.push({ l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, clips: m.clips || [] });
+        break;
+      case 'remove':
+        this.stems.splice(m.index, 1);
+        break;
+      case 'clips':
+        if (this.stems[m.index]) this.stems[m.index].clips = m.clips;
+        break;
+      case 'length':
+        this.len = m.length;
         break;
       case 'gains':
         m.gains.forEach((g, i) => { if (this.stems[i]) this.stems[i].target = g; });
@@ -95,6 +107,18 @@ class StretchPlayer extends AudioWorkletProcessor {
     return p;
   }
 
+  /** Indice nel file della traccia per la posizione `p` della timeline (-1 = silenzio). */
+  static index(s, p) {
+    if (!s.clips) return p < s.l.length ? p : -1;
+    for (const c of s.clips) {
+      if (p >= c.s && p < c.s + c.d) {
+        const q = p - c.s + c.o;
+        return q < s.l.length ? q : -1;
+      }
+    }
+    return -1;
+  }
+
   /** Mix delle tracce a partire da `pos` (con il loop applicato campione per campione). */
   readMix(pos, outL, outR, n) {
     outL.fill(0, 0, n);
@@ -105,8 +129,10 @@ class StretchPlayer extends AudioWorkletProcessor {
       for (let i = 0; i < n; i++) {
         const p = this.wrap(pos + i);
         if (p < 0 || p >= this.len) continue;
-        outL[i] += l[p] * g;
-        outR[i] += r[p] * g;
+        const q = StretchPlayer.index(s, p);
+        if (q < 0) continue;
+        outL[i] += l[q] * g;
+        outR[i] += r[q] * g;
       }
     }
   }
@@ -193,8 +219,11 @@ class StretchPlayer extends AudioWorkletProcessor {
         if (p >= this.len) { this.end(); break; }
         let l = 0, r = 0;
         for (const s of this.stems) {
-          l += s.l[p] * s.gain;
-          r += s.r[p] * s.gain;
+          if (s.gain === 0) continue;
+          const q = s.clips ? StretchPlayer.index(s, p) : (p < s.l.length ? p : -1);
+          if (q < 0) continue;
+          l += s.l[q] * s.gain;
+          r += s.r[q] * s.gain;
         }
         oL[i] = l;
         oR[i] = r;

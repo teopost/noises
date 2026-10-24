@@ -541,3 +541,24 @@ button.wide { width: 100%; padding: 10px; }
 }
 .marker-menu input:focus { outline: none; border-color: #f5c542; }
 .ce-actions .danger:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ---- tracce utente ---- */
+.user-row { background: #171a20; }
+.user-row .tname {
+  font: inherit; font-weight: 600; color: var(--text); background: transparent; border: 1px solid transparent;
+  border-radius: 6px; padding: 1px 4px; width: 150px; min-width: 0;
+}
+.user-row .tname:hover { border-color: var(--border); }
+.user-row .tname:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
+.user-row .track-btns .cut, .user-row .track-btns .deltrack { padding: 2px 6px; }
+.user-row .track-btns .deltrack:hover { border-color: var(--danger); }
+.ucanvas { cursor: pointer; }
+.drop-hint {
+  display: none; position: absolute; top: 0; bottom: 0; width: 2px; background: #f5c542; z-index: 8; pointer-events: none;
+}
+.drop-hint span {
+  position: absolute; top: 30px; left: 6px; white-space: nowrap; font-size: 12px; font-weight: 600;
+  background: #f5c542; color: #1b1405; padding: 3px 8px; border-radius: 6px;
+}
+.timeline.drop-target { outline: 2px dashed #f5c542; outline-offset: -2px; }
+.timeline.drop-target .drop-hint { display: block; }

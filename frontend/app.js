@@ -77,20 +77,65 @@ const engine = {
   k() { return 100 / this.tempo; },
   toSrc(t) { return (t / this.k()) * this.sr; },
 
-  /** list: [{ name, l, r, peaks }] con canali già alla stessa lunghezza. */
+  /**
+   * list: [{ name, l, r, peaks }] — tracce separate (stessa lunghezza) e tracce utente
+   * ({ user: true, tid, label, clips }) le cui clip sono posizionate sulla timeline.
+   */
   setTracks(list, keepMix, initialMix) {
     const prev = keepMix ? Object.fromEntries(this.tracks.map((t) => [t.name, t])) : (initialMix || {});
-    this.tracks = list.map(({ name, peaks }) => {
-      const p = prev[name];
-      return { name, peaks, muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1 };
-    });
-    const length = Math.max(0, ...list.map((t) => t.l.length));
-    this.origDuration = length / this.sr;
+    this.tracks = list.map((t) => this.trackObject(t, prev[t.name]));
+    this.songDuration = Math.max(0, ...list.filter((t) => !t.user).map((t) => t.l.length)) / this.sr;
+    this.origDuration = this.songDuration;
     this.duration = this.origDuration * this.k();
     this.post({
-      type: 'load', length,
-      stems: list.map((t, i) => ({ l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]) })),
+      type: 'load', length: Math.round(this.origDuration * this.sr),
+      stems: list.map((t, i) => ({ l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: t.user ? this.clipSamples(t.clips) : null })),
     }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
+    this.updateLength();
+  },
+
+  trackObject(t, p) {
+    const o = { name: t.name, peaks: t.peaks, muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1 };
+    if (t.user) Object.assign(o, { user: true, tid: t.tid, label: t.label, clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr });
+    return o;
+  },
+
+  clipSamples(clips) {
+    return clips.map((c) => ({ s: Math.round(c.start * this.sr), o: Math.round(c.offset * this.sr), d: Math.round(c.duration * this.sr) }));
+  },
+
+  /** Durata = brano o fine dell'ultima clip, se va oltre. Restituisce true se è cambiata. */
+  updateLength() {
+    let end = this.songDuration || 0;
+    for (const t of this.tracks) if (t.user) for (const c of t.clips) end = Math.max(end, c.start + c.duration);
+    if (Math.abs(end - this.origDuration) < 1e-6) return false;
+    this.origDuration = end;
+    this.duration = end * this.k();
+    if (this.node) this.post({ type: 'length', length: Math.round(end * this.sr) });
+    return true;
+  },
+
+  addUserTrack(t) {
+    const o = this.trackObject(t, null);
+    this.tracks.push(o);
+    this.post({ type: 'add', l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o) },
+      t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer]);
+    this.updateLength();
+    return o;
+  },
+
+  /** Comunica al motore le clip modificate; true se la durata complessiva è cambiata. */
+  setClips(t) {
+    this.post({ type: 'clips', index: this.tracks.indexOf(t), clips: this.clipSamples(t.clips) });
+    return this.updateLength();
+  },
+
+  removeTrack(t) {
+    const i = this.tracks.indexOf(t);
+    if (i < 0) return;
+    this.post({ type: 'remove', index: i });
+    this.tracks.splice(i, 1);
+    this.updateLength();
   },
 
   clear() {
@@ -674,8 +719,9 @@ function stemUrl(song, name) {
 async function loadStems(keepMix) {
   const seq = ++state.loadSeq;
   const song = state.current;
-  const n = song.stems.length;
-  const prog = song.stems.map(() => ({ started: false, got: 0, total: 0 }));
+  const users = song.user_tracks || [];
+  const n = song.stems.length + users.length;
+  const prog = Array.from({ length: n }, () => ({ started: false, got: 0, total: 0 }));
   let decoded = 0;
   const report = () => {
     if (seq !== state.loadSeq) return;
@@ -703,6 +749,17 @@ async function loadStems(keepMix) {
       report();
       return { name, buffer };
     }));
+    const userList = await Promise.all(users.map(async (u, j) => {
+      const i = song.stems.length + j;
+      const data = await fetchWithProgress(`/api/songs/${song.id}/tracks/${u.id}/audio`, (got, total) => {
+        Object.assign(prog[i], { started: true, got, total });
+        report();
+      }).catch((e) => { throw new Error(`${u.name}: ${e.message}`); });
+      const audio = await decodeToArrays(data);
+      decoded++;
+      report();
+      return { name: `user:${u.id}`, user: true, tid: u.id, label: u.name, clips: u.clips, ...audio };
+    }));
     if (seq !== state.loadSeq) return;
 
     // canali copiati in array propri (stessa lunghezza) da passare al motore audio
@@ -720,7 +777,7 @@ async function loadStems(keepMix) {
 
     const pending = state.pending;
     state.pending = null;
-    engine.setTracks(stems, keepMix, pending && pending.tracks);
+    engine.setTracks([...stems, ...userList], keepMix, pending && pending.tracks);
     engine.setRate(state.tempo, state.pitch);
     engine.offset = 0;
     if (pending && pending.selection) {
@@ -859,6 +916,20 @@ function buildTracks() {
   root.innerHTML = '';
   const song = state.current;
   for (const t of engine.tracks) {
+    if (t.user) {
+      const row = document.createElement('div');
+      row.className = 'track audio-row user-row';
+      row.innerHTML = userRowHtml(t);
+      row.querySelector('.m').addEventListener('click', () => { t.muted = !t.muted; syncTrackButtons(); });
+      row.querySelector('.s').addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
+      row.querySelector('.vol').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
+      t.row = row;
+      t.canvas = row.querySelector('canvas');
+      t.color = USER_COLOR;
+      root.appendChild(row);
+      setupUserRow(t, row);
+      continue;
+    }
     const label = LABELS[t.name] || t.name;
     const color = COLORS[t.name] || '#aaa';
     const row = document.createElement('div');
@@ -898,7 +969,8 @@ function syncTrackButtons() {
     if (!tr.row) continue;
     tr.row.querySelector('.m').classList.toggle('on', tr.muted);
     tr.row.querySelector('.s').classList.toggle('on', tr.solo);
-    tr.row.querySelector('.n').classList.toggle('on', state.showNotes.has(tr.name));
+    const n = tr.row.querySelector('.n');
+    if (n) n.classList.toggle('on', state.showNotes.has(tr.name));
     tr.row.classList.toggle('silent', !engine.isAudible(tr));
   }
   drawOverview();
@@ -995,6 +1067,7 @@ function drawOverview() {
   // forma d'onda complessiva (massimo tra le tracce udibili, in grigio quelle mute)
   const cols = new Float32Array(w), colsAll = new Float32Array(w);
   for (const t of engine.tracks) {
+    if (t.user) continue; // la panoramica mostra il brano
     const bps = engine.sr / PEAK_BLOCK / engine.k(), p = t.peaks;
     const audible = engine.isAudible(t);
     for (let x = 0; x < w; x++) {
@@ -1386,7 +1459,7 @@ function defaultExportName() {
   const song = state.current;
   const active = activeStems();
   const off = engine.tracks.filter((t) => !active.includes(t));
-  const lbl = (t) => LABELS[t.name] || t.name;
+  const lbl = (t) => t.label || LABELS[t.name] || t.name;
   let name = song.name;
   if (off.length) {
     name += off.length <= active.length
@@ -1402,7 +1475,7 @@ function openExport() {
   if (!engine.tracks.length) return;
   const active = activeStems();
   $('#exp-tracks').innerHTML = engine.tracks.map((t) =>
-    `<span class="chip ${active.includes(t) ? '' : 'off'}" style="--c:${t.color}">${esc(LABELS[t.name] || t.name)}</span>`).join('');
+    `<span class="chip ${active.includes(t) ? '' : 'off'}" style="--c:${t.color}">${esc(t.label || LABELS[t.name] || t.name)}</span>`).join('');
   const range = $('#exp-range');
   range.querySelector('[value=sel]').disabled = !state.sel;
   range.querySelector('[value=sel]').textContent = state.sel
@@ -1560,7 +1633,7 @@ function drawRuler() {
 function drawAll() {
   if (!state.current || !engine.tracks.length) return;
   drawRuler();
-  engine.tracks.forEach(drawWave);
+  engine.tracks.forEach((t) => (t.user ? drawUserTrack(t) : drawWave(t)));
   drawAllRolls();
 }
 
@@ -1922,6 +1995,7 @@ function startApp() {
   setupNotes();
   setupScore();
   setupMarkers();
+  setupUserTracks();
   updateSelectionUI();
   setInterval(() => state.current && updateSaveUI(), 250);
   window.addEventListener('pagehide', () => state.current && flushAutosave(true));
