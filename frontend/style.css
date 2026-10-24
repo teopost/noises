@@ -550,7 +550,9 @@ button.wide { width: 100%; padding: 10px; }
 }
 .user-row .tname:hover { border-color: var(--border); }
 .user-row .tname:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
-.user-row .track-btns .cut, .user-row .track-btns .deltrack { padding: 2px 6px; }
+.user-row .track-btns { gap: 4px; flex-wrap: wrap; }
+.user-row .track-btns input[type=range] { width: 64px; }
+.user-row .track-btns .cut, .user-row .track-btns .deltrack { padding: 2px 4px; }
 .user-row .track-btns .deltrack:hover { border-color: var(--danger); }
 .ucanvas { cursor: pointer; }
 .drop-hint {
@@ -572,3 +574,14 @@ button.wide { width: 100%; padding: 10px; }
   background: #f5c542; color: #1b1405; box-shadow: 0 6px 20px #0008;
 }
 #player.drop-target .drop-overlay { display: flex; }
+
+/* intestazioni delle tracce su schermi stretti (riquadro da 140 px) */
+@media (max-width: 760px) {
+  .track .track-head { padding: 0 8px; }
+  .track-btns { gap: 3px; }
+  .track-btns button { padding: 2px 5px; }
+  .track-btns input[type=range] { width: 36px; }
+  .user-row .track-btns { flex-wrap: nowrap; }
+  .user-row .track-btns input[type=range] { display: none; } /* volume: resta nel mix salvato */
+  .user-row .tname { width: 100px; }
+}
