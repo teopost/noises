@@ -743,9 +743,17 @@ function applyRate() {
   updateKnobs();
   if (!engine.tracks.length) return;
   const tl = tlEl();
+  const pitchChanged = state.pitch !== engine.pitch;
   const ratio = engine.setRate(state.tempo, state.pitch);
   schedHorizon = null;
   if (typeof layoutRoll === 'function') for (const stem of Object.keys(rolls)) layoutRoll(stem);
+  if (pitchChanged) {
+    // accordi, tonalità del brano e spartito sono mostrati trasposti
+    closeChordMenu();
+    renderChords();
+    lastChordShown = null;
+    if (typeof sc !== 'undefined' && sc.data && !$('#score-view').classList.contains('hidden')) loadScore();
+  }
   for (const t of engine.tracks) { // i download delle tracce usano tonalità/velocità correnti
     const a = t.row && t.row.querySelector('a[download]');
     if (a) a.href = stemUrl(state.current, t.name);
