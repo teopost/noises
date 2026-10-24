@@ -8,7 +8,7 @@
   --accent: #7c5cff;
   --accent-2: #a48bff;
   --danger: #ff5c7a;
-  --head-w: 230px;
+  --head-w: 250px;
 }
 
 * { box-sizing: border-box; }
@@ -550,9 +550,7 @@ button.wide { width: 100%; padding: 10px; }
 }
 .user-row .tname:hover { border-color: var(--border); }
 .user-row .tname:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
-.user-row .track-btns { gap: 4px; flex-wrap: wrap; }
-.user-row .track-btns input[type=range] { width: 64px; }
-.user-row .track-btns .cut, .user-row .track-btns .deltrack { padding: 2px 4px; }
+.user-row .track-btns .cut, .user-row .track-btns .deltrack { padding: 2px 6px; }
 .user-row .track-btns .deltrack:hover { border-color: var(--danger); }
 .ucanvas { cursor: pointer; }
 .drop-hint {
