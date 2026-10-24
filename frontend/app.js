@@ -166,6 +166,7 @@ const engine = {
 
   seek(t) {
     this.offset = Math.min(Math.max(0, t), this.duration);
+    if (typeof setFixedAnchor === 'function') setFixedAnchor(this.offset); // click regolare riallineato
     if (!this.playing) return;
     if (this.ctx.currentTime < this.t0) { // durante il pre-conteggio: cambia solo il punto di partenza
       this.post({ type: 'play', at: this.t0, pos: this.toSrc(this.offset) });

@@ -569,7 +569,48 @@ const hasGrid = () => !!(state.notes && state.notes.grid && state.notes.grid.bea
  */
 function clickBeats() {
   const g = state.notes.grid;
+  if (state.clickMode === 'fixed') return fixedBeats();
   return state.clickMode === 'tight' && g.beats_tight && g.beats_tight.length === g.beats.length ? g.beats_tight : g.beats;
+}
+
+// ---------------------------------------------------------- click regolare
+//
+// Metronomo a BPM fisso: si aggancia al primo battito rilevato a partire dal punto di avvio
+// (riproduzione, loop, esportazione) e poi procede costante, anche se i musicisti cambiano tempo.
+
+let fixedCache = null;
+
+/** BPM del click regolare (riferito alla velocità originale del brano). */
+function fixedBpm() {
+  const g = state.notes.grid;
+  return (g.rhythm && g.rhythm.fixed_bpm) || Math.round(g.bpm);
+}
+
+/** Aggancia il click regolare al primo battito dopo `p` (secondi della timeline corrente). */
+function setFixedAnchor(p) {
+  if (!hasGrid()) return;
+  const b = state.notes.grid.beats;
+  const i = Math.max(0, Math.ceil(beatPos(p / dispK(), b) - 1e-3));
+  state.fixedAnchor = { i, t: beatTime(i, b) };
+  fixedCache = null;
+}
+
+/**
+ * Griglia a passo costante, indicizzata come quella rilevata (stesso indice = stesso battito
+ * della battuta), così accenti e metro restano coerenti.
+ */
+function fixedBeats() {
+  const g = state.notes.grid;
+  const a = state.fixedAnchor || { i: g.downbeat, t: g.beats[g.downbeat] };
+  const bpm = fixedBpm();
+  const key = `${a.i}:${a.t}:${bpm}:${engine.origDuration}`;
+  if (fixedCache && fixedCache.key === key) return fixedCache.beats;
+  const P = 60 / bpm;
+  const n = a.i + Math.ceil(Math.max(0, engine.origDuration - a.t) / P) + 4;
+  const beats = new Array(n);
+  for (let j = 0; j < n; j++) beats[j] = a.t + (j - a.i) * P;
+  fixedCache = { key, beats };
+  return beats;
 }
 
 function clickTimes(from, to) {
@@ -626,10 +667,12 @@ function countInPlan(p, bars) {
 function playWithCountIn() {
   if (!engine.tracks.length || engine.playing) return;
   if (!state.countIn || !hasGrid()) {
+    setFixedAnchor(engine.startOffset());
     engine.play();
     return;
   }
   engine.ctx.resume();
+  setFixedAnchor(engine.startOffset());
   const plan = countInPlan(engine.startOffset(), state.countIn);
   engine.play(plan.delay);
   const start = engine.t0 - plan.delay;
@@ -669,6 +712,8 @@ function exportClickOptions(range) {
   const bars = hasGrid() ? Number($('#exp-countin').value) : 0;
   if (!withClick && !bars) return {};
   const s = range ? range.start : 0, e = range ? range.end : engine.duration;
+  const savedAnchor = state.fixedAnchor;
+  setFixedAnchor(s); // nel file esportato il click regolare parte allineato all'inizio
   const times = [], accents = [];
   let preRoll = 0;
   if (bars) {
@@ -679,6 +724,8 @@ function exportClickOptions(range) {
   if (withClick) {
     for (const b of clickTimes(s, e)) { times.push(b.t - s + preRoll); accents.push(b.accent); }
   }
+  state.fixedAnchor = savedAnchor;
+  fixedCache = null;
   return {
     pre_roll: +preRoll.toFixed(4),
     click: { times: times.map((t) => +Math.max(0, t).toFixed(4)), accents, gain: state.clickVol },
@@ -716,15 +763,36 @@ function setupClick() {
   $('#click-mode').value = state.clickMode;
   $('#click-mode').addEventListener('change', (e) => {
     state.clickMode = e.target.value;
+    if (engine.tracks.length) setFixedAnchor(engine.position());
     schedHorizon = null; // riprogramma i click con la nuova griglia
     save();
+    updateRhythmControls();
+  });
+  let bpmTimer;
+  const setBpm = (v) => {
+    if (!hasGrid() || !Number.isFinite(v)) return;
+    v = Math.min(400, Math.max(20, Math.round(v * 10) / 10));
+    $('#fixed-bpm').value = v;
+    state.notes.grid.rhythm = { ...currentRhythm(), fixed_bpm: v };
+    fixedCache = null;
+    schedHorizon = null;
+    clearTimeout(bpmTimer);
+    bpmTimer = setTimeout(() => setRhythm({ fixed_bpm: v }), 400);
+  };
+  $('#fixed-bpm').addEventListener('change', (e) => setBpm(Number(e.target.value)));
+  $('#fixed-bpm-reset').addEventListener('click', () => {
+    if (!hasGrid()) return;
+    state.notes.grid.rhythm = { ...currentRhythm(), fixed_bpm: null };
+    fixedCache = null;
+    schedHorizon = null;
+    setRhythm({ fixed_bpm: null });
   });
 }
 
 /** Abilita i comandi del ritmo quando la griglia è disponibile. */
 function updateRhythmControls() {
   const ok = hasGrid();
-  for (const id of ['#click', '#click-mode', '#countin-sel', '#meter-btn']) {
+  for (const id of ['#click', '#click-mode', '#countin-sel', '#meter-btn', '#fixed-bpm']) {
     $(id).disabled = !ok;
     $(id).classList.toggle('hidden', !ok && (state.notesMissing || state.notesBusy));
   }
@@ -733,6 +801,14 @@ function updateRhythmControls() {
   btn.classList.toggle('hidden', ok || !(state.notesMissing || state.notesBusy));
   btn.disabled = !!state.notesBusy;
   btn.textContent = state.notesBusy ? '⏳ Analisi in corso (~1 min)…' : '🎼 Analizza ritmo e note';
+  const fixed = ok && state.clickMode === 'fixed';
+  $('#fixed-bpm-box').classList.toggle('hidden', !fixed);
+  if (fixed) {
+    const v = fixedBpm();
+    if (document.activeElement !== $('#fixed-bpm')) $('#fixed-bpm').value = v;
+    $('#fixed-bpm-reset').classList.toggle('hidden', !(state.notes.grid.rhythm && state.notes.grid.rhythm.fixed_bpm));
+    $('#fixed-bpm-box').title = `BPM fisso alla velocità originale${engine.tempo !== 100 ? ` (ora ${Math.round(v * engine.tempo / 10) / 10} BPM a ${engine.tempo}%)` : ''}. Rilevato: ${Math.round(state.notes.grid.bpm * 10) / 10}`;
+  }
   if (ok) {
     const g = state.notes.grid;
     $('#bpm').textContent = `${Math.round(g.bpm * engine.tempo / 100)} BPM`;
@@ -792,7 +868,7 @@ function setupMeter() {
   menu.querySelectorAll('[data-shift]').forEach((b) => b.addEventListener('click', () =>
     setRhythm({ offset: (((currentRhythm().offset + Number(b.dataset.shift)) % gridBpb()) + gridBpb()) % gridBpb() })));
   menu.querySelectorAll('[data-mult]').forEach((b) => b.addEventListener('click', () =>
-    setRhythm({ multiplier: Number(b.dataset.mult), offset: 0 })));
+    setRhythm({ multiplier: Number(b.dataset.mult), offset: 0, fixed_bpm: null })));
   document.addEventListener('pointerdown', (e) => {
     if (!menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'meter-btn') menu.classList.add('hidden');
   });

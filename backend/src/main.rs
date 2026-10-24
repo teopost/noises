@@ -124,6 +124,9 @@ struct Rhythm {
     offset: i32,
     /// correzione del battito rilevato: 0.5 = metà, 2 = doppio
     multiplier: f32,
+    /// BPM del click regolare (None = tempo rilevato)
+    #[serde(default)]
+    fixed_bpm: Option<f32>,
 }
 
 /// Versione della griglia ritmica prodotta da analysis/transcribe.py (le precedenti vengono aggiornate).
@@ -142,7 +145,7 @@ fn meter_info(ts: [u8; 2]) -> (u32, f64) {
 
 /// Griglia effettiva: battiti rilevati + correzioni dell'utente (doppio/metà, primo tempo, metro).
 fn effective_grid(raw: &serde_json::Value, rhythm: Option<Rhythm>) -> serde_json::Value {
-    let r = rhythm.unwrap_or(Rhythm { time_signature: [4, 4], offset: 0, multiplier: 1.0 });
+    let r = rhythm.unwrap_or(Rhythm { time_signature: [4, 4], offset: 0, multiplier: 1.0, fixed_bpm: None });
     let read = |k: &str| -> Vec<f64> {
         raw[k]
             .as_array()
@@ -816,6 +819,7 @@ async fn put_rhythm(
     if !METERS.contains(&r.time_signature)
         || !(-16..=16).contains(&r.offset)
         || ![0.5f32, 1.0, 2.0].contains(&r.multiplier)
+        || r.fixed_bpm.is_some_and(|b| !(20.0..=400.0).contains(&b))
     {
         return Err(bad_request("impostazioni ritmiche non valide"));
     }
