@@ -280,7 +280,7 @@ button.icon { padding: 0 8px; line-height: 22px; font-size: 14px; }
 .cn-next { color: var(--muted); font-size: 15px; }
 .chord-row {
   display: flex; height: 40px; border-bottom: 1px solid var(--border); background: #13161c;
-  position: sticky; top: 26px; z-index: 5;
+  position: sticky; top: 52px; z-index: 5;
 }
 .chord-row .track-head { z-index: 7; }
 .chord-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px; }
@@ -495,3 +495,38 @@ button.wide { width: 100%; padding: 10px; }
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 5px;
 }
 .fixed-bpm button { padding: 1px 6px; font-size: 12px; }
+
+/* ---- segnalibri ---- */
+.tsep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+.section { margin-left: 8px; color: #f5c542; font-weight: 600; }
+.section:empty { display: none; }
+.marker-row {
+  display: flex; height: 26px; border-bottom: 1px solid var(--border); background: #14161c;
+  position: sticky; top: 26px; z-index: 6;
+}
+.marker-row .track-head { z-index: 7; background: #14161c; }
+.marker-head { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+.marker-head .track-title { font-size: 12px; font-weight: 600; }
+.marker-head button { padding: 0 7px; line-height: 18px; }
+.marker-lane { overflow: hidden; }
+.marker-lane .placeholder {
+  position: sticky; left: var(--head-w); width: var(--view-w); height: 100%;
+  display: flex; align-items: center; padding: 0 12px; color: #636b7d; font-size: 11px;
+}
+.marker { position: absolute; top: 2px; bottom: 2px; cursor: grab; touch-action: none; z-index: 1; }
+.marker .flag {
+  display: block; height: 100%; padding: 2px 8px 0 6px; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 11px; font-weight: 700; color: #1b1405; background: #f5c542;
+  border-radius: 0 6px 6px 0; border-left: 2px solid #fff3c4;
+}
+.marker:hover .flag, .marker.editing .flag { background: #ffd866; box-shadow: 0 0 0 2px #fff6; }
+#marker-lines { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.mline { position: absolute; top: 26px; bottom: 0; width: 0; border-left: 1px dashed #f5c54288; }
+.ov-marker { position: absolute; top: 0; bottom: 0; width: 2px; background: #f5c542; pointer-events: none; z-index: 1; }
+.marker-menu { min-width: 280px; gap: 8px; }
+.marker-menu input {
+  font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 9px;
+}
+.marker-menu input:focus { outline: none; border-color: #f5c542; }
+.ce-actions .danger:hover { border-color: var(--danger); color: var(--danger); }

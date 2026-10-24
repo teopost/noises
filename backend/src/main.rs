@@ -80,6 +80,9 @@ struct Song {
     /// Analisi richieste dall'utente all'avvio dell'elaborazione.
     #[serde(default)]
     tasks: Tasks,
+    /// Segnalibri del brano (posizioni in secondi originali).
+    #[serde(default)]
+    markers: Vec<Marker>,
     /// Metro e correzioni della griglia ritmica scelti dall'utente.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     rhythm: Option<Rhythm>,
@@ -102,6 +105,14 @@ struct Playlist {
 
 fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Marker {
+    id: String,
+    /// posizione in secondi, alla velocità originale del brano
+    t: f64,
+    name: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -419,6 +430,7 @@ async fn upload(
         owner: Some(user.id.clone()),
         phase: None,
         tasks: Tasks::default(),
+        markers: vec![],
         rhythm: None,
         settings: None,
         created_at: now_secs(),
@@ -477,6 +489,32 @@ async fn save_settings(
     }
     st.update(&id, true, |s| s.settings = Some(v))
         .ok_or_else(not_found)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct MarkersBody {
+    markers: Vec<Marker>,
+}
+
+/// Salva i segnalibri del brano (l'elenco completo).
+async fn put_markers(
+    State(st): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(mut b): Json<MarkersBody>,
+) -> Result<StatusCode, AppError> {
+    if b.markers.len() > 500 {
+        return Err(bad_request("troppi segnalibri"));
+    }
+    for m in &mut b.markers {
+        m.name = m.name.trim().chars().take(60).collect();
+        let ok = m.t.is_finite() && m.t >= 0.0 && !m.id.is_empty() && m.id.len() <= 64;
+        if !ok {
+            return Err(bad_request("segnalibro non valido"));
+        }
+    }
+    b.markers.sort_by(|a, c| a.t.total_cmp(&c.t));
+    st.update(&id, true, |s| s.markers = b.markers).ok_or_else(not_found)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1065,6 +1103,7 @@ async fn import_url(
         owner: Some(user.id.clone()),
         phase: None,
         tasks: Tasks::default(),
+        markers: vec![],
         rhythm: None,
         settings: None,
         created_at: now_secs(),
@@ -1764,6 +1803,7 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::put(save_settings).delete(reset_settings),
         )
         .route("/api/songs/:id/process", axum::routing::post(start_processing))
+        .route("/api/songs/:id/markers", axum::routing::put(put_markers))
         .route("/api/songs/:id/chords", get(get_chords).put(put_chords))
         .route("/api/songs/:id/chords/analyze", axum::routing::post(analyze_chords_now))
         .route("/api/songs/:id/notes/analyze", axum::routing::post(transcribe_now))

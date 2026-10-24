@@ -127,7 +127,11 @@
           <button id="play" class="play" title="Play/Pausa (spazio)">▶</button>
           <button id="stop" class="icon-btn" title="Stop"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
           <button id="fwd" class="icon-btn" title="Avanti 5 s (→)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12l8-6zM13 6v12l8-6z"/></svg></button>
-          <span class="time"><span id="pos">0:00</span> / <span id="dur">0:00</span></span>
+          <span class="tsep"></span>
+          <button id="mk-prev" class="icon-btn" title="Segnalibro precedente ( , )"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6l-6 6 6 6z"/><path d="M13 4h7v16l-3.5-3-3.5 3z"/></svg></button>
+          <button id="mk-add" class="icon-btn" title="Aggiungi un segnalibro qui (M)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9v18l-4.5-4L6 21z"/><path d="M17 8h2V6h2v2h2v2h-2v2h-2v-2h-2z"/></svg></button>
+          <button id="mk-next" class="icon-btn" title="Segnalibro successivo ( . )"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v16l-3.5-3L4 20z"/><path d="M14 6l6 6-6 6z"/></svg></button>
+          <span class="time"><span id="pos">0:00</span> / <span id="dur">0:00</span><span id="section" class="section"></span></span>
         </div>
 
         <div class="knob">
@@ -217,6 +221,7 @@
         <div class="ov-label">Panoramica</div>
         <canvas id="ov-canvas" class="ov-canvas"></canvas>
         <div id="ov-sel" class="ov-sel hidden"></div>
+        <div id="ov-markers"></div>
         <div id="ov-head" class="ov-head"></div>
         <div id="ov-win" class="ov-win"><span class="ov-h l"></span><span class="ov-h r"></span></div>
       </div>
@@ -225,6 +230,13 @@
         <div class="ruler-row">
           <div class="track-head"></div>
           <div class="lane"><canvas id="ruler" class="ruler vcanvas"></canvas></div>
+        </div>
+        <div class="marker-row">
+          <div class="track-head marker-head">
+            <div class="track-title">🔖 Segnalibri</div>
+            <button id="mk-add-lane" class="icon" title="Aggiungi un segnalibro nella posizione attuale (M)">＋</button>
+          </div>
+          <div id="marker-lane" class="lane marker-lane"></div>
         </div>
         <div class="chord-row">
           <div class="track-head chord-head">
@@ -240,6 +252,7 @@
           <div id="chord-lane" class="lane chord-lane"></div>
         </div>
         <div id="tracks"></div>
+        <div id="marker-lines"></div>
         <div id="selection" class="selection hidden"></div>
         <div id="playhead" class="playhead"></div>
        </div>
@@ -293,6 +306,7 @@
   </dialog>
   <div id="pl-menu" class="menu hidden"></div>
   <div id="chord-menu" class="menu chord-menu hidden"></div>
+  <div id="marker-menu" class="menu marker-menu hidden"></div>
 
   <dialog id="export-dlg">
     <form method="dialog">
@@ -383,6 +397,7 @@
   <script src="auth.js"></script>
   <script src="notes.js"></script>
   <script src="score.js"></script>
+  <script src="markers.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

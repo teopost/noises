@@ -608,13 +608,16 @@ function selectSong(song) {
   loadStems(false);
   loadChords(song);
   loadNotes(song);
+  loadMarkers(song);
 }
 
 function closePlayer() {
   engine.clear();
   state.chords = null;
   state.notes = null;
+  state.markers = [];
   closeChordMenu();
+  closeMarkerMenu();
   state.current = null;
   state.loadSeq++;
   setLoader(null);
@@ -810,6 +813,9 @@ function setupControls() {
     else if (e.code === 'ArrowRight') engine.seek(engine.position() + 5);
     else if (e.code === 'Home') { e.preventDefault(); goToStart(); }
     else if (e.code === 'KeyL') toggleLoop();
+    else if (e.code === 'KeyM') { e.preventDefault(); addMarker(); }
+    else if (e.code === 'Comma') prevMarker();
+    else if (e.code === 'Period') nextMarker();
     else if (e.code === 'Escape') setSelection(null);
   });
 
@@ -907,6 +913,7 @@ function layoutTimeline() {
   tl.style.setProperty('--view-w', `${viewW}px`);
   $('#tl-inner').style.width = `${headWidth() + contentW}px`;
   renderChords();
+  renderMarkers();
   positionSelection();
   drawOverview();
   requestRedraw();
@@ -1570,6 +1577,8 @@ function tick() {
       pos = engine.offset;
     }
     $('#pos').textContent = fmt(pos);
+    const sec = currentSection(pos);
+    if ($('#section').textContent !== (sec ? `· ${sec}` : '')) $('#section').textContent = sec ? `· ${sec}` : '';
     $('#dur').textContent = fmt(engine.duration);
     $('#play').textContent = engine.playing ? '❚❚' : '▶';
     $('#playhead').style.left = `${headWidth() + pos * state.zoom}px`;
@@ -1912,6 +1921,7 @@ function startApp() {
   setupZoom();
   setupNotes();
   setupScore();
+  setupMarkers();
   updateSelectionUI();
   setInterval(() => state.current && updateSaveUI(), 250);
   window.addEventListener('pagehide', () => state.current && flushAutosave(true));
