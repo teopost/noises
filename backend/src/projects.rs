@@ -124,7 +124,7 @@ pub fn forget_song(st: &AppState, song_id: &str) {
         let gone: Vec<String> = p.tracks.iter().filter(|t| t.song == song_id).map(|t| t.name.clone()).collect();
         p.tracks.retain(|t| t.song != song_id);
         p.groups.iter_mut().for_each(|g| g.tracks.retain(|n| !gone.contains(n)));
-        p.groups.retain(|g| g.tracks.len() >= 2);
+        p.groups.retain(|g| g.tracks.len() >= if g.folder { 1 } else { 2 });
         let _ = store(st, p);
     }
 }
@@ -233,7 +233,7 @@ pub async fn put_state(
         }
     }
     let names: Vec<&String> = b.tracks.iter().map(|t| &t.name).collect();
-    if !b.groups.iter().all(|g| g.tracks.iter().all(|n| names.contains(&n)) && g.name.chars().count() <= 60) {
+    if !b.groups.iter().all(|g| g.tracks.iter().all(|n| names.contains(&n)) && g.name.chars().count() <= 300) {
         return Err(bad_request("gruppi non validi"));
     }
     if !b.markers.iter().all(|m| m.t.is_finite() && m.t >= 0.0) {
@@ -241,7 +241,8 @@ pub async fn put_state(
     }
     p.name = clean_name(&b.name)?;
     p.tracks = b.tracks;
-    p.groups = b.groups;
+    // nomi lunghi (titoli da YouTube) accorciati invece di rifiutare il salvataggio
+    p.groups = b.groups.into_iter().map(|mut g| { g.name = g.name.chars().take(120).collect(); g }).collect();
     p.markers = b.markers.into_iter().map(|mut m| { m.name = m.name.trim().chars().take(60).collect(); m }).collect();
     p.markers.sort_by(|a, c| a.t.total_cmp(&c.t));
     store(&st, p)?;
