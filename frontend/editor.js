@@ -52,11 +52,10 @@ function toast(msg) {
 /** Prepara gruppi, selezione e cronologia all'apertura di un progetto. */
 function initLayout(project) {
   state.groups = deep(project.groups || []).map((g) => ({ muted: false, solo: false, volume: 1, ...g, anchored: false }));
-  // gruppi nati da una separazione (stesso brano, sole tracce separate) → cartelle
+  // ogni gruppo ha la sua traccia di gruppo (cartella), anche quelli creati prima
   for (const g of state.groups) {
-    if (g.folder !== undefined && g.folder !== false) continue;
-    const ts = g.tracks.map((n) => project.tracks.find((t) => t.name === n)).filter(Boolean);
-    if (ts.length >= 2 && ts.every((t) => t.part !== 'original' && t.song === ts[0].song)) g.folder = true;
+    g.folder = true;
+    if (g.collapsed === undefined) g.collapsed = false;
   }
   state.undo = [];
   state.redo = [];
@@ -210,11 +209,21 @@ function groupSelected() {
   if (names.length < 2) return;
   pushUndo('Raggruppa');
   state.groups.forEach((g) => { g.tracks = g.tracks.filter((n) => !names.includes(n)); });
-  const n = state.groups.filter((g) => !g.anchored).length + 1;
-  state.groups.push({ id: `g${newClipId()}`, name: `Gruppo ${n}`, tracks: names, anchored: false });
+  let n = 1;
+  while (state.groups.some((g) => g.name === `Gruppo ${n}`)) n++;
+  // come per le tracce separate: una traccia di gruppo che si apre e si chiude
+  state.groups.push({ id: `g${newClipId()}`, name: `Gruppo ${n}`, tracks: names, anchored: false,
+    folder: true, collapsed: false, muted: false, solo: false, volume: 1 });
+  // le tracce del gruppo diventano contigue, dove si trovava la prima
+  const members = engine.tracks.filter((t) => names.includes(t.name));
+  const at = engine.tracks.indexOf(members[0]);
+  const rest = engine.tracks.filter((t) => !names.includes(t.name));
+  rest.splice(rest.filter((t) => engine.tracks.indexOf(t) < at).length, 0, ...members);
+  engine.tracks = rest;
   cleanGroups();
   saveLayout();
   buildTracks();
+  updateEditUI();
   toast(`Creato il ${state.groups[state.groups.length - 1].name}`);
 }
 
@@ -225,7 +234,8 @@ function ungroupSelected() {
   state.groups = state.groups.filter((g) => !groups.has(g));
   saveLayout();
   buildTracks();
-  toast('Gruppo separato: le tracce ora si modificano singolarmente');
+  updateEditUI();
+  toast('Gruppo sciolto: le tracce ora sono indipendenti');
 }
 
 // ------------------------------------------------------------------------ ordine
@@ -624,13 +634,13 @@ function buildFolderRow(g, kids) {
   row.className = `track audio-row folder-row ${g.collapsed ? 'collapsed' : ''}`;
   row.innerHTML = `
     <div class="track-head">
-      <div class="track-title"><button class="fold" title="${g.collapsed ? 'Apri la cartella' : 'Chiudi la cartella'}">${g.collapsed ? '▸' : '▾'}</button>
+      <div class="track-title"><button class="fold" title="${g.collapsed ? 'Apri il gruppo' : 'Chiudi il gruppo'}">${g.collapsed ? '▸' : '▾'}</button>
         <span class="folder-ico">▤</span>
-        <input class="tname" value="${esc(g.name)}" maxlength="60" title="Cartella: ${kids.length} tracce — clic per rinominare"></div>
+        <input class="tname" value="${esc(g.name)}" maxlength="60" title="Gruppo: ${kids.length} tracce — clic per rinominare"></div>
       <div class="track-btns">
-        <button class="m" title="Muto (tutta la cartella)">M</button>
-        <button class="s" title="Solo (tutta la cartella)">S</button>
-        <input type="range" class="vol" min="0" max="1.5" step="0.01" value="${g.volume}" title="Volume della cartella">
+        <button class="m" title="Muto (tutto il gruppo)">M</button>
+        <button class="s" title="Solo (tutto il gruppo)">S</button>
+        <input type="range" class="vol" min="0" max="1.5" step="0.01" value="${g.volume}" title="Volume del gruppo">
         <span class="count">${kids.length}</span>
         <button class="tmenu" title="Altre azioni">⋯</button>
       </div>
@@ -645,7 +655,7 @@ function buildFolderRow(g, kids) {
   let renaming = false;
   name.addEventListener('focus', () => { renaming = false; });
   name.addEventListener('input', () => {
-    if (!renaming) { pushUndo('Rinomina cartella'); renaming = true; }
+    if (!renaming) { pushUndo('Rinomina gruppo'); renaming = true; }
     g.name = name.value.trim() || g.name;
     saveProject();
   });
@@ -716,19 +726,19 @@ function openFolderMenu(g, anchor) {
   const menu = $('#track-menu');
   const kids = folderKids(g);
   const items = [
-    { icon: g.collapsed ? '▾' : '▸', label: g.collapsed ? 'Apri cartella' : 'Chiudi cartella', run: () => { g.collapsed = !g.collapsed; saveProject(); buildTracks(); } },
+    { icon: g.collapsed ? '▾' : '▸', label: g.collapsed ? 'Apri gruppo' : 'Chiudi gruppo', run: () => { g.collapsed = !g.collapsed; saveProject(); buildTracks(); } },
     { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
     { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },
-    { icon: '⑂', label: 'Sciogli cartella', run: () => {
-      pushUndo('Sciogli cartella');
+    { icon: '⑂', label: 'Sciogli gruppo', run: () => {
+      pushUndo('Sciogli gruppo');
       state.groups = state.groups.filter((x) => x !== g);
       saveProject();
       buildTracks();
-      toast('Cartella sciolta: le tracce ora sono indipendenti');
+      toast('Gruppo sciolto: le tracce ora sono indipendenti');
     } },
     { sep: true },
     { icon: '🗑', label: 'Elimina', danger: true, run: () => {
-      pushUndo('Elimina cartella');
+      pushUndo('Elimina gruppo');
       for (const kid of kids) { engine.removeTrack(kid); state.selTracks.delete(kid.name); }
       state.selClip = null;
       cleanGroups();
@@ -736,7 +746,7 @@ function openFolderMenu(g, anchor) {
       saveProject();
       layoutTimeline();
       buildTracks();
-      toast(`Cartella "${g.name}" eliminata — Ctrl+Z per annullare`);
+      toast(`Gruppo "${g.name}" eliminato — Ctrl+Z per annullare`);
     } },
   ];
   menu.innerHTML = `<div class="menu-title">${esc(g.name)} · ${kids.length} tracce</div>` + items.map((it, i) => it.sep
