@@ -1316,6 +1316,12 @@ async fn download(st: &AppState, id: &str) -> anyhow::Result<String> {
             "--no-part",
             "--no-mtime",
             "--write-info-json",
+            // il titolo subito, prima del download, per mostrarlo nell'avanzamento
+            // (--print implica --quiet: --progress mantiene le righe di avanzamento)
+            "--print",
+            "before_dl:NOISES_TITLE %(title)s",
+            "--no-simulate",
+            "--progress",
             "--max-filesize",
             "1G",
             "-f",
@@ -1339,7 +1345,12 @@ async fn download(st: &AppState, id: &str) -> anyhow::Result<String> {
         s
     });
     for_each_line(child.stdout.take().unwrap(), |line| {
-        if line.starts_with("[download]") {
+        if let Some(title) = line.strip_prefix("NOISES_TITLE ") {
+            let title = title.trim().to_owned();
+            if !title.is_empty() && title != "NA" {
+                st.update(id, false, |s| s.name = title);
+            }
+        } else if line.starts_with("[download]") {
             if let Some(pct) = parse_percent(&line) {
                 st.update(id, false, |s| s.progress = (pct / 100.0).min(0.99));
             }

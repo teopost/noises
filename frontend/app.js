@@ -277,7 +277,8 @@ async function refreshSongs() {
     console.error(e);
   }
   const pending = state.songs.some((s) => ['downloading', 'queued', 'processing'].includes(s.status) || s.phase);
-  pollTimer = setTimeout(refreshSongs, pending ? 1500 : 10000);
+  const downloading = state.songs.some((s) => s.status === 'downloading');
+  pollTimer = setTimeout(refreshSongs, downloading ? 600 : pending ? 1500 : 10000);
 }
 
 function statusText(s) {
@@ -867,7 +868,7 @@ function buildTracks() {
     decorateRow(t, row);
     if (isRefStem) root.appendChild(buildNotesRow({ name: t.part, color }));
   }
-  if (!engine.tracks.length) {
+  if (!engine.tracks.length && !(state.pendingAdds && state.pendingAdds.size)) {
     root.innerHTML = '<div class="tracks-empty">Il progetto è vuoto: aggiungi un brano con il pulsante qui sotto o trascinalo dalla <b>Libreria</b>.</div>';
   }
   // in fondo all'elenco, come in Moises
@@ -875,6 +876,10 @@ function buildTracks() {
   add.className = 'add-row';
   add.innerHTML = '<div class="track-head"><button class="add-track-btn">＋ Aggiungi traccia</button></div><div class="lane"></div>';
   add.querySelector('button').addEventListener('click', () => openAddTrack());
+  const pend = document.createElement('div');
+  pend.id = 'pending-imports';
+  root.appendChild(pend);
+  renderPendingImports();
   root.appendChild(add);
   syncTrackButtons();
   updateSplitBadges();

@@ -739,3 +739,20 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .folder-row .count { min-width: 14px; text-align: center; }
 .track.child .track-head { padding-left: 26px !important; box-shadow: inset 4px 0 0 var(--gcolor), inset 14px 0 0 #171a22; }
 .track.child .tname { width: 140px; }
+
+/* download da YouTube in corso: riga di avanzamento in fondo alle tracce */
+.pending-row { display: flex; height: 64px; border-bottom: 1px solid var(--border); }
+.pending-row .track-head { display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 0 12px; }
+.pending-row .lane { background: repeating-linear-gradient(135deg, transparent 0 10px, #ffffff06 10px 20px); }
+.pending-title { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+.pending-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-what { font-size: 11px; color: var(--muted); }
+.pending-bar { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.pending-bar > div { height: 100%; background: var(--accent); transition: width .4s; }
+.pending-bar.indeterminate > div { width: 30% !important; animation: pending-slide 1.2s ease-in-out infinite; }
+@keyframes pending-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.pending-row .spinner {
+  width: 12px; height: 12px; flex: none; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent); animation: pending-spin .8s linear infinite;
+}
+@keyframes pending-spin { to { transform: rotate(360deg); } }

@@ -527,12 +527,32 @@ function setupShell() {
       state.pendingAdds.add(song.id);
       $('#at-yt-url').value = '';
       $('#addtrack-dlg').close();
-      toast('Download avviato: il brano verrà aggiunto al progetto appena pronto');
-      refreshSongs();
+      await refreshSongs();
+      const row = $('#pending-imports');
+      if (row) row.scrollIntoView({ block: 'nearest' });
     } catch (e) {
       alert(`Import fallito: ${e.message}`);
     }
   });
+}
+
+/** Righe di avanzamento dei download in corso, in fondo alle tracce. */
+function renderPendingImports() {
+  const box = $('#pending-imports');
+  if (!box) return;
+  const ids = state.current && state.pendingAdds ? [...state.pendingAdds] : [];
+  box.innerHTML = ids.map((id) => {
+    const s = songById(id);
+    if (!s) return '';
+    const pct = Math.round((s.progress || 0) * 100);
+    const name = s.name && !/^https?:\/\//.test(s.name) ? s.name : 'Lettura del video…';
+    const what = s.status === 'downloading' ? (pct ? `Download ${pct}%` : 'Preparazione del download…') : 'Aggiunta al progetto…';
+    return `<div class="pending-row" data-id="${esc(id)}"><div class="track-head">
+        <div class="pending-title" title="${esc(s.source_url || '')}"><span class="spinner"></span><span class="pending-name">${esc(name)}</span></div>
+        <div class="pending-bar ${pct || s.status !== 'downloading' ? '' : 'indeterminate'}"><div style="width:${s.status === 'downloading' ? pct : 100}%"></div></div>
+        <div class="pending-what">${esc(what)}</div>
+      </div><div class="lane"></div></div>`;
+  }).join('');
 }
 
 /** Brani importati da "Aggiungi traccia": entrano nel progetto appena scaricati. */
@@ -543,4 +563,5 @@ function addPendingImports() {
     if (s.status === 'error') { state.pendingAdds.delete(id); toast(`Download non riuscito: ${s.error || ''}`); continue; }
     if (s.status !== 'downloading' && state.current) { state.pendingAdds.delete(id); addSongToProject(id, null); }
   }
+  renderPendingImports();
 }
