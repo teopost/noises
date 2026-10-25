@@ -853,8 +853,14 @@ function buildTracks() {
     if (isRefStem) root.appendChild(buildNotesRow({ name: t.part, color }));
   }
   if (!engine.tracks.length) {
-    root.innerHTML = '<div class="tracks-empty">Trascina qui un brano dalla <b>Libreria</b> (o un file audio dal disco)</div>';
+    root.innerHTML = '<div class="tracks-empty">Il progetto è vuoto: aggiungi un brano con il pulsante qui sotto o trascinalo dalla <b>Libreria</b>.</div>';
   }
+  // in fondo all'elenco, come in Moises
+  const add = document.createElement('div');
+  add.className = 'add-row';
+  add.innerHTML = '<div class="track-head"><button class="add-track-btn">＋ Aggiungi traccia</button></div><div class="lane"></div>';
+  add.querySelector('button').addEventListener('click', () => openAddTrack());
+  root.appendChild(add);
   syncTrackButtons();
   updateSplitBadges();
   layoutTimeline();

@@ -58,59 +58,68 @@
     </div>
   </div>
 
-  <aside id="sidebar">
-    <div class="sidebar-top">
-      <div class="brand"><span class="logo">◉</span> Noises</div>
-      <button id="user-btn" class="user-btn" title="Account"><span id="user-avatar" class="avatar"></span></button>
+  <nav id="rail" class="rail">
+    <div class="rail-logo" title="Noises">◉</div>
+    <button class="rail-btn" data-panel="projects" title="Progetti"><span class="ri">◧</span><span class="rl">Progetti</span></button>
+    <button class="rail-btn" data-panel="library" title="Libreria"><span class="ri">♫</span><span class="rl">Libreria</span></button>
+    <span class="grow"></span>
+    <button id="user-btn" class="user-btn" title="Account"><span id="user-avatar" class="avatar"></span></button>
+  </nav>
+  <div id="user-menu" class="menu user-menu hidden">
+    <div class="user-info">
+      <strong id="user-name"></strong>
+      <span id="user-email"></span>
+      <span id="user-badges" class="count"></span>
     </div>
-    <div id="user-menu" class="menu user-menu hidden">
-      <div class="user-info">
-        <strong id="user-name"></strong>
-        <span id="user-email"></span>
-        <span id="user-badges" class="count"></span>
+    <button id="change-pw" class="menu-item">🔑 Password…</button>
+    <button id="logout" class="menu-item">⎋ Esci</button>
+  </div>
+
+  <aside id="sidebar" class="drawer">
+    <section class="panel" data-panel="projects">
+      <div class="panel-head">
+        <h2>Progetti</h2>
+        <button id="project-new" class="primary" title="Nuovo progetto">＋ Nuovo</button>
+        <button class="drawer-close ghost" title="Chiudi (Esc)">✕</button>
       </div>
-      <button id="change-pw" class="menu-item">🔑 Password…</button>
-      <button id="logout" class="menu-item">⎋ Esci</button>
-    </div>
+      <ul id="projects" class="projects"></ul>
+    </section>
 
-    <form id="upload" class="dropzone">
-      <input type="file" id="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus" multiple hidden>
-      <div class="dz-text">
-        <strong>Trascina qui i file audio</strong>
-        <span>oppure <button type="button" id="pick" class="link">sfoglia</button></span>
+    <section class="panel" data-panel="library">
+      <div class="panel-head">
+        <h2 id="lib-title">Libreria</h2>
+        <span id="lib-count" class="count"></span>
+        <button class="drawer-close ghost" title="Chiudi (Esc)">✕</button>
       </div>
-      <span class="dz-hint">I brani vanno nella libreria: poi trascinali nella timeline di un progetto.</span>
-      <div id="upload-progress" class="bar hidden"><div></div></div>
-    </form>
-
-    <form id="yt" class="yt">
-      <label for="yt-url">Importa da YouTube</label>
-      <div class="yt-row">
-        <input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" required>
-        <button id="yt-btn" type="submit" title="Scarica e separa">▶ Importa</button>
+      <form id="upload" class="dropzone">
+        <input type="file" id="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus" multiple hidden>
+        <div class="dz-text">
+          <strong>Trascina qui i file audio</strong>
+          <span>oppure <button type="button" id="pick" class="link">sfoglia</button></span>
+        </div>
+        <div id="upload-progress" class="bar hidden"><div></div></div>
+      </form>
+      <form id="yt" class="yt">
+        <div class="yt-row">
+          <input id="yt-url" type="url" placeholder="Link YouTube…" required>
+          <button id="yt-btn" type="submit" title="Importa da YouTube">▶ Importa</button>
+        </div>
+      </form>
+      <div class="sec-head">
+        <h3>Playlist</h3>
+        <button id="pl-new" class="icon" title="Nuova playlist">＋</button>
       </div>
-    </form>
-
-    <div class="sec-head">
-      <h3>Progetti</h3>
-      <button id="project-new" class="icon" title="Nuovo progetto">＋</button>
-    </div>
-    <ul id="projects" class="projects"></ul>
-
-    <div class="sec-head">
-      <h3>Playlist</h3>
-      <button id="pl-new" class="icon" title="Nuova playlist">＋</button>
-    </div>
-    <ul id="playlists"></ul>
-
-    <div class="sec-head">
-      <h3 id="lib-title">Libreria</h3>
-      <button id="process-all" class="icon hidden" title="Elabora tutti i brani in attesa">▶ Elabora tutti</button>
-      <span id="lib-count" class="count"></span>
-    </div>
-    <input id="search" class="search" type="search" placeholder="Cerca brano…" autocomplete="off">
-    <ul id="songs"></ul>
+      <ul id="playlists"></ul>
+      <div class="sec-head">
+        <h3>Brani</h3>
+        <button id="process-all" class="icon hidden" title="Separa tutti i brani in attesa">⑂ Separa tutti</button>
+      </div>
+      <input id="search" class="search" type="search" placeholder="Cerca brano…" autocomplete="off">
+      <ul id="songs"></ul>
+      <p class="hint drawer-hint">Trascina un brano nella timeline o fai doppio clic per aggiungerlo al progetto.</p>
+    </section>
   </aside>
+  <div id="drawer-scrim" class="drawer-scrim"></div>
 
   <main id="main">
     <div class="drop-overlay"><span id="drop-label">Rilascia per aggiungere il brano</span></div>
@@ -118,7 +127,12 @@
       <div class="empty-icon">◧</div>
       <p><b>Apri un progetto</b> dalla barra laterale oppure crea un nuovo progetto con <b>＋</b>.</p>
       <p>Poi trascina i brani dalla <b>Libreria</b> nella timeline: puoi lasciarli interi o separarne le tracce.</p>
-      <p class="hint">Trascinando un brano qui ne nasce subito un progetto.</p>
+      <div class="empty-actions">
+        <button id="empty-new" class="primary">＋ Nuovo progetto</button>
+        <button id="empty-projects">◧ Apri un progetto</button>
+        <button id="empty-library">♫ Libreria</button>
+      </div>
+      <p class="hint">Trascinando un brano dalla libreria qui ne nasce subito un progetto.</p>
     </div>
 
     <section id="player" class="hidden">
@@ -212,7 +226,7 @@
         <button id="group-btn" disabled title="Raggruppa le tracce selezionate (Ctrl+G): si spostano e si modificano insieme">⛓ Raggruppa</button>
         <button id="ungroup-btn" disabled title="Separa il gruppo delle tracce selezionate (Ctrl+Shift+G)">Separa</button>
         <span id="sel-tracks" class="sel-info"></span>
-        <button id="add-track" title="Carica un file audio nella libreria e aggiungilo al progetto dalla testina (oppure trascinalo sull'editor)">＋ Audio dal disco</button>
+        <button id="add-track" class="primary" title="Aggiungi una traccia: dalla libreria, dal computer o da YouTube">＋ Aggiungi traccia</button>
         <input id="add-track-file" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.aif,.aiff,.wma" multiple hidden>
         <span class="grow"></span>
         <div class="zoombar" title="Unità della timeline (Ctrl + rotella sulla timeline)">
@@ -399,6 +413,38 @@
       <div id="score-tab" class="paper"></div>
     </div>
   </div>
+
+  <dialog id="addtrack-dlg" class="addtrack-dlg">
+    <form method="dialog">
+      <div class="at-head">
+        <h2>Aggiungi traccia</h2>
+        <button value="cancel" class="ghost" formnovalidate title="Chiudi">✕</button>
+      </div>
+      <div class="seg at-tabs">
+        <button type="button" data-tab="lib" class="on">♫ Libreria</button>
+        <button type="button" data-tab="pc">💻 Dal computer</button>
+        <button type="button" data-tab="yt">▶ YouTube</button>
+      </div>
+      <div class="at-pane" data-pane="lib">
+        <input id="at-search" class="search" type="search" placeholder="Cerca nella libreria…" autocomplete="off">
+        <ul id="at-songs" class="at-songs"></ul>
+      </div>
+      <div class="at-pane hidden" data-pane="pc">
+        <div id="at-drop" class="dropzone at-drop">
+          <div class="dz-text"><strong>Trascina qui i file audio</strong>
+            <span>oppure <button type="button" id="at-pick" class="link">scegli dal computer</button></span></div>
+        </div>
+        <p class="hint">Il file viene salvato nella libreria e aggiunto al progetto dalla posizione della testina.</p>
+      </div>
+      <div class="at-pane hidden" data-pane="yt">
+        <div class="yt-row">
+          <input id="at-yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…">
+          <button type="button" id="at-yt-go" class="primary">▶ Importa e aggiungi</button>
+        </div>
+        <p class="hint">Il brano viene scaricato nella libreria e aggiunto al progetto appena pronto.</p>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="pw-dlg">
     <form id="cp-form" method="dialog">

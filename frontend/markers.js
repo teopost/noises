@@ -39,7 +39,7 @@ function addMarker(atDisplay) {
 function renderMarkers() {
   const lane = $('#marker-lane'), lines = $('#marker-lines'), ov = $('#ov-markers');
   if (!state.current || !engine.duration || !state.markers) {
-    lane.innerHTML = '<div class="placeholder">Nessun segnalibro: premi 🔖+ o M durante l\'ascolto</div>';
+    lane.innerHTML = '';
     lines.innerHTML = '';
     ov.innerHTML = '';
     return;
@@ -51,7 +51,7 @@ function renderMarkers() {
         title="${esc(m.name)} — ${fmt(m.t * k)} · clic: vai e modifica · trascina: sposta (Shift: senza griglia)">
         <span class="flag">${esc(m.name || '—')}</span>
       </div>`).join('')
-    : '<div class="placeholder">Nessun segnalibro: premi 🔖+ o M durante l\'ascolto · doppio clic qui per aggiungerne uno</div>';
+    : '';
   lines.innerHTML = state.markers.map((m) => `<div class="mline" style="left:${hw + m.t * k * z}px"></div>`).join('');
   const W = ovW();
   ov.innerHTML = state.markers.map((m) =>

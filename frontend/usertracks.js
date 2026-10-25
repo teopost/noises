@@ -81,7 +81,6 @@ function setupUserTracks() {
     if (k === 'song') await addSongToProject(e.dataTransfer.getData('application/x-noises-song'), start);
     else await addAudioFiles([...e.dataTransfer.files], start);
   });
-  $('#add-track').addEventListener('click', () => $('#add-track-file').click());
   $('#add-track-file').addEventListener('change', async (e) => {
     const files = [...e.target.files];
     e.target.value = '';

@@ -163,6 +163,7 @@ async function openProject(id) {
   state.markers = (p.markers || []).map((m) => ({ ...m }));
   closeMarkerMenu();
   renderProjects();
+  closeDrawer();
   showSkeleton(p.tracks.length);
   await loadProjectTracks(p);
 }
@@ -376,6 +377,8 @@ function updateSplitBadges() {
 }
 
 function onSongsUpdated() {
+  if (state.pendingAdds && state.pendingAdds.size) addPendingImports();
+  if ($('#addtrack-dlg').open) renderAddTrackList();
   if (!state.current) return;
   for (const name of [...state.pendingSplits]) {
     const t = engine.tracks.find((x) => x.name === name);
@@ -411,5 +414,107 @@ function setupProjects() {
   });
   $('#title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); e.stopPropagation(); });
   window.addEventListener('pagehide', () => flushProject(true));
-  refreshProjects();
+  setupShell();
+  refreshProjects().then(() => { if (!state.current) openDrawer('projects'); });
+}
+
+// ------------------------------------------------- pannello laterale (a scomparsa)
+
+/** La barra di icone apre Progetti o Libreria in un pannello sovrapposto: la timeline resta larga. */
+function openDrawer(panel) {
+  const d = $('#sidebar');
+  if (d.classList.contains('open') && d.dataset.panel === panel) { closeDrawer(); return; }
+  d.dataset.panel = panel;
+  document.querySelectorAll('#sidebar .panel').forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== panel));
+  document.querySelectorAll('.rail-btn').forEach((b) => b.classList.toggle('on', b.dataset.panel === panel));
+  d.classList.add('open');
+  document.body.classList.add('drawer-open');
+}
+
+function closeDrawer() {
+  $('#sidebar').classList.remove('open');
+  document.body.classList.remove('drawer-open');
+  document.querySelectorAll('.rail-btn').forEach((b) => b.classList.remove('on'));
+}
+
+// ------------------------------------------------------ "Aggiungi traccia"
+
+function renderAddTrackList() {
+  const q = norm($('#at-search').value.trim());
+  const list = state.songs.filter((s) => !q || norm(s.name).includes(q));
+  const ul = $('#at-songs');
+  ul.innerHTML = list.length ? '' : '<li class="empty-hint">Nessun brano: caricane uno dalla scheda "Dal computer" o da YouTube</li>';
+  for (const s of list) {
+    const li = document.createElement('li');
+    const usable = !['downloading'].includes(s.status);
+    li.className = usable ? '' : 'disabled';
+    li.innerHTML = `<span class="at-name">${esc(s.name)}</span><span class="song-status ${s.status === 'new' ? 'new' : ''}">${esc(statusText(s))}</span>`;
+    if (usable) li.addEventListener('click', () => { $('#addtrack-dlg').close(); addSongToProject(s.id, null); });
+    ul.appendChild(li);
+  }
+}
+
+function openAddTrack(tab = 'lib') {
+  setAddTrackTab(tab);
+  $('#at-search').value = '';
+  renderAddTrackList();
+  $('#addtrack-dlg').showModal();
+  if (tab === 'lib') setTimeout(() => $('#at-search').focus(), 30);
+}
+
+function setAddTrackTab(tab) {
+  document.querySelectorAll('.at-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  document.querySelectorAll('.at-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== tab));
+}
+
+function setupShell() {
+  state.pendingAdds = new Set();
+  document.querySelectorAll('.rail-btn').forEach((b) => b.addEventListener('click', () => openDrawer(b.dataset.panel)));
+  document.querySelectorAll('.drawer-close').forEach((b) => b.addEventListener('click', closeDrawer));
+  $('#drawer-scrim').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => { if (e.code === 'Escape' && $('#sidebar').classList.contains('open')) closeDrawer(); });
+  // trascinando un brano dalla libreria il pannello si toglie di mezzo e lascia vedere la timeline
+  $('#songs').addEventListener('dragstart', () => setTimeout(closeDrawer, 0));
+  $('#empty-projects').addEventListener('click', () => openDrawer('projects'));
+  $('#empty-library').addEventListener('click', () => openDrawer('library'));
+  $('#empty-new').addEventListener('click', async () => { const p = await createProject(); if (p) openProject(p.id); });
+
+  $('#add-track').addEventListener('click', () => openAddTrack());
+  document.querySelectorAll('.at-tabs button').forEach((b) => b.addEventListener('click', () => setAddTrackTab(b.dataset.tab)));
+  $('#at-search').addEventListener('input', renderAddTrackList);
+  $('#at-pick').addEventListener('click', () => { $('#addtrack-dlg').close(); $('#add-track-file').click(); });
+  const drop = $('#at-drop');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.remove('over');
+    $('#addtrack-dlg').close();
+    addAudioFiles([...e.dataTransfer.files], null);
+  });
+  $('#at-yt-go').addEventListener('click', async () => {
+    const url = $('#at-yt-url').value.trim();
+    if (!url) return;
+    try {
+      const song = await api('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+      state.pendingAdds.add(song.id);
+      $('#at-yt-url').value = '';
+      $('#addtrack-dlg').close();
+      toast('Download avviato: il brano verrà aggiunto al progetto appena pronto');
+      refreshSongs();
+    } catch (e) {
+      alert(`Import fallito: ${e.message}`);
+    }
+  });
+}
+
+/** Brani importati da "Aggiungi traccia": entrano nel progetto appena scaricati. */
+function addPendingImports() {
+  for (const id of [...state.pendingAdds]) {
+    const s = songById(id);
+    if (!s) { state.pendingAdds.delete(id); continue; }
+    if (s.status === 'error') { state.pendingAdds.delete(id); toast(`Download non riuscito: ${s.error || ''}`); continue; }
+    if (s.status !== 'downloading' && state.current) { state.pendingAdds.delete(id); addSongToProject(id, null); }
+  }
 }

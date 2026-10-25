@@ -632,3 +632,81 @@ button.wide { width: 100%; padding: 10px; }
 .track .tname:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
 .empty { text-align: center; max-width: 520px; line-height: 1.6; }
 .empty-icon { font-size: 48px; color: var(--accent); }
+
+/* ===================== guscio: colonna di icone + pannello a scomparsa ===================== */
+.rail {
+  width: 64px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 0; background: var(--panel); border-right: 1px solid var(--border); z-index: 41;
+}
+.rail-logo { font-size: 24px; color: var(--accent); margin-bottom: 10px; }
+.rail-btn {
+  width: 54px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0;
+  background: none; border: 0; border-radius: 10px; color: var(--muted);
+}
+.rail-btn .ri { font-size: 20px; line-height: 1; }
+.rail-btn .rl { font-size: 10px; }
+.rail-btn:hover { background: var(--panel-2); color: var(--text); }
+.rail-btn.on { background: #7c5cff26; color: var(--accent-2); }
+.user-menu { position: fixed; left: 72px; top: auto; bottom: 16px; min-width: 240px; z-index: 60; }
+
+#sidebar.drawer {
+  position: fixed; left: 64px; top: 0; bottom: 0; width: 340px; max-width: calc(100vw - 64px); z-index: 40;
+  padding: 18px; background: var(--panel); border-right: 1px solid var(--border); box-shadow: 12px 0 40px #0008;
+  transform: translateX(-110%); transition: transform .22s ease; display: block; max-height: none;
+  overflow-y: auto; scrollbar-width: none; /* niente barra di scorrimento: si scorre con rotella/trackpad */
+}
+#sidebar.drawer::-webkit-scrollbar { display: none; }
+#sidebar.drawer.open { transform: translateX(0); }
+#sidebar .panel { display: flex; flex-direction: column; gap: 14px; }
+#sidebar .panel.hidden { display: none; }
+.panel-head { display: flex; align-items: center; gap: 8px; }
+.panel-head h2 { margin: 0; font-size: 18px; flex: 1; }
+.panel-head .primary { padding: 5px 10px; font-size: 13px; }
+.drawer-close { padding: 2px 8px; }
+.drawer-hint { margin: 0; color: var(--muted); font-size: 12px; }
+.drawer-scrim { position: fixed; inset: 0; z-index: 39; background: #0006; opacity: 0; pointer-events: none; transition: opacity .2s; }
+body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
+#songs, #playlists, .projects { scrollbar-width: none; }
+
+/* l'editor usa tutta la larghezza */
+#main { flex: 1; min-width: 0; }
+.empty-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 14px 0 6px; }
+
+/* riga "Aggiungi traccia" in fondo alle tracce */
+.add-row { display: flex; height: 52px; }
+.add-row .track-head { display: flex; align-items: center; padding: 0 12px; }
+.add-track-btn {
+  width: 100%; padding: 8px; border-style: dashed; color: var(--muted); background: transparent; font-weight: 600;
+}
+.add-track-btn:hover { color: var(--text); border-color: var(--accent); background: #7c5cff14; }
+
+/* finestra "Aggiungi traccia" */
+.addtrack-dlg { width: min(560px, calc(100vw - 32px)); }
+.at-head { display: flex; align-items: center; justify-content: space-between; }
+.at-head .ghost { padding: 2px 8px; }
+.at-tabs { align-self: flex-start; }
+.at-pane { display: flex; flex-direction: column; gap: 10px; min-height: 220px; }
+.at-pane.hidden { display: none; }
+.at-songs {
+  list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow-y: auto; scrollbar-width: none;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.at-songs::-webkit-scrollbar { display: none; }
+.at-songs li {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; cursor: pointer;
+  background: var(--panel-2); border: 1px solid transparent;
+}
+.at-songs li:hover { border-color: var(--accent); }
+.at-songs li.disabled { opacity: .5; cursor: default; }
+.at-songs li.empty-hint { cursor: default; color: var(--muted); background: none; }
+.at-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-drop { min-height: 150px; justify-content: center; }
+.at-drop.over { border-color: var(--accent); background: #7c5cff14; }
+.addtrack-dlg .yt-row input { flex: 1; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+
+@media (max-width: 760px) {
+  body { flex-direction: row; }
+  .rail { width: 52px; }
+  .rail-btn { width: 46px; }
+  #sidebar.drawer { left: 52px; width: calc(100vw - 52px); }
+}
