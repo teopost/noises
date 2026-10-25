@@ -141,6 +141,21 @@ struct TrackGroup {
     /// gruppo ancorato alla sua posizione (le tracce separate del brano)
     #[serde(default)]
     anchored: bool,
+    /// cartella (tracce separate di un brano): si apre e si chiude come in Moises
+    #[serde(default)]
+    folder: bool,
+    #[serde(default)]
+    collapsed: bool,
+    #[serde(default)]
+    muted: bool,
+    #[serde(default)]
+    solo: bool,
+    #[serde(default = "unit_volume")]
+    volume: f32,
+}
+
+fn unit_volume() -> f32 {
+    1.0
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

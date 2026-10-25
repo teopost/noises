@@ -396,7 +396,17 @@ pub fn migrate(st: &AppState) {
         }
         let names: Vec<String> = tracks.iter().map(|t| t.name.clone()).collect();
         let mut groups: Vec<TrackGroup> = if layout.groups.is_empty() {
-            vec![TrackGroup { id: "song".into(), name: song.name.clone(), tracks: song.stems.clone(), anchored: false }]
+            vec![TrackGroup {
+                id: "song".into(),
+                name: song.name.clone(),
+                tracks: song.stems.clone(),
+                anchored: false,
+                folder: true,
+                collapsed: false,
+                muted: false,
+                solo: false,
+                volume: 1.0,
+            }]
         } else {
             layout.groups.clone()
         };

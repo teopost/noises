@@ -51,6 +51,7 @@ function setReference(t, force) {
   }
   state.refSong = song;
   state.chords = null;
+  state.chordsMissing = false;
   state.notes = null;
   state.selNote = null;
   $('#chord-song').textContent = song.name ? `· ${song.name}` : '';
@@ -238,7 +239,7 @@ function projectState() {
   return {
     name: (state.current && state.current.name) || 'Progetto',
     tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips })),
-    groups: state.groups,
+    groups: deep(state.groups),
     markers: state.markers || [],
   };
 }
@@ -350,7 +351,9 @@ async function replaceWithStems(t) {
     engine.tracks = engine.tracks.filter((x) => !created.includes(x));
     engine.tracks.splice(at, 0, ...created);
     if (old) old.tracks = old.tracks.filter((n) => n !== t.name);
-    state.groups.push({ id: `g${newClipId()}`, name: song.name, tracks: created.map((x) => x.name), anchored: false });
+    // le tracce separate stanno in una cartella (apribile/chiudibile), come in Moises
+    state.groups.push({ id: `g${newClipId()}`, name: song.name, tracks: created.map((x) => x.name), anchored: false,
+      folder: true, collapsed: false, muted: false, solo: false, volume: 1 });
     cleanGroups();
     selectTracks(created.map((x) => x.name));
     setReference(created[0], true);

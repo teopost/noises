@@ -728,3 +728,14 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .track-menu .menu-item.danger:hover { color: var(--danger); }
 .track-menu .mi { width: 18px; text-align: center; color: var(--muted); }
 .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ---- cartelle (tracce separate di un brano) ---- */
+.folder-row { background: #1a1d26; }
+.folder-row .track-head { background: #1f2330 !important; }
+.folder-row .fold {
+  background: none; border: 0; padding: 0 4px; font-size: 13px; color: var(--accent-2); width: 18px;
+}
+.folder-ico { color: var(--accent-2); font-size: 12px; }
+.folder-row .count { min-width: 14px; text-align: center; }
+.track.child .track-head { padding-left: 26px !important; box-shadow: inset 4px 0 0 var(--gcolor), inset 14px 0 0 #171a22; }
+.track.child .tname { width: 140px; }

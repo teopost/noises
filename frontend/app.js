@@ -247,12 +247,15 @@ const engine = {
   },
 
   isAudible(t) {
-    const anySolo = this.tracks.some((x) => x.solo);
-    return anySolo ? t.solo : !t.muted;
+    const f = (x) => (typeof folderOf === 'function' ? folderOf(x.name) : null);
+    const solo = (x) => x.solo || !!(f(x) && f(x).solo);
+    const anySolo = this.tracks.some(solo);
+    return anySolo ? solo(t) : !(t.muted || (f(t) && f(t).muted));
   },
 
   gainOf(t) {
-    return this.isAudible(t) ? t.volume : 0;
+    const f = typeof folderOf === 'function' ? folderOf(t.name) : null;
+    return this.isAudible(t) ? t.volume * (f ? f.volume : 1) : 0;
   },
 
   updateGains() {
@@ -806,13 +809,31 @@ function buildTracks() {
   root.innerHTML = '';
   for (const k of Object.keys(rolls)) delete rolls[k];
   const ref = state.refSong;
+  const done = new Set();
+  const order = [];
   for (const t of engine.tracks) {
+    if (done.has(t.name)) continue;
+    const g = folderOf(t.name);
+    if (g) {
+      const kids = folderKids(g);
+      kids.forEach((k) => done.add(k.name));
+      order.push({ folder: g, kids });
+      if (!g.collapsed) kids.forEach((k) => order.push({ track: k, child: true }));
+      else kids.forEach((k) => { k.row = null; k.canvas = null; });
+    } else {
+      done.add(t.name);
+      order.push({ track: t });
+    }
+  }
+  for (const item of order) {
+    if (item.folder) { root.appendChild(buildFolderRow(item.folder, item.kids)); continue; }
+    const t = item.track;
     const color = trackColor(t);
     const title = trackTitle(t);
     const song = songById(t.song);
     const isRefStem = ref && t.song === ref.id && t.part !== 'original' && ref.status === 'ready';
     const row = document.createElement('div');
-    row.className = 'track audio-row';
+    row.className = `track audio-row${item.child ? ' child' : ''}`;
     row.innerHTML = `
       <div class="track-head">
         <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>
@@ -864,6 +885,7 @@ function buildTracks() {
 
 function syncTrackButtons() {
   engine.updateGains();
+  syncFolderRows();
   for (const tr of engine.tracks) {
     if (!tr.row) continue;
     tr.row.querySelector('.m').classList.toggle('on', tr.muted);
@@ -1353,15 +1375,16 @@ async function resetSettings() {
 
 /** Tracce da esportare: quelle udibili, oppure solo quella scelta dal menu ⋯ della traccia. */
 function activeStems() {
-  if (state.exportOnly) return engine.tracks.filter((t) => t.name === state.exportOnly);
+  if (state.exportOnly) return engine.tracks.filter((t) => state.exportOnly.includes(t.name));
   return engine.tracks.filter((t) => engine.isAudible(t) && t.volume > 0);
 }
 
 function defaultExportName() {
   const song = state.current;
   if (state.exportOnly) {
-    const t = engine.tracks.find((x) => x.name === state.exportOnly);
-    return `${song.name} - ${trackTitle(t)}`.replace(/[\\/:*?"<>|]+/g, '_');
+    const ts = engine.tracks.filter((x) => state.exportOnly.includes(x.name));
+    const f = ts.length > 1 && folderOf(ts[0].name);
+    return `${song.name} - ${f ? f.name : ts.map(trackTitle).join(', ')}`.replace(/[\\/:*?"<>|]+/g, '_');
   }
   const active = activeStems();
   const off = engine.tracks.filter((t) => !active.includes(t));
@@ -1379,7 +1402,7 @@ function defaultExportName() {
 
 function openExport(onlyTrack) {
   if (!engine.tracks.length) return;
-  state.exportOnly = onlyTrack ? onlyTrack.name : null;
+  state.exportOnly = onlyTrack ? (Array.isArray(onlyTrack) ? onlyTrack : [onlyTrack]).map((t) => t.name) : null;
   const active = activeStems();
   $('#exp-tracks').innerHTML = engine.tracks.map((t) =>
     `<span class="chip ${active.includes(t) ? '' : 'off'}" style="--c:${t.color}">${esc(trackTitle(t))}</span>`).join('');
@@ -1540,7 +1563,8 @@ function drawRuler() {
 function drawAll() {
   if (!state.current || !engine.tracks.length) return;
   drawRuler();
-  engine.tracks.forEach(drawTrack);
+  engine.tracks.forEach((t) => { if (t.canvas && t.canvas.isConnected) drawTrack(t); });
+  state.groups.forEach((g) => { if (g.folder) drawFolder(g); });
   drawAllRolls();
 }
 
@@ -1652,6 +1676,7 @@ async function loadChords(song) {
 }
 
 function showChordsMissing(song) {
+  state.chordsMissing = true;
   renderChords('Accordi non ancora analizzati');
   const ph = $('#chord-lane .placeholder');
   const b = document.createElement('button');
@@ -1673,6 +1698,7 @@ async function runChordAnalysis(song) {
 }
 
 function setChords(sheet) {
+  state.chordsMissing = false;
   state.chords = sheet;
   state.chordKey = estimateKey(sheet.chords);
   chordIdx = -1;
@@ -1687,6 +1713,7 @@ function renderChords(message) {
   $('#chord-key').textContent = sheet && key
     ? (key.minor ? `${rootName(key.root + 9 + engine.pitch)}m` : rootName(key.root + engine.pitch)) : '';
   $('#chord-now').classList.toggle('hidden', !sheet);
+  if (!sheet && !message && state.chordsMissing && state.refSong) { showChordsMissing(state.refSong); return; }
   if (!sheet || !engine.duration) {
     const idle = !engine.tracks.length ? 'Trascina un brano dalla libreria nella timeline'
       : state.refSong && state.refSong.status !== 'ready' ? 'Brano non separato: usa ⑂ sulla traccia per accordi, note e ritmo'

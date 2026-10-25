@@ -10,7 +10,9 @@ let layoutTimer = null;
 let toastTimer = null;
 
 
-const deep = (x) => JSON.parse(JSON.stringify(x));
+/** Copia profonda senza i riferimenti interni all'interfaccia (_row, _canvas). */
+const plain = (k, v) => (k.startsWith('_') ? undefined : v);
+const deep = (x) => JSON.parse(JSON.stringify(x, plain));
 const ek = () => 100 / engine.tempo;
 const trackByName = (n) => engine.tracks.find((t) => t.name === n);
 const groupOf = (name) => state.groups.find((g) => g.tracks.includes(name)) || null;
@@ -18,10 +20,15 @@ const isAnchored = () => false; // modello precedente: nei progetti nessun grupp
 const trackLabel = (t) => trackTitle(t);
 const groupColor = (g) => GROUP_COLORS[[...g.id].reduce((a, c) => a + c.charCodeAt(0), 0) % GROUP_COLORS.length];
 
-/** Tracce che si muovono insieme a `t` (il suo gruppo, o solo lei). */
+/** Cartella (tracce separate di un brano) a cui appartiene la traccia. */
+const folderOf = (name) => { const g = groupOf(name); return g && g.folder ? g : null; };
+const folderKids = (g) => engine.tracks.filter((t) => g.tracks.includes(t.name));
+
+/** Tracce che si muovono insieme a `t`: il suo gruppo; dentro una cartella aperta, solo lei. */
 function peersOf(t) {
   const g = groupOf(t.name);
-  return g ? g.tracks.map(trackByName).filter(Boolean) : [t];
+  if (!g || g.folder) return [t];
+  return g.tracks.map(trackByName).filter(Boolean);
 }
 
 
@@ -42,7 +49,13 @@ function toast(msg) {
 
 /** Prepara gruppi, selezione e cronologia all'apertura di un progetto. */
 function initLayout(project) {
-  state.groups = deep(project.groups || []).map((g) => ({ ...g, anchored: false }));
+  state.groups = deep(project.groups || []).map((g) => ({ muted: false, solo: false, volume: 1, ...g, anchored: false }));
+  // gruppi nati da una separazione (stesso brano, sole tracce separate) → cartelle
+  for (const g of state.groups) {
+    if (g.folder !== undefined && g.folder !== false) continue;
+    const ts = g.tracks.map((n) => project.tracks.find((t) => t.name === n)).filter(Boolean);
+    if (ts.length >= 2 && ts.every((t) => t.part !== 'original' && t.song === ts[0].song)) g.folder = true;
+  }
   state.undo = [];
   state.redo = [];
   state.selTracks = new Set();
@@ -53,11 +66,12 @@ function initLayout(project) {
 
 
 
+/** Toglie dai gruppi le tracce non più presenti. Modifica gli oggetti sul posto: le righe
+ *  dell'interfaccia (cartelle) tengono un riferimento al proprio gruppo. */
 function cleanGroups() {
   const live = new Set(engine.tracks.map((t) => t.name));
-  state.groups = state.groups
-    .map((g) => ({ ...g, tracks: g.tracks.filter((n) => live.has(n)) }))
-    .filter((g) => g.tracks.length >= 2);
+  for (const g of state.groups) g.tracks = g.tracks.filter((n) => live.has(n));
+  state.groups = state.groups.filter((g) => g.tracks.length >= (g.folder ? 1 : 2));
 }
 
 function saveLayout() {
@@ -70,7 +84,7 @@ function snapshot() {
   return JSON.stringify({
     tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips })),
     groups: state.groups, markers: state.markers || [],
-  });
+  }, plain);
 }
 
 /** Da chiamare PRIMA di ogni modifica annullabile. */
@@ -284,10 +298,10 @@ function setupGrip(t, row) {
 // ------------------------------------------------------------------ clip
 
 /** Clip delle altre tracce del gruppo che corrispondono a `c` (stessi confini, o sovrapposte). */
-function alignedClips(t, c) {
+function alignedClips(t, c, peers) {
   const out = [];
   const end = c.start + c.duration;
-  for (const p of peersOf(t)) {
+  for (const p of peers || peersOf(t)) {
     if (p === t) continue;
     let m = p.clips.filter((x) => Math.abs(x.start - c.start) < 0.002 && Math.abs(x.start + x.duration - end) < 0.002);
     if (!m.length) m = p.clips.filter((x) => x.start < end - 0.002 && x.start + x.duration > c.start + 0.002);
@@ -334,7 +348,8 @@ function deleteSelectedClip() {
   const c = t && t.clips.find((x) => x.id === sel.cid);
   if (!c) return false;
   pushUndo('Elimina parte');
-  const victims = [{ t, c }, ...alignedClips(t, c)];
+  const g = sel.folder && state.groups.find((x) => x.id === sel.folder);
+  const victims = [{ t, c }, ...alignedClips(t, c, g ? folderKids(g) : null)];
   for (const v of victims) v.t.clips = v.t.clips.filter((x) => x !== v.c);
   state.selClip = null;
   clipsChanged(victims.map((v) => v.t));
@@ -372,9 +387,9 @@ function snapEdit(t, free) {
   return Math.max(0, beatTime(Math.round(beatPos(t - a))) + a);
 }
 
-/** Tracce libere (non ancorate): trascina per spostare, bordi per accorciare, gruppo compreso. */
-function setupClipCanvas(t) {
-  const canvas = t.canvas;
+/** Trascina per spostare, bordi per accorciare (gruppo compreso).
+ *  Per la riga di una cartella: `t` = prima traccia, `peers` = tutte le tracce della cartella. */
+function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
   let drag = null;
   canvas.addEventListener('pointermove', (e) => {
     if (drag) return;
@@ -388,9 +403,10 @@ function setupClipCanvas(t) {
     if (!hit.c) return; // spazio vuoto: selezione dell'intervallo / posizionamento (timeline)
     e.stopPropagation();
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-    if (!additive || !state.selTracks.has(t.name)) selectTrack(t, additive);
-    state.selClip = { name: t.name, cid: hit.c.id };
-    const linked = hit.mode === 'move' ? alignedClips(t, hit.c) : alignedClips(t, hit.c).filter((v) =>
+    if (folder) selectFolder(folder, additive);
+    else if (!additive || !state.selTracks.has(t.name)) selectTrack(t, additive);
+    state.selClip = { name: t.name, cid: hit.c.id, folder: folder ? folder.id : null };
+    const linked = hit.mode === 'move' ? alignedClips(t, hit.c, peers) : alignedClips(t, hit.c, peers).filter((v) =>
       Math.abs(v.c.start - hit.c.start) < 0.002 && Math.abs(v.c.duration - hit.c.duration) < 0.002);
     drag = { mode: hit.mode, t0: hit.time, items: [{ t, c: hit.c }, ...linked].map((v) => ({ ...v, orig: { ...v.c } })), moved: false, undone: false };
     canvas.setPointerCapture(e.pointerId);
@@ -505,6 +521,8 @@ function decorateRow(t, row) {
 
 /** Clic sullo spazio vuoto di una traccia (gestito dalla timeline): seleziona la traccia. */
 function trackClick(canvas, e) {
+  const g = state.groups.find((x) => x.folder && x._canvas === canvas);
+  if (g) { selectFolder(g, e.ctrlKey || e.metaKey || e.shiftKey); state.selClip = null; requestRedraw(); return; }
   const t = engine.tracks.find((x) => x.canvas === canvas);
   if (!t) return;
   selectTrack(t, e.ctrlKey || e.metaKey || e.shiftKey);
@@ -573,3 +591,144 @@ document.addEventListener('pointerdown', (e) => {
   if (m && !m.classList.contains('hidden') && !m.contains(e.target) && !e.target.closest('.tmenu')) closeTrackMenu();
 });
 document.addEventListener('keydown', (e) => { if (e.code === 'Escape') { const m = document.getElementById('track-menu'); if (m) m.classList.add('hidden'); } });
+
+// --------------------------------------------------------------------- cartelle
+
+/** Clic sulla cartella: seleziona tutte le sue tracce; il riferimento passa al suo brano. */
+function selectFolder(g, additive) {
+  const kids = folderKids(g);
+  selectTracks(kids.map((k) => k.name), additive);
+  if (!additive && kids[0] && typeof setReference === 'function') setReference(kids[0]);
+}
+
+/** Riga della cartella: ▸/▾ per aprire/chiudere, mixer e clip valgono per tutte le sue tracce. */
+function buildFolderRow(g, kids) {
+  const row = document.createElement('div');
+  row.className = `track audio-row folder-row ${g.collapsed ? 'collapsed' : ''}`;
+  row.innerHTML = `
+    <div class="track-head">
+      <div class="track-title"><button class="fold" title="${g.collapsed ? 'Apri la cartella' : 'Chiudi la cartella'}">${g.collapsed ? '▸' : '▾'}</button>
+        <span class="folder-ico">▤</span>
+        <input class="tname" value="${esc(g.name)}" maxlength="60" title="Cartella: ${kids.length} tracce — clic per rinominare"></div>
+      <div class="track-btns">
+        <button class="m" title="Muto (tutta la cartella)">M</button>
+        <button class="s" title="Solo (tutta la cartella)">S</button>
+        <input type="range" class="vol" min="0" max="1.5" step="0.01" value="${g.volume}" title="Volume della cartella">
+        <span class="count">${kids.length}</span>
+        <button class="tmenu" title="Altre azioni">⋯</button>
+      </div>
+    </div>
+    <div class="lane"><canvas class="ucanvas vcanvas"></canvas></div>`;
+  const toggle = () => { g.collapsed = !g.collapsed; saveProject(); buildTracks(); };
+  row.querySelector('.fold').addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+  row.querySelector('.m').addEventListener('click', () => { g.muted = !g.muted; syncTrackButtons(); saveProject(); });
+  row.querySelector('.s').addEventListener('click', () => { g.solo = !g.solo; syncTrackButtons(); saveProject(); });
+  row.querySelector('.vol').addEventListener('input', (e) => { g.volume = Number(e.target.value); engine.updateGains(); saveProject(); });
+  const name = row.querySelector('.tname');
+  let renaming = false;
+  name.addEventListener('focus', () => { renaming = false; });
+  name.addEventListener('input', () => {
+    if (!renaming) { pushUndo('Rinomina cartella'); renaming = true; }
+    g.name = name.value.trim() || g.name;
+    saveProject();
+  });
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
+  row.querySelector('.tmenu').addEventListener('click', (e) => { e.stopPropagation(); openFolderMenu(g, e.currentTarget); });
+  row.querySelector('.track-head').addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button, a, select, input[type=range]')) return;
+    selectFolder(g, e.ctrlKey || e.metaKey || e.shiftKey);
+  });
+  row.querySelector('.track-head').addEventListener('dblclick', (e) => { if (!e.target.closest('button, input')) toggle(); });
+  g._row = row;
+  g._canvas = row.querySelector('canvas');
+  if (kids[0]) setupClipCanvas(kids[0], g._canvas, kids, g);
+  return row;
+}
+
+function syncFolderRows() {
+  for (const g of state.groups) {
+    if (!g.folder || !g._row || !g._row.isConnected) continue;
+    const kids = folderKids(g);
+    g._row.querySelector('.m').classList.toggle('on', !!g.muted);
+    g._row.querySelector('.s').classList.toggle('on', !!g.solo);
+    g._row.classList.toggle('selected', kids.length > 0 && kids.every((k) => state.selTracks.has(k.name)));
+    g._row.classList.toggle('silent', kids.every((k) => !engine.isAudible(k)));
+  }
+}
+
+/** Cartella: forma d'onda d'insieme delle sue tracce (come il brano originale). */
+function drawFolder(g) {
+  if (!g._canvas || !g._canvas.isConnected) return;
+  const kids = folderKids(g);
+  const [ctx, w, h, dpr] = fitCanvas(g._canvas);
+  const sl = tlEl().scrollLeft, z = state.zoom, k = ek();
+  const bps = engine.sr / PEAK_BLOCK, mid = h / 2;
+  const rep = kids[0];
+  if (!rep) return;
+  // contorni delle clip (quelle della prima traccia: nella cartella sono allineate)
+  for (const c of rep.clips) {
+    const x0 = (c.start * k * z - sl) * dpr, x1 = ((c.start + c.duration) * k * z - sl) * dpr;
+    if (x1 < 0 || x0 > w) continue;
+    const sel = state.selClip && state.selClip.folder === g.id && state.selClip.cid === c.id;
+    ctx.fillStyle = sel ? '#ffffff26' : '#ffffff10';
+    ctx.fillRect(x0, 2 * dpr, x1 - x0, h - 4 * dpr);
+    ctx.strokeStyle = sel ? '#fff' : '#9aa3b5aa';
+    ctx.lineWidth = (sel ? 2 : 1) * dpr;
+    ctx.strokeRect(x0 + 0.5 * dpr, 2 * dpr, x1 - x0 - dpr, h - 4 * dpr);
+  }
+  ctx.fillStyle = USER_COLOR;
+  for (let x = 0; x < w; x++) {
+    const t0 = (sl + x / dpr) / z / k, t1 = (sl + (x + 1) / dpr) / z / k;
+    let peak = 0;
+    for (const kid of kids) {
+      if (!engine.isAudible(kid)) continue;
+      const c = kid.clips.find((cc) => t0 >= cc.start && t0 < cc.start + cc.duration);
+      if (!c) continue;
+      const b0 = Math.max(0, Math.floor((t0 - c.start + c.offset) * bps)), b1 = Math.max(b0 + 1, Math.floor((t1 - c.start + c.offset) * bps));
+      const stride = Math.max(1, Math.floor((b1 - b0) / 64));
+      for (let i = b0; i < b1 && i < kid.peaks.length; i += stride) if (kid.peaks[i] * kid.volume > peak) peak = kid.peaks[i] * kid.volume;
+    }
+    if (peak > 0) {
+      const y = Math.max(dpr * 0.5, Math.min(1, peak) * (mid - 4 * dpr) * 0.95);
+      ctx.fillRect(x, mid - y, 1, y * 2);
+    }
+  }
+}
+
+function openFolderMenu(g, anchor) {
+  const menu = $('#track-menu');
+  const kids = folderKids(g);
+  const items = [
+    { icon: g.collapsed ? '▾' : '▸', label: g.collapsed ? 'Apri cartella' : 'Chiudi cartella', run: () => { g.collapsed = !g.collapsed; saveProject(); buildTracks(); } },
+    { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
+    { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },
+    { icon: '⑂', label: 'Sciogli cartella', run: () => {
+      pushUndo('Sciogli cartella');
+      state.groups = state.groups.filter((x) => x !== g);
+      saveProject();
+      buildTracks();
+      toast('Cartella sciolta: le tracce ora sono indipendenti');
+    } },
+    { sep: true },
+    { icon: '🗑', label: 'Elimina', danger: true, run: () => {
+      pushUndo('Elimina cartella');
+      for (const kid of kids) { engine.removeTrack(kid); state.selTracks.delete(kid.name); }
+      state.selClip = null;
+      cleanGroups();
+      if (!trackByName(state.refTrack) && engine.tracks.length) setReference(engine.tracks[0], true);
+      saveProject();
+      layoutTimeline();
+      buildTracks();
+      toast(`Cartella "${g.name}" eliminata — Ctrl+Z per annullare`);
+    } },
+  ];
+  menu.innerHTML = `<div class="menu-title">${esc(g.name)} · ${kids.length} tracce</div>` + items.map((it, i) => it.sep
+    ? '<div class="menu-sep"></div>'
+    : `<button class="menu-item ${it.danger ? 'danger' : ''}" data-i="${i}"><span class="mi">${it.icon}</span>${esc(it.label)}</button>`).join('');
+  menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => { closeTrackMenu(); items[Number(b.dataset.i)].run(); }));
+  menu.classList.remove('hidden');
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)}px`;
+  const below = r.bottom + 4;
+  menu.style.top = `${below + menu.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - menu.offsetHeight - 4) : below}px`;
+}
