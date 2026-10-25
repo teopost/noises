@@ -12,7 +12,8 @@ const sc = { stem: null, data: null, osmd: null, seq: 0, mode: 'score', stamps: 
 function openScore(stem) {
   if (!state.notes) return;
   const sel = $('#score-stem');
-  sel.innerHTML = engine.tracks.map((t) => `<option value="${t.name}">${esc(LABELS[t.name] || t.name)}</option>`).join('');
+  const parts = (state.refSong && state.refSong.stems) || [];
+  sel.innerHTML = parts.map((p) => `<option value="${p}">${esc(LABELS[p] || p)}</option>`).join('');
   sel.value = stem;
   setScoreStem(stem, true);
   $('#score-view').classList.remove('hidden');
@@ -49,7 +50,7 @@ function closeScore() {
 
 async function loadScore() {
   const seq = ++sc.seq;
-  const song = state.current, stem = sc.stem;
+  const song = state.refSong, stem = sc.stem;
   $('#score-status').innerHTML = '<span class="spinner"></span> Generazione dello spartito…';
   $('#score-status').classList.remove('hidden');
   $('#score-osmd').innerHTML = '';
@@ -102,7 +103,7 @@ async function renderScore(seq) {
 /** Posizione nello spartito (in quarti dalla battuta 1) di un istante della timeline. */
 function scoreQuarter(pos) {
   const grid = state.notes.grid;
-  return (beatPos(pos * engine.tempo / 100) - grid.downbeat - sc.data.bar0) * (sc.data.beat_q || 1);
+  return (beatPos(pos * engine.tempo / 100 - anc()) - grid.downbeat - sc.data.bar0) * (sc.data.beat_q || 1);
 }
 
 /** Elenca le posizioni (in quarti) di tutti i passi del cursore OSMD, una volta sola. */
@@ -313,7 +314,7 @@ function renderTab() {
     parts.push(`</g>`);
   });
   const H = systems.length * sysH + 10;
-  box.innerHTML = `<h2 class="tab-title">${esc(state.current.name)} — ${esc(LABELS[sc.stem] || sc.stem)} · ${esc(TUNINGS[tuning].label)}</h2>
+  box.innerHTML = `<h2 class="tab-title">${esc(state.refSong.name)} — ${esc(LABELS[sc.stem] || sc.stem)} · ${esc(TUNINGS[tuning].label)}</h2>
     <svg class="tab-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}
       <line id="tab-cursor" class="tab-cursor" x1="0" x2="0" y1="0" y2="0" style="display:none"/></svg>`;
 }
@@ -335,7 +336,7 @@ function setupScore() {
   $('#score-xml').addEventListener('click', () => {
     if (!sc.data) return;
     downloadBlob(new Blob([sc.data.musicxml], { type: 'application/vnd.recordare.musicxml+xml' }),
-      `${state.current.name} - ${LABELS[sc.stem] || sc.stem}.musicxml`);
+      `${state.refSong.name} - ${LABELS[sc.stem] || sc.stem}.musicxml`);
   });
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Escape' && !$('#score-view').classList.contains('hidden')) closeScore();

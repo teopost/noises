@@ -11,6 +11,8 @@ const noteSaveTimers = {};
 let notesSeq = 0;
 
 const dispK = () => 100 / engine.tempo;            // secondi originali → timeline corrente
+/** Inizio del brano di riferimento sulla timeline: le note/battiti sono nel tempo del brano. */
+const anc = () => (typeof refAnchor === 'function' ? refAnchor() : 0);
 /** Battiti per battuta e quarti per battito del metro scelto (default 4/4). */
 const gridBpb = () => (state.notes && state.notes.grid && state.notes.grid.beats_per_bar) || 4;
 const gridBq = () => (state.notes && state.notes.grid && state.notes.grid.beat_quarters) || 1;
@@ -28,7 +30,7 @@ async function loadNotes(song) {
   updateRhythmControls();
   try {
     const data = await api(`/api/songs/${song.id}/notes`);
-    if (seq !== notesSeq || !state.current || state.current.id !== song.id) return;
+    if (seq !== notesSeq || !state.refSong || state.refSong.id !== song.id) return;
     setNotesData(data);
   } catch (e) {
     if (seq !== notesSeq) return;
@@ -64,7 +66,7 @@ async function runTranscription(song) {
   updateRhythmControls();
   try {
     const data = await api(`/api/songs/${song.id}/notes/analyze`, { method: 'POST' });
-    if (seq === notesSeq && state.current && state.current.id === song.id) setNotesData(data);
+    if (seq === notesSeq && state.refSong && state.refSong.id === song.id) setNotesData(data);
   } catch (e) {
     if (seq === notesSeq) refreshNotesHeads(`Trascrizione fallita: ${e.message}`);
   } finally {
@@ -166,7 +168,7 @@ function lowerBound(notes, t) {
 function drawRoll(stem) {
   const r = rolls[stem];
   const [ctx, w, h, dpr] = fitCanvas(r.canvas);
-  const sl = tlEl().scrollLeft, z = state.zoom, k = dispK();
+  const sl = tlEl().scrollLeft, z = state.zoom, k = dispK(), a = anc();
   const rh = r.rowH * dpr;
   // sfondo: tasti neri più scuri, righe dei Do evidenziate
   r.rows.forEach((p, i) => {
@@ -184,23 +186,23 @@ function drawRoll(stem) {
     const beats = grid.beats;
     const spacing = (beats[1] - beats[0]) * k * z;
     if (spacing >= 5) {
-      const t0 = sl / z / k, t1 = (sl + w / dpr) / z / k;
+      const t0 = sl / z / k - a, t1 = (sl + w / dpr) / z / k - a;
       for (let i = Math.max(0, lowerBoundNum(beats, t0) - 1); i < beats.length && beats[i] <= t1; i++) {
         const bar = ((i - grid.downbeat) % gridBpb() + gridBpb()) % gridBpb() === 0;
         ctx.fillStyle = bar ? '#3a4152' : '#232833';
-        ctx.fillRect(Math.round((beats[i] * k * z - sl) * dpr), 0, bar ? dpr * 1.5 : dpr, h);
+        ctx.fillRect(Math.round(((beats[i] + a) * k * z - sl) * dpr), 0, bar ? dpr * 1.5 : dpr, h);
       }
     }
   }
   if (!state.notes) return;
   const notes = state.notes.tracks[stem] || [];
   const rowOf = new Map(r.rows.map((p, i) => [p, i]));
-  const t0 = sl / z / k - 10, t1 = (sl + w / dpr) / z / k;
+  const t0 = sl / z / k - 10 - a, t1 = (sl + w / dpr) / z / k - a;
   for (let i = lowerBound(notes, t0); i < notes.length && notes[i].start <= t1; i++) {
     const n = notes[i];
     const row = rowOf.get(shownPitch(stem, n.pitch));
     if (row == null) continue;
-    const x = (n.start * k * z - sl) * dpr;
+    const x = ((n.start + a) * k * z - sl) * dpr;
     const nw = Math.max(2 * dpr, (n.end - n.start) * k * z * dpr);
     if (x + nw < 0) continue;
     ctx.globalAlpha = 0.45 + 0.55 * (n.velocity / 127);
@@ -264,7 +266,7 @@ function setupRollEditing(stem, canvas) {
     const r = rolls[stem];
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
-    const t = (tlEl().scrollLeft + x) / state.zoom / dispK();
+    const t = (tlEl().scrollLeft + x) / state.zoom / dispK() - anc();
     const rowIdx = Math.min(r.rows.length - 1, Math.max(0, Math.floor(y / r.rowH)));
     return { x, t, rowIdx, shown: r.rows[rowIdx] };
   };
@@ -383,7 +385,7 @@ function sortNotes(stem) {
 }
 
 function saveNotes(stem) {
-  const song = state.current;
+  const song = state.refSong;
   if (!state.notes.edited.includes(stem)) state.notes.edited.push(stem);
   refreshNotesHeads();
   clearTimeout(noteSaveTimers[stem]);
@@ -400,12 +402,12 @@ function saveNotes(stem) {
 }
 
 async function restoreNotes(stem) {
-  const song = state.current;
+  const song = state.refSong;
   if (!confirm(`Annullare le correzioni e ripristinare la trascrizione automatica di "${LABELS[stem] || stem}"?`)) return;
   clearTimeout(noteSaveTimers[stem]);
   try {
     const data = await api(`/api/songs/${song.id}/notes/${stem}/edits`, { method: 'DELETE' });
-    if (state.current !== song) return;
+    if (state.refSong !== song) return;
     state.notes.tracks[stem] = data.tracks[stem];
     state.notes.edited = data.edited;
     state.selNote = null;
@@ -537,12 +539,12 @@ function synthSchedule() {
   let to = pos + 0.2;
   if (engine.loop && to > engine.loop.end) to = engine.loop.end;
   if (engine.stopAt != null) to = Math.min(to, engine.stopAt);
-  const k = dispK();
+  const k = dispK(), a = anc();
   for (const stem of state.synth) {
     const notes = state.notes.tracks[stem] || [];
-    for (let i = lowerBound(notes, from / k); i < notes.length; i++) {
+    for (let i = lowerBound(notes, from / k - a); i < notes.length; i++) {
       const n = notes[i];
-      const ds = n.start * k;
+      const ds = (n.start + a) * k;
       if (ds >= to) break;
       if (ds < from) continue;
       playVoice(stem, n.pitch, n.velocity, now + (ds - pos), (n.end - n.start) * k);
@@ -590,7 +592,7 @@ function fixedBpm() {
 function setFixedAnchor(p) {
   if (!hasGrid()) return;
   const b = state.notes.grid.beats;
-  const i = Math.max(0, Math.ceil(beatPos(p / dispK(), b) - 1e-3));
+  const i = Math.max(0, Math.ceil(beatPos(p / dispK() - anc(), b) - 1e-3));
   state.fixedAnchor = { i, t: beatTime(i, b) };
   fixedCache = null;
 }
@@ -615,10 +617,10 @@ function fixedBeats() {
 
 function clickTimes(from, to) {
   if (!hasGrid()) return [];
-  const k = dispK(), db = state.notes.grid.downbeat, bpb = gridBpb(), cb = clickBeats();
+  const k = dispK(), db = state.notes.grid.downbeat, bpb = gridBpb(), cb = clickBeats(), a = anc();
   const out = [];
-  for (let i = Math.ceil(beatPos(from / k, cb) - 1e-6); ; i++) {
-    const t = beatTime(i, cb) * k;
+  for (let i = Math.ceil(beatPos(from / k - a, cb) - 1e-6); ; i++) {
+    const t = (beatTime(i, cb) + a) * k;
     if (t >= to) break;
     if (t >= from - 1e-6 && t >= 0) out.push({ t, accent: (((i - db) % bpb) + bpb) % bpb === 0 });
     if (out.length > 5000) break;
@@ -649,9 +651,9 @@ let countTimers = [];
 
 /** Dati del pre-conteggio per una partenza da `p` (tempo timeline): durata e colpi. */
 function countInPlan(p, bars) {
-  const k = dispK(), cb = clickBeats();
-  const iNext = Math.ceil(beatPos(p / k, cb) - 1e-3);     // primo battito della musica dopo p
-  const bNext = beatTime(iNext, cb) * k;
+  const k = dispK(), cb = clickBeats(), a = anc();
+  const iNext = Math.ceil(beatPos(p / k - a, cb) - 1e-3); // primo battito della musica dopo p
+  const bNext = (beatTime(iNext, cb) + a) * k;
   const period = (beatTime(iNext, cb) - beatTime(iNext - 1, cb)) * k;
   const bpb = gridBpb();
   const n = bars * bpb;
@@ -826,13 +828,13 @@ function currentRhythm() {
 }
 
 async function setRhythm(patch) {
-  const song = state.current;
+  const song = state.refSong;
   const r = { ...currentRhythm(), ...patch };
   try {
     const grid = await api(`/api/songs/${song.id}/rhythm`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r),
     });
-    if (state.current !== song || !state.notes) return;
+    if (state.refSong !== song || !state.notes) return;
     state.notes.grid = grid;
     schedHorizon = null;
     updateRhythmControls();
@@ -872,7 +874,7 @@ function setupMeter() {
   document.addEventListener('pointerdown', (e) => {
     if (!menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'meter-btn') menu.classList.add('hidden');
   });
-  $('#analyze-notes').addEventListener('click', () => state.current && runTranscription(state.current));
+  $('#analyze-notes').addEventListener('click', () => state.refSong && runTranscription(state.refSong));
 }
 
 // ------------------------------------------------------------------------- MIDI

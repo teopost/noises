@@ -6,6 +6,7 @@
 //!   * Rubber Band (C++) per pitch-shift e time-stretch di alta qualità
 
 mod auth;
+mod projects;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -87,8 +88,15 @@ struct Song {
     #[serde(default)]
     user_tracks: Vec<UserTrack>,
     /// Disposizione dell'editor: ordine, gruppi, clip delle tracce separate, tracce eliminate.
+    /// (modello precedente ai progetti: letta solo dalla migrazione)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     layout: Option<Layout>,
+    /// già convertito in progetto (migrazione dal modello brano = timeline)
+    #[serde(default)]
+    migrated: bool,
+    /// durata in secondi (nota dopo la conversione del file originale)
+    #[serde(default)]
+    duration: Option<f64>,
     /// Metro e correzioni della griglia ritmica scelti dall'utente.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     rhythm: Option<Rhythm>,
@@ -257,6 +265,7 @@ fn effective_grid(raw: &serde_json::Value, rhythm: Option<Rhythm>) -> serde_json
 
 struct Inner {
     auth: auth::Auth,
+    projects: RwLock<HashMap<String, projects::Project>>,
     data_dir: PathBuf,
     analysis_dir: PathBuf,
     playlists: RwLock<Vec<Playlist>>,
@@ -346,6 +355,7 @@ fn owns_path(st: &AppState, user: &auth::User, path: &str) -> bool {
     };
     match seg.as_slice() {
         ["api", "songs", id, ..] => song_ok(id),
+        ["api", "projects", id, ..] => projects::owns(st, &user.id, id),
         ["api", "playlists", id, rest @ ..] => {
             let pl_ok = st.0.playlists
                 .read()
@@ -440,6 +450,7 @@ async fn delete_song(
     if st.0.songs.write().unwrap().remove(&id).is_none() {
         return Err(not_found());
     }
+    projects::forget_song(&st, &id);
     st.edit_playlists(|pls| {
         pls.iter_mut().for_each(|p| p.songs.retain(|s| s != &id));
         Ok(())
@@ -484,12 +495,22 @@ async fn upload(
         markers: vec![],
         user_tracks: vec![],
         layout: None,
+        migrated: true,
+        duration: None,
         rhythm: None,
         settings: None,
         created_at: now_secs(),
     };
     st.0.songs.write().unwrap().insert(id.clone(), song.clone());
     st.save_meta(&song)?;
+    {
+        let (st2, id2) = (st.clone(), id.clone());
+        tokio::spawn(async move {
+            if let Err(e) = ensure_original(&st2, &id2).await {
+                warn!("conversione {id2}: {e:#}");
+            }
+        });
+    }
     info!("caricato '{}' ({}) modello {}", song.name, song.id, song.model);
     Ok(Json(song))
 }
@@ -532,181 +553,16 @@ async fn receive_upload(dir: &Path, mp: &mut Multipart) -> Result<(String, Strin
     Ok((name, model))
 }
 
-async fn save_settings(
-    State(st): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    Json(v): Json<serde_json::Value>,
-) -> Result<StatusCode, AppError> {
-    if !v.is_object() || serde_json::to_vec(&v)?.len() > 64 * 1024 {
-        return Err(bad_request("impostazioni non valide"));
-    }
-    st.update(&id, true, |s| s.settings = Some(v))
-        .ok_or_else(not_found)?;
-    Ok(StatusCode::NO_CONTENT)
-}
 
 // ------------------------------------------------------------ tracce utente
 
-fn user_audio(st: &AppState, id: &str, tid: &str) -> PathBuf {
-    st.song_dir(id).join("user").join(format!("{tid}.flac"))
-}
 
-/// File di una traccia utente con tonalità/velocità applicate (Rubber Band, in cache).
-async fn user_audio_path(
-    st: &AppState,
-    id: &str,
-    tid: &str,
-    pitch: Option<i32>,
-    tempo: Option<u32>,
-) -> anyhow::Result<PathBuf> {
-    let pitch = pitch.unwrap_or(0).clamp(-12, 12);
-    let tempo = tempo.unwrap_or(100).clamp(25, 200);
-    let src = user_audio(st, id, tid);
-    if pitch == 0 && tempo == 100 {
-        Ok(src)
-    } else {
-        render(st, id, &format!("user_{tid}"), &src, pitch, tempo).await
-    }
-}
 
-async fn audio_duration(path: &Path) -> anyhow::Result<f64> {
-    let out = Command::new("ffprobe")
-        .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
-        .arg(path)
-        .output()
-        .await?;
-    String::from_utf8_lossy(&out.stdout)
-        .trim()
-        .parse()
-        .context("durata del file non leggibile")
-}
 
-/// Aggiunge una traccia da un file audio (multipart: file, start = posizione in secondi).
-async fn add_user_track(
-    State(st): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    mut mp: Multipart,
-) -> Result<Json<UserTrack>, AppError> {
-    ready_song(&st, &id)?;
-    let tid = uuid::Uuid::new_v4().simple().to_string()[..12].to_owned();
-    let dir = st.song_dir(&id).join("user");
-    tokio::fs::create_dir_all(&dir).await?;
-    let raw = dir.join(format!("{tid}.upload"));
-    let mut name = String::from("Traccia");
-    let mut start = 0.0f64;
-    let mut got = false;
-    while let Some(mut field) = mp.next_field().await? {
-        match field.name().unwrap_or_default().to_owned().as_str() {
-            "start" => start = field.text().await?.trim().parse().unwrap_or(0.0),
-            "file" => {
-                if let Some(f) = field.file_name() {
-                    name = Path::new(f).file_stem().and_then(|s| s.to_str()).unwrap_or("Traccia").chars().take(60).collect();
-                }
-                let mut f = tokio::fs::File::create(&raw).await?;
-                while let Some(chunk) = field.chunk().await? {
-                    f.write_all(&chunk).await?;
-                }
-                f.flush().await?;
-                got = true;
-            }
-            _ => {}
-        }
-    }
-    if !got {
-        return Err(bad_request("nessun file inviato"));
-    }
-    let out = user_audio(&st, &id, &tid);
-    let conv = Command::new("ffmpeg")
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
-        .arg(&raw)
-        .args(["-vn", "-ac", "2", "-ar", "44100", "-c:a", "flac"])
-        .arg(&out)
-        .output()
-        .await
-        .context("avvio ffmpeg")?;
-    let _ = tokio::fs::remove_file(&raw).await;
-    if !conv.status.success() {
-        let _ = tokio::fs::remove_file(&out).await;
-        return Err(bad_request("file audio non riconosciuto"));
-    }
-    let duration = audio_duration(&out).await?;
-    let track = UserTrack {
-        id: tid.clone(),
-        name,
-        duration,
-        clips: vec![Clip {
-            id: uuid::Uuid::new_v4().simple().to_string()[..12].to_owned(),
-            start: if start.is_finite() { start.max(0.0) } else { 0.0 },
-            offset: 0.0,
-            duration,
-        }],
-    };
-    let t2 = track.clone();
-    st.update(&id, true, |s| s.user_tracks.push(t2)).ok_or_else(not_found)?;
-    info!("traccia utente '{}' aggiunta a {id} ({duration:.1}s)", track.name);
-    Ok(Json(track))
-}
 
-#[derive(Deserialize)]
-struct UserTrackBody {
-    name: String,
-    clips: Vec<Clip>,
-}
 
-async fn put_user_track(
-    State(st): State<AppState>,
-    UrlPath((id, tid)): UrlPath<(String, String)>,
-    Json(b): Json<UserTrackBody>,
-) -> Result<StatusCode, AppError> {
-    let song = ready_song(&st, &id)?;
-    let track = song.user_tracks.iter().find(|t| t.id == tid).ok_or_else(not_found)?;
-    if !valid_clips(&b.clips, track.duration) {
-        return Err(bad_request("clip non valida"));
-    }
-    let name: String = b.name.trim().chars().take(60).collect();
-    st.update(&id, true, |s| {
-        if let Some(t) = s.user_tracks.iter_mut().find(|t| t.id == tid) {
-            if !name.is_empty() {
-                t.name = name;
-            }
-            t.clips = b.clips;
-        }
-    });
-    Ok(StatusCode::NO_CONTENT)
-}
 
-async fn delete_user_track(
-    State(st): State<AppState>,
-    UrlPath((id, tid)): UrlPath<(String, String)>,
-) -> Result<StatusCode, AppError> {
-    let song = ready_song(&st, &id)?;
-    if !song.user_tracks.iter().any(|t| t.id == tid) {
-        return Err(not_found());
-    }
-    let name = format!("user:{tid}");
-    st.update(&id, true, |s| {
-        s.user_tracks.retain(|t| t.id != tid);
-        if let Some(l) = s.layout.as_mut() {
-            l.order.retain(|n| n != &name);
-            l.removed.retain(|n| n != &name);
-            l.groups.iter_mut().for_each(|g| g.tracks.retain(|n| n != &name));
-        }
-    });
-    let _ = tokio::fs::remove_file(user_audio(&st, &id, &tid)).await;
-    Ok(StatusCode::NO_CONTENT)
-}
 
-async fn get_user_track_audio(
-    State(st): State<AppState>,
-    UrlPath((id, tid)): UrlPath<(String, String)>,
-    req: Request,
-) -> Result<Response, AppError> {
-    let song = ready_song(&st, &id)?;
-    if !song.user_tracks.iter().any(|t| t.id == tid) {
-        return Err(not_found());
-    }
-    Ok(ServeFile::new(user_audio(&st, &id, &tid)).oneshot(req).await?.into_response())
-}
 
 fn valid_clips(clips: &[Clip], max_len: f64) -> bool {
     clips.len() <= 500
@@ -721,66 +577,9 @@ fn valid_clips(clips: &[Clip], max_len: f64) -> bool {
         })
 }
 
-/// Salva la disposizione dell'editor (ordine, gruppi, clip delle tracce separate).
-async fn put_layout(
-    State(st): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    Json(l): Json<Layout>,
-) -> Result<StatusCode, AppError> {
-    let song = ready_song(&st, &id)?;
-    let known = |n: &String| {
-        song.stems.contains(n)
-            || n.strip_prefix("user:").is_some_and(|t| song.user_tracks.iter().any(|u| u.id == t))
-    };
-    let ok = l.order.len() <= 200
-        && l.groups.len() <= 100
-        && l.order.iter().all(known)
-        && l.removed.iter().all(known)
-        && l.groups.iter().all(|g| {
-            g.tracks.len() <= 200 && g.tracks.iter().all(known) && g.name.chars().count() <= 60 && !g.id.is_empty()
-        })
-        && l.stem_clips.iter().all(|(k, c)| song.stems.contains(k) && valid_clips(c, 24.0 * 3600.0));
-    if !ok {
-        return Err(bad_request("disposizione non valida"));
-    }
-    st.update(&id, true, |s| s.layout = Some(l)).ok_or_else(not_found)?;
-    Ok(StatusCode::NO_CONTENT)
-}
 
-#[derive(Deserialize)]
-struct MarkersBody {
-    markers: Vec<Marker>,
-}
 
-/// Salva i segnalibri del brano (l'elenco completo).
-async fn put_markers(
-    State(st): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    Json(mut b): Json<MarkersBody>,
-) -> Result<StatusCode, AppError> {
-    if b.markers.len() > 500 {
-        return Err(bad_request("troppi segnalibri"));
-    }
-    for m in &mut b.markers {
-        m.name = m.name.trim().chars().take(60).collect();
-        let ok = m.t.is_finite() && m.t >= 0.0 && !m.id.is_empty() && m.id.len() <= 64;
-        if !ok {
-            return Err(bad_request("segnalibro non valido"));
-        }
-    }
-    b.markers.sort_by(|a, c| a.t.total_cmp(&c.t));
-    st.update(&id, true, |s| s.markers = b.markers).ok_or_else(not_found)?;
-    Ok(StatusCode::NO_CONTENT)
-}
 
-async fn reset_settings(
-    State(st): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-) -> Result<StatusCode, AppError> {
-    st.update(&id, true, |s| s.settings = None)
-        .ok_or_else(not_found)?;
-    Ok(StatusCode::NO_CONTENT)
-}
 
 // ------------------------------------------------------------- elaborazione
 
@@ -1324,6 +1123,51 @@ async fn remove_from_playlist(
     })
 }
 
+/// Versione riproducibile del brano (FLAC 44,1 kHz stereo), creata una volta dal file caricato.
+async fn ensure_original(st: &AppState, id: &str) -> anyhow::Result<PathBuf> {
+    let dir = st.song_dir(id);
+    let out = dir.join("original.flac");
+    let lock = st.render_lock(&out);
+    let _guard = lock.lock().await;
+    if out.exists() {
+        return Ok(out);
+    }
+    let input = find_input(&dir)?;
+    let tmp = dir.join("original.tmp.flac");
+    let conv = Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
+        .arg(&input)
+        .args(["-vn", "-ac", "2", "-ar", "44100", "-c:a", "flac"])
+        .arg(&tmp)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .context("avvio ffmpeg")?;
+    if !conv.status.success() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        bail!("file audio non riconosciuto");
+    }
+    tokio::fs::rename(&tmp, &out).await?;
+    let probe = Command::new("ffprobe")
+        .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
+        .arg(&out)
+        .output()
+        .await?;
+    let duration: Option<f64> = String::from_utf8_lossy(&probe.stdout).trim().parse().ok();
+    st.update(id, true, |s| s.duration = duration);
+    Ok(out)
+}
+
+async fn get_original(
+    State(st): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    req: Request,
+) -> Result<Response, AppError> {
+    st.get(&id).ok_or_else(not_found)?;
+    let path = ensure_original(&st, &id).await?;
+    Ok(ServeFile::new(path).oneshot(req).await?.into_response())
+}
+
 #[derive(Deserialize)]
 struct ImportRequest {
     url: String,
@@ -1361,6 +1205,8 @@ async fn import_url(
         markers: vec![],
         user_tracks: vec![],
         layout: None,
+        migrated: true,
+        duration: None,
         rhythm: None,
         settings: None,
         created_at: now_secs(),
@@ -1381,7 +1227,11 @@ async fn download_task(st: AppState, id: String) {
                 s.status = Status::New;
                 s.progress = 0.0;
             });
-            if done.is_none() {
+            if done.is_some() {
+                if let Err(e) = ensure_original(&st, &id).await {
+                    warn!("conversione {id}: {e:#}");
+                }
+            } else {
                 // eliminato durante il download: yt-dlp potrebbe aver ricreato la cartella
                 let _ = tokio::fs::remove_dir_all(st.song_dir(&id)).await;
             }
@@ -1586,112 +1436,63 @@ fn write_click_wav(path: &Path, c: &ClickSpec) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Mixa le tracce indicate (es. tutte tranne la voce = base) e restituisce il file audio.
-async fn export_mix(
-    State(st): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    Json(req): Json<ExportRequest>,
+/// Sorgente da mixare: file (già con tonalità/velocità) e sue clip sulla timeline.
+struct MixInput {
+    path: PathBuf,
+    clips: Vec<Clip>,
+    gain: f32,
+}
+
+/// Mixa le sorgenti con ffmpeg (clip, volumi, master, porzione, pre-conteggio, click).
+async fn run_export(
+    work_dir: &Path,
+    items: Vec<MixInput>,
+    req: &ExportRequest,
+    label: &str,
 ) -> Result<Response, AppError> {
-    let song = st.get(&id).ok_or_else(not_found)?;
-    if song.status != Status::Ready {
-        return Err(not_found());
-    }
     let (ext, content_type, codec): (&str, &str, &[&str]) = match req.format.as_str() {
         "mp3" => ("mp3", "audio/mpeg", &["-c:a", "libmp3lame", "-b:a", "320k"]),
         "wav" => ("wav", "audio/wav", &["-c:a", "pcm_s16le"]),
         "flac" => ("flac", "audio/flac", &["-c:a", "flac"]),
         f => return Err(bad_request(format!("formato non valido: {f}"))),
     };
-    let stems: Vec<&ExportStem> = req.stems.iter().filter(|s| s.gain > 0.0).collect();
-    if stems.is_empty() {
+    let items: Vec<MixInput> = items.into_iter().filter(|i| i.gain > 0.0 && !i.clips.is_empty()).collect();
+    if items.is_empty() {
         return Err(bad_request("nessuna traccia attiva da esportare"));
     }
-
-    let mut inputs = vec![];
-    let mut filter = String::new();
-    let mut mixed = 0usize;
     // le posizioni delle clip sono a velocità originale: nel file elaborato scalano con 100/tempo
     let scale = 100.0 / req.tempo.unwrap_or(100).clamp(25, 200) as f64;
-    for s in &stems {
-        let k = inputs.len();
-        let g = s.gain.clamp(0.0, 2.0);
-        if let Some(tid) = s.name.strip_prefix("user:") {
-            let ut = song
-                .user_tracks
-                .iter()
-                .find(|u| u.id == tid)
-                .ok_or_else(|| bad_request(format!("traccia sconosciuta: {}", s.name)))?;
-            if ut.clips.is_empty() {
-                continue;
-            }
-            inputs.push(user_audio_path(&st, &id, tid, req.pitch, req.tempo).await?);
-            let n = ut.clips.len();
-            filter += &format!("[{k}:a]asplit=outputs={n}");
-            for j in 0..n {
-                filter += &format!("[u{k}_{j}]");
-            }
-            filter += ";";
-            for (j, c) in ut.clips.iter().enumerate() {
-                filter += &format!(
-                    "[u{k}_{j}]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,adelay=delays={}:all=1[c{k}_{j}];",
-                    c.offset * scale,
-                    c.duration * scale,
-                    (c.start * scale * 1000.0).round() as u64
-                );
-            }
-            for j in 0..n {
-                filter += &format!("[c{k}_{j}]");
-            }
-            if n > 1 {
-                filter += &format!("amix=inputs={n}:normalize=0:duration=longest,");
-            }
-            filter += &format!("volume={g:.4}[a{mixed}];");
-        } else {
-            if !song.stems.contains(&s.name) {
-                return Err(bad_request(format!("traccia sconosciuta: {}", s.name)));
-            }
-            let clips = song.layout.as_ref().and_then(|l| l.stem_clips.get(&s.name));
-            if clips.is_some_and(|c| c.is_empty()) {
-                continue; // tutte le parti eliminate
-            }
-            inputs.push(stem_path(&st, &id, &s.name, req.pitch, req.tempo).await?);
-            match clips {
-                Some(clips) => {
-                    let n = clips.len();
-                    filter += &format!("[{k}:a]asplit=outputs={n}");
-                    for j in 0..n {
-                        filter += &format!("[u{k}_{j}]");
-                    }
-                    filter += ";";
-                    for (j, c) in clips.iter().enumerate() {
-                        filter += &format!(
-                            "[u{k}_{j}]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,adelay=delays={}:all=1[c{k}_{j}];",
-                            c.offset * scale,
-                            c.duration * scale,
-                            (c.start * scale * 1000.0).round() as u64
-                        );
-                    }
-                    for j in 0..n {
-                        filter += &format!("[c{k}_{j}]");
-                    }
-                    if n > 1 {
-                        filter += &format!("amix=inputs={n}:normalize=0:duration=longest,");
-                    }
-                    filter += &format!("volume={g:.4}[a{mixed}];");
-                }
-                None => filter += &format!("[{k}:a]volume={g:.4}[a{mixed}];"),
-            }
+    let mut inputs: Vec<PathBuf> = vec![];
+    let mut filter = String::new();
+    for (k, it) in items.iter().enumerate() {
+        inputs.push(it.path.clone());
+        let n = it.clips.len();
+        filter += &format!("[{k}:a]asplit=outputs={n}");
+        for j in 0..n {
+            filter += &format!("[u{k}_{j}]");
         }
-        mixed += 1;
+        filter += ";";
+        for (j, c) in it.clips.iter().enumerate() {
+            filter += &format!(
+                "[u{k}_{j}]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,adelay=delays={}:all=1[c{k}_{j}];",
+                c.offset * scale,
+                c.duration * scale,
+                (c.start * scale * 1000.0).round() as u64
+            );
+        }
+        for j in 0..n {
+            filter += &format!("[c{k}_{j}]");
+        }
+        if n > 1 {
+            filter += &format!("amix=inputs={n}:normalize=0:duration=longest,");
+        }
+        filter += &format!("volume={:.4}[a{k}];", it.gain.clamp(0.0, 2.0));
     }
-    if mixed == 0 {
-        return Err(bad_request("nessuna traccia attiva da esportare"));
+    for k in 0..items.len() {
+        filter += &format!("[a{k}]");
     }
-    for i in 0..mixed {
-        filter += &format!("[a{i}]");
-    }
-    if mixed > 1 {
-        filter += &format!("amix=inputs={mixed}:normalize=0:duration=longest,");
+    if items.len() > 1 {
+        filter += &format!("amix=inputs={}:normalize=0:duration=longest,", items.len());
     } else {
         filter += "anull,";
     }
@@ -1702,12 +1503,9 @@ async fn export_mix(
             filter += &format!(",atrim=start={start:.4}:end={end:.4},asetpts=PTS-STARTPTS")
         }
         Some(_) => return Err(bad_request("selezione non valida")),
-        None if start > 0.0 => {
-            filter += &format!(",atrim=start={start:.4},asetpts=PTS-STARTPTS")
-        }
+        None if start > 0.0 => filter += &format!(",atrim=start={start:.4},asetpts=PTS-STARTPTS"),
         None => {}
     }
-    // pre-conteggio: la musica parte dopo `pre_roll` secondi
     let pre_roll = req.pre_roll.unwrap_or(0.0);
     if !(0.0..=30.0).contains(&pre_roll) {
         return Err(bad_request("pre-conteggio non valido"));
@@ -1716,11 +1514,10 @@ async fn export_mix(
         filter += &format!(",adelay=delays={}:all=1", (pre_roll * 1000.0).round() as u64);
     }
 
-    let dir = st.song_dir(&id).join("exports");
-    tokio::fs::create_dir_all(&dir).await?;
+    tokio::fs::create_dir_all(work_dir).await?;
     let job = uuid::Uuid::new_v4();
-    let out = dir.join(format!("{job}.{ext}"));
-    let click_path = dir.join(format!("{job}.click.wav"));
+    let out = work_dir.join(format!("{job}.{ext}"));
+    let click_path = work_dir.join(format!("{job}.click.wav"));
     match &req.click {
         Some(c) if !c.times.is_empty() => {
             let valid = c.times.len() <= 50_000
@@ -1731,10 +1528,7 @@ async fn export_mix(
             }
             write_click_wav(&click_path, c)?;
             inputs.push(click_path.clone());
-            filter += &format!(
-                "[mus];[mus][{}:a]amix=inputs=2:normalize=0:duration=longest[out]",
-                inputs.len() - 1
-            );
+            filter += &format!("[mus];[mus][{}:a]amix=inputs=2:normalize=0:duration=longest[out]", inputs.len() - 1);
         }
         _ => filter += "[out]",
     }
@@ -1753,21 +1547,16 @@ async fn export_mix(
         .output()
         .await
         .context("avvio ffmpeg")?;
+    let _ = tokio::fs::remove_file(&click_path).await;
     if !output.status.success() {
         let _ = tokio::fs::remove_file(&out).await;
-        let _ = tokio::fs::remove_file(&click_path).await;
-        return Err(anyhow!(
-            "ffmpeg fallito: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-        .into());
+        return Err(anyhow!("ffmpeg fallito: {}", String::from_utf8_lossy(&output.stderr).trim()).into());
     }
     let data = tokio::fs::read(&out).await?;
     let _ = tokio::fs::remove_file(&out).await;
-    let _ = tokio::fs::remove_file(&click_path).await;
     info!(
-        "export {id}: {} tracce, {ext}, {:.1} MB in {:.1}s",
-        stems.len(),
+        "export '{label}': {} tracce, {ext}, {:.1} MB in {:.1}s",
+        items.len(),
         data.len() as f64 / 1048576.0,
         t0.elapsed().as_secs_f32()
     );
@@ -1782,7 +1571,19 @@ async fn render(
     pitch: i32,
     tempo: u32,
 ) -> anyhow::Result<PathBuf> {
-    let dir = st.song_dir(id).join("render");
+    render_file(st, &st.song_dir(id).join("render"), stem, src, pitch, tempo).await
+}
+
+/// File `src` con tonalità/velocità applicate da Rubber Band, in cache in `dir`.
+async fn render_file(
+    st: &AppState,
+    dir: &Path,
+    stem: &str,
+    src: &Path,
+    pitch: i32,
+    tempo: u32,
+) -> anyhow::Result<PathBuf> {
+    let dir = dir.to_path_buf();
     let out = dir.join(format!("{stem}_p{pitch}_t{tempo}.flac"));
     let lock = st.render_lock(&out);
     let _guard = lock.lock().await;
@@ -1816,7 +1617,8 @@ async fn render(
     }
     tokio::fs::rename(&tmp, &out).await?;
     info!(
-        "render {id}/{stem} pitch={pitch} tempo={tempo}% in {:.1}s",
+        "render {}/{stem} pitch={pitch} tempo={tempo}% in {:.1}s",
+        dir.display(),
         t0.elapsed().as_secs_f32()
     );
     Ok(out)
@@ -2061,8 +1863,10 @@ async fn main() -> anyhow::Result<()> {
         })
         .unwrap_or_default();
     let (tx, rx) = mpsc::unbounded_channel();
+    let projects = projects::load_projects(&data_dir);
     let st = AppState(Arc::new(Inner {
         auth: auth::Auth::open(&data_dir)?,
+        projects: RwLock::new(projects),
         data_dir,
         analysis_dir: env("ANALYSIS_DIR", "/app/analysis").into(),
         playlists: RwLock::new(playlists),
@@ -2105,6 +1909,7 @@ async fn main() -> anyhow::Result<()> {
         info!("riprendo download {id}");
         tokio::spawn(download_task(st.clone(), id));
     }
+    projects::migrate(&st);
     tokio::spawn(worker(st.clone(), rx));
 
     let app = Router::new()
@@ -2126,22 +1931,18 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/import", axum::routing::post(import_url))
         .route("/api/songs/:id", get(get_song).delete(delete_song))
         .route("/api/songs/:id/stems/:stem", get(get_stem))
-        .route(
-            "/api/songs/:id/settings",
-            axum::routing::put(save_settings).delete(reset_settings),
-        )
         .route("/api/songs/:id/process", axum::routing::post(start_processing))
-        .route("/api/songs/:id/markers", axum::routing::put(put_markers))
-        .route("/api/songs/:id/layout", axum::routing::put(put_layout))
+        .route("/api/songs/:id/original", get(get_original))
+        .route("/api/projects", get(projects::list).post(projects::create))
         .route(
-            "/api/songs/:id/tracks",
-            post(add_user_track).layer(DefaultBodyLimit::max(MAX_UPLOAD)),
+            "/api/projects/:pid",
+            get(projects::get_one).put(projects::put_state).delete(projects::delete),
         )
         .route(
-            "/api/songs/:id/tracks/:tid",
-            axum::routing::put(put_user_track).delete(delete_user_track),
+            "/api/projects/:pid/settings",
+            axum::routing::put(projects::put_settings).delete(projects::reset_settings),
         )
-        .route("/api/songs/:id/tracks/:tid/audio", get(get_user_track_audio))
+        .route("/api/projects/:pid/export", axum::routing::post(projects::export))
         .route("/api/songs/:id/chords", get(get_chords).put(put_chords))
         .route("/api/songs/:id/chords/analyze", axum::routing::post(analyze_chords_now))
         .route("/api/songs/:id/notes/analyze", axum::routing::post(transcribe_now))
@@ -2157,7 +1958,6 @@ async fn main() -> anyhow::Result<()> {
             "/api/songs/:id/chords/edits",
             axum::routing::delete(reset_chords),
         )
-        .route("/api/songs/:id/export", axum::routing::post(export_mix))
         .route("/api/health", get(|| async { "ok" }))
         // autenticazione (pubbliche, tranne il cambio password)
         .route("/api/auth/config", get(auth::config))

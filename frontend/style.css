@@ -561,7 +561,7 @@ button.wide { width: 100%; padding: 10px; }
   background: #f5c542; color: #1b1405; padding: 3px 8px; border-radius: 6px;
 }
 .timeline.drop-lanes .drop-hint { display: block; }
-#player { position: relative; }
+#main { position: relative; }
 .drop-overlay {
   display: none; position: absolute; inset: 8px; z-index: 30; pointer-events: none;
   border: 3px dashed #f5c542; border-radius: 16px; background: #f5c5420f;
@@ -571,7 +571,7 @@ button.wide { width: 100%; padding: 10px; }
   margin-top: 14px; padding: 8px 16px; border-radius: 10px; font-weight: 700;
   background: #f5c542; color: #1b1405; box-shadow: 0 6px 20px #0008;
 }
-#player.drop-target .drop-overlay { display: flex; }
+#main.drop-target .drop-overlay { display: flex; }
 
 /* intestazioni delle tracce su schermi stretti (riquadro da 140 px) */
 @media (max-width: 760px) {
@@ -600,3 +600,35 @@ button.wide { width: 100%; padding: 10px; }
   font-size: 13px; box-shadow: 0 8px 30px #0009; opacity: 0; transition: opacity .2s, transform .2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---- progetti e libreria ---- */
+.projects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.projects li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.projects li:hover { background: var(--panel-2); }
+.projects li.active { background: #7c5cff26; color: var(--accent-2); }
+.projects li.empty-hint { cursor: default; color: var(--muted); font-size: 12px; }
+.projects .ren, .projects .del { background: none; border: 0; padding: 0 4px; color: var(--muted); visibility: hidden; }
+.projects li:hover .ren, .projects li:hover .del { visibility: visible; }
+.projects .del:hover { color: var(--danger); }
+#songs li.song-item { cursor: grab; }
+#songs li.song-item:active { cursor: grabbing; }
+#songs li.used { border-color: #7c5cff55; }
+#songs .ghost-go { background: var(--panel); border-color: var(--border); }
+.project-title {
+  flex: 1; min-width: 0; font: 600 22px system-ui, sans-serif; color: var(--text);
+  background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 2px 6px;
+}
+.project-title:hover { border-color: var(--border); }
+.project-title:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+.chord-song { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--muted); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.tracks-empty { padding: 40px 20px; text-align: center; color: var(--muted); border-bottom: 1px solid var(--border); }
+.track-btns .split { padding: 2px 6px; font-size: 12px; white-space: nowrap; }
+.track .tname {
+  font: inherit; font-weight: 600; color: var(--text); background: transparent; border: 1px solid transparent;
+  border-radius: 6px; padding: 1px 4px; width: 160px; min-width: 0;
+}
+.track .tname::placeholder { color: var(--text); opacity: 1; }
+.track .tname:hover { border-color: var(--border); }
+.track .tname:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
+.empty { text-align: center; max-width: 520px; line-height: 1.6; }
+.empty-icon { font-size: 48px; color: var(--accent); }

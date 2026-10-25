@@ -2,11 +2,8 @@
 // Editor multitraccia: selezione delle tracce, gruppi, ordine, modifica delle clip, annulla/ripeti.
 //
 // Ogni traccia è un insieme di clip sulla timeline (secondi alla velocità originale).
-// Le tracce separate nascono nel gruppo "Brano", ancorato: si possono tagliare ed eliminare
-// a pezzi, ma restano al loro posto (accordi, note e click restano allineati). Separando il
-// gruppo diventano tracce audio libere come quelle aggiunte.
+// Le tracce separate di un brano nascono raggruppate: si spostano e si tagliano insieme.
 
-const SONG_GROUP = 'song';
 const EDGE_PX = 7;
 const GROUP_COLORS = ['#7c5cff', '#2bd47d', '#ff8a3d', '#4fc3f7', '#ff5c7a', '#c49bff', '#f5c542'];
 let layoutTimer = null;
@@ -17,8 +14,8 @@ const deep = (x) => JSON.parse(JSON.stringify(x));
 const ek = () => 100 / engine.tempo;
 const trackByName = (n) => engine.tracks.find((t) => t.name === n);
 const groupOf = (name) => state.groups.find((g) => g.tracks.includes(name)) || null;
-const isAnchored = (t) => !!(groupOf(t.name) && groupOf(t.name).anchored);
-const trackLabel = (t) => t.label || LABELS[t.name] || t.name;
+const isAnchored = () => false; // modello precedente: nei progetti nessun gruppo è ancorato
+const trackLabel = (t) => trackTitle(t);
 const groupColor = (g) => GROUP_COLORS[[...g.id].reduce((a, c) => a + c.charCodeAt(0), 0) % GROUP_COLORS.length];
 
 /** Tracce che si muovono insieme a `t` (il suo gruppo, o solo lei). */
@@ -27,15 +24,10 @@ function peersOf(t) {
   return g ? g.tracks.map(trackByName).filter(Boolean) : [t];
 }
 
-function defaultClips(name) {
-  return [{ id: `${name}-0`, start: 0, offset: 0, duration: engine.songDuration }];
-}
 
-/** La traccia separata è intera e al suo posto (nessun taglio o spostamento). */
-function isDefaultClips(t) {
-  if (t.user || t.clips.length !== 1) return false;
-  const c = t.clips[0];
-  return c.start === 0 && c.offset === 0 && Math.abs(c.duration - engine.songDuration) < 0.01;
+/** Nei progetti ogni traccia ha clip esplicite (nessun percorso "traccia intera"). */
+function isDefaultClips() {
+  return false;
 }
 
 function toast(msg) {
@@ -48,72 +40,36 @@ function toast(msg) {
 
 // ------------------------------------------------------------------ disposizione
 
-/** Prepara gruppi e tracce eliminate all'apertura di un brano. */
-function initLayout(song) {
-  const l = song.layout || {};
-  state.groups = l.groups && l.groups.length
-    ? deep(l.groups)
-    : [{ id: SONG_GROUP, name: 'Brano', tracks: [...song.stems], anchored: true }];
-  state.layoutOrder = l.order || [];
-  state.removed = [];
+/** Prepara gruppi, selezione e cronologia all'apertura di un progetto. */
+function initLayout(project) {
+  state.groups = deep(project.groups || []).map((g) => ({ ...g, anchored: false }));
   state.undo = [];
   state.redo = [];
   state.selTracks = new Set();
   state.selClip = null;
-  // tracce eliminate in una sessione precedente: l'annulla non c'è più, si cancellano davvero
-  for (const name of l.removed || []) purgeUserTrack(song, name);
   updateEditUI();
 }
 
-function purgeUserTrack(song, name) {
-  const tid = name.replace(/^user:/, '');
-  song.user_tracks = (song.user_tracks || []).filter((u) => u.id !== tid);
-  api(`/api/songs/${song.id}/tracks/${tid}`, { method: 'DELETE' }).catch(() => {});
-}
 
-/** All'uscita dal brano le tracce eliminate (non più annullabili) vengono cancellate dal server. */
-function purgeRemoved() {
-  const song = state.current;
-  if (!song || !state.removed.length) return;
-  for (const name of state.removed) purgeUserTrack(song, name);
-  state.removed = [];
-}
 
-function applyOrder() {
-  const pos = new Map(state.layoutOrder.map((n, i) => [n, i]));
-  const orig = new Map(engine.tracks.map((t, i) => [t.name, i]));
-  engine.tracks.sort((a, b) => (pos.get(a.name) ?? 1e6 + orig.get(a.name)) - (pos.get(b.name) ?? 1e6 + orig.get(b.name)));
-}
 
 function cleanGroups() {
-  const live = new Set([...engine.tracks.map((t) => t.name), ...state.removed]);
+  const live = new Set(engine.tracks.map((t) => t.name));
   state.groups = state.groups
     .map((g) => ({ ...g, tracks: g.tracks.filter((n) => live.has(n)) }))
-    .filter((g) => g.tracks.length >= 2 || (g.anchored && g.tracks.length >= 1));
+    .filter((g) => g.tracks.length >= 2);
 }
 
 function saveLayout() {
-  const song = state.current;
-  if (!song || !engine.tracks.length) return;
-  cleanGroups();
-  const stemClips = {};
-  for (const t of engine.tracks) if (!t.user && !isDefaultClips(t)) stemClips[t.name] = t.clips;
-  const layout = { order: engine.tracks.map((t) => t.name), groups: state.groups, stem_clips: stemClips, removed: state.removed };
-  song.layout = deep(layout);
-  clearTimeout(layoutTimer);
-  layoutTimer = setTimeout(() => {
-    api(`/api/songs/${song.id}/layout`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(layout),
-    }).catch((e) => toast(`Salvataggio non riuscito: ${e.message}`));
-  }, 400);
+  saveProject();
 }
 
 // ------------------------------------------------------------ annulla / ripeti
 
 function snapshot() {
   return JSON.stringify({
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || null, clips: t.clips })),
-    groups: state.groups, removed: state.removed, markers: state.markers || [],
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips })),
+    groups: state.groups, markers: state.markers || [],
   });
 }
 
@@ -128,45 +84,42 @@ function pushUndo(label) {
 
 async function restoreSnapshot(json) {
   const s = JSON.parse(json);
-  const song = state.current;
+  const project = state.current;
   const wanted = new Set(s.tracks.map((t) => t.name));
-  // tracce aggiunte dopo lo stato da ripristinare: tolte (restano annullabili)
-  for (const t of [...engine.tracks]) {
-    if (!wanted.has(t.name) && t.user) {
-      engine.removeTrack(t);
-      if (!s.removed.includes(t.name)) s.removed.push(t.name);
+  // tracce nate dopo lo stato da ripristinare
+  for (const t of [...engine.tracks]) if (!wanted.has(t.name)) engine.removeTrack(t);
+  // tracce eliminate dopo: l'audio si riscarica dalla libreria
+  const missing = s.tracks.filter((st) => !trackByName(st.name) && songById(st.song));
+  if (missing.length) setLoader('Ripristino delle tracce…', '', null);
+  try {
+    for (const st of missing) {
+      const r = await fetch(sourceUrl(st.song, st.part));
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const audio = await decodeToArrays(await r.arrayBuffer());
+      if (state.current !== project) return;
+      engine.addTrack({ ...st, ...audio });
     }
-  }
-  // tracce eliminate dopo: rimesse (l'audio è ancora sul server)
-  for (const st of s.tracks) {
-    if (trackByName(st.name) || !st.name.startsWith('user:')) continue;
-    const tid = st.name.slice(5);
-    try {
-      const audio = await fetchUserAudio(song, tid);
-      if (state.current !== song) return;
-      engine.addUserTrack({ name: st.name, user: true, tid, label: st.label, clips: st.clips, ...audio });
-      if (!userTrackMeta({ tid })) (song.user_tracks = song.user_tracks || []).push({ id: tid, name: st.label, clips: st.clips });
-    } catch (e) {
-      toast(`Impossibile ripristinare "${st.label}": ${e.message}`);
-    }
+  } catch (e) {
+    toast(`Ripristino incompleto: ${e.message}`);
+  } finally {
+    setLoader(null);
   }
   for (const st of s.tracks) {
     const t = trackByName(st.name);
     if (!t) continue;
     t.clips = deep(st.clips);
-    if (st.label != null) t.label = st.label;
+    t.label = st.label || '';
     engine.setClips(t);
-    if (t.user) saveUserTrack(t);
   }
   const order = new Map(s.tracks.map((t, i) => [t.name, i]));
   engine.tracks.sort((a, b) => (order.get(a.name) ?? 999) - (order.get(b.name) ?? 999));
   state.groups = s.groups;
-  state.removed = s.removed.filter((n) => !trackByName(n));
   state.markers = s.markers;
-  if (typeof saveMarkers === 'function') saveMarkers();
   state.selClip = null;
   engine.updateLength();
-  saveLayout();
+  if (state.refTrack && !trackByName(state.refTrack) && engine.tracks.length) setReference(engine.tracks[0], true);
+  saveProject();
+  layoutTimeline();
   buildTracks();
 }
 
@@ -200,9 +153,11 @@ function selectTracks(names, additive) {
   syncSelection();
 }
 
-/** Clic su una traccia: seleziona lei e il suo gruppo (Ctrl/Shift: aggiunge o toglie). */
+/** Clic su una traccia: seleziona lei e il suo gruppo (Ctrl/Shift: aggiunge o toglie);
+ *  accordi, note e click passano al suo brano. */
 function selectTrack(t, additive) {
   selectTracks(peersOf(t).map((x) => x.name), additive);
+  if (!additive && typeof setReference === 'function') setReference(t);
 }
 
 function clearTrackSelection() {
@@ -238,14 +193,13 @@ function groupSelected() {
   const names = engine.tracks.map((t) => t.name).filter((n) => state.selTracks.has(n));
   if (names.length < 2) return;
   pushUndo('Raggruppa');
-  const anchored = names.some((n) => groupOf(n) && groupOf(n).anchored);
   state.groups.forEach((g) => { g.tracks = g.tracks.filter((n) => !names.includes(n)); });
   const n = state.groups.filter((g) => !g.anchored).length + 1;
-  state.groups.push({ id: anchored ? SONG_GROUP : `g${ukid()}`, name: anchored ? 'Brano' : `Gruppo ${n}`, tracks: names, anchored });
+  state.groups.push({ id: `g${newClipId()}`, name: `Gruppo ${n}`, tracks: names, anchored: false });
   cleanGroups();
   saveLayout();
   buildTracks();
-  toast(anchored ? 'Tracce unite al gruppo Brano (ancorato)' : `Creato il ${state.groups[state.groups.length - 1].name}`);
+  toast(`Creato il ${state.groups[state.groups.length - 1].name}`);
 }
 
 function ungroupSelected() {
@@ -255,9 +209,7 @@ function ungroupSelected() {
   state.groups = state.groups.filter((g) => !groups.has(g));
   saveLayout();
   buildTracks();
-  toast([...groups].some((g) => g.anchored)
-    ? 'Tracce del brano separate: ora sono tracce audio libere'
-    : 'Gruppo separato');
+  toast('Gruppo separato: le tracce ora si modificano singolarmente');
 }
 
 // ------------------------------------------------------------------------ ordine
@@ -349,7 +301,6 @@ function clipsChanged(tracks) {
   for (const t of new Set(tracks)) {
     t.clips.sort((a, b) => a.start - b.start);
     if (engine.setClips(t)) relayout = true;
-    if (t.user) saveUserTrack(t);
   }
   saveLayout();
   if (relayout) layoutTimeline();
@@ -358,7 +309,7 @@ function clipsChanged(tracks) {
 
 function splitClip(t, c, at) {
   if (at <= c.start + 0.02 || at >= c.start + c.duration - 0.02) return false;
-  t.clips.push({ id: ukid(), start: at, offset: c.offset + (at - c.start), duration: c.start + c.duration - at });
+  t.clips.push({ id: newClipId(), start: at, offset: c.offset + (at - c.start), duration: c.start + c.duration - at });
   c.duration = at - c.start;
   return true;
 }
@@ -390,13 +341,15 @@ function deleteSelectedClip() {
   return true;
 }
 
-function deleteUserTrack(t) {
+function deleteTrack(t) {
   pushUndo('Elimina traccia');
   engine.removeTrack(t);
-  state.removed.push(t.name);
   state.selTracks.delete(t.name);
   if (state.selClip && state.selClip.name === t.name) state.selClip = null;
+  cleanGroups();
+  if (state.refTrack === t.name && engine.tracks.length) setReference(engine.tracks[0], true);
   saveLayout();
+  layoutTimeline();
   buildTracks();
   toast(`Traccia "${trackLabel(t)}" eliminata — Ctrl+Z per annullare`);
 }
@@ -415,7 +368,8 @@ function clipAt(t, clientX) {
 
 function snapEdit(t, free) {
   if (free || typeof hasGrid !== 'function' || !hasGrid()) return Math.max(0, t);
-  return Math.max(0, beatTime(Math.round(beatPos(t))));
+  const a = refAnchor();
+  return Math.max(0, beatTime(Math.round(beatPos(t - a))) + a);
 }
 
 /** Tracce libere (non ancorate): trascina per spostare, bordi per accorciare, gruppo compreso. */
@@ -430,16 +384,11 @@ function setupClipCanvas(t) {
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    const hit = clipAt(t, e.clientX);
+    if (!hit.c) return; // spazio vuoto: selezione dell'intervallo / posizionamento (timeline)
+    e.stopPropagation();
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     if (!additive || !state.selTracks.has(t.name)) selectTrack(t, additive);
-    const hit = clipAt(t, e.clientX);
-    if (!hit.c) {
-      state.selClip = null;
-      engine.stopAt = null;
-      engine.seek(timeAt(e.clientX));
-      requestRedraw();
-      return;
-    }
     state.selClip = { name: t.name, cid: hit.c.id };
     const linked = hit.mode === 'move' ? alignedClips(t, hit.c) : alignedClips(t, hit.c).filter((v) =>
       Math.abs(v.c.start - hit.c.start) < 0.002 && Math.abs(v.c.duration - hit.c.duration) < 0.002);
@@ -489,9 +438,9 @@ function setupClipCanvas(t) {
   canvas.addEventListener('pointercancel', end);
 }
 
-/** Durata del file sorgente della traccia (le separate: il brano). */
+/** Durata del file sorgente della traccia. */
 function srcLength(t) {
-  return t.user ? t.srcDuration : engine.songDuration;
+  return t.srcDuration;
 }
 
 // --------------------------------------------------------------------- disegno
@@ -502,7 +451,7 @@ function drawClipTrack(t) {
   const sl = tlEl().scrollLeft, z = state.zoom, k = ek();
   const bps = engine.sr / PEAK_BLOCK;
   const mid = h / 2;
-  const color = t.user ? USER_COLOR : t.color;
+  const color = trackColor(t);
   for (const c of t.clips) {
     const x0 = (c.start * k * z - sl) * dpr;
     const x1 = ((c.start + c.duration) * k * z - sl) * dpr;
@@ -524,17 +473,14 @@ function drawClipTrack(t) {
     ctx.strokeStyle = sel ? '#fff' : '#9aa3b5aa';
     ctx.lineWidth = (sel ? 2 : 1) * dpr;
     ctx.strokeRect(x0 + 0.5 * dpr, 2 * dpr, x1 - x0 - dpr, h - 4 * dpr);
-    if (!isAnchored(t)) { // maniglie per accorciare
-      ctx.fillStyle = sel ? '#fff' : '#9aa3b5';
-      ctx.fillRect(x0, mid - 8 * dpr, 3 * dpr, 16 * dpr);
-      ctx.fillRect(x1 - 3 * dpr, mid - 8 * dpr, 3 * dpr, 16 * dpr);
-    }
+    ctx.fillStyle = sel ? '#fff' : '#9aa3b5'; // maniglie per accorciare
+    ctx.fillRect(x0, mid - 8 * dpr, 3 * dpr, 16 * dpr);
+    ctx.fillRect(x1 - 3 * dpr, mid - 8 * dpr, 3 * dpr, 16 * dpr);
   }
 }
 
 function drawTrack(t) {
-  if (t.user || !isAnchored(t) || !isDefaultClips(t)) drawClipTrack(t);
-  else drawWave(t);
+  drawClipTrack(t);
 }
 
 // ------------------------------------------------------------- righe e comandi
@@ -546,7 +492,7 @@ function decorateRow(t, row) {
   row.classList.toggle('selected', state.selTracks.has(t.name));
   if (g) {
     row.style.setProperty('--gcolor', groupColor(g));
-    row.querySelector('.track-head').title = `${g.name}${g.anchored ? ' (ancorato al brano)' : ''}`;
+    row.querySelector('.track-head').title = `Gruppo: ${g.name}`;
   }
   row.querySelector('.track-head').addEventListener('pointerdown', (e) => {
     // il campo del nome seleziona la traccia e resta modificabile; pulsanti e cursori no
@@ -554,20 +500,15 @@ function decorateRow(t, row) {
     selectTrack(t, e.ctrlKey || e.metaKey || e.shiftKey);
   });
   setupGrip(t, row);
-  if (!isAnchored(t)) {
-    t.canvas.classList.remove('wave');
-    t.canvas.classList.add('ucanvas');
-    setupClipCanvas(t);
-  }
+  setupClipCanvas(t);
 }
 
-/** Clic sulle tracce ancorate (gestito dalla selezione della timeline): seleziona traccia e clip. */
-function anchoredClick(canvas, e) {
+/** Clic sullo spazio vuoto di una traccia (gestito dalla timeline): seleziona la traccia. */
+function trackClick(canvas, e) {
   const t = engine.tracks.find((x) => x.canvas === canvas);
   if (!t) return;
   selectTrack(t, e.ctrlKey || e.metaKey || e.shiftKey);
-  const hit = clipAt(t, e.clientX);
-  state.selClip = hit.c && !isDefaultClips(t) ? { name: t.name, cid: hit.c.id } : null;
+  state.selClip = null;
   requestRedraw();
 }
 

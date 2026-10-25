@@ -77,54 +77,43 @@ const engine = {
   k() { return 100 / this.tempo; },
   toSrc(t) { return (t / this.k()) * this.sr; },
 
-  /**
-   * list: [{ name, l, r, peaks, clips? }] — tracce separate (stessa lunghezza, clip opzionali)
-   * e tracce utente ({ user: true, tid, label, clips }). Ogni traccia è un insieme di clip.
-   */
+  /** list: [{ name, song, part, label, clips, l, r, peaks }] — ogni traccia è un insieme di clip. */
   setTracks(list, keepMix, initialMix) {
     const prev = keepMix ? Object.fromEntries(this.tracks.map((t) => [t.name, t])) : (initialMix || {});
-    this.songDuration = Math.max(0, ...list.filter((t) => !t.user).map((t) => t.l.length)) / this.sr;
+    this.songDuration = 0;
     this.tracks = list.map((t) => this.trackObject(t, prev[t.name]));
-    this.origDuration = this.songDuration;
-    this.duration = this.origDuration * this.k();
+    this.origDuration = 0;
     this.post({
-      type: 'load', length: Math.round(this.origDuration * this.sr),
-      stems: list.map((t, i) => ({ name: t.name, l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: this.engineClips(this.tracks[i]) })),
+      type: 'load', length: 0,
+      stems: list.map((t, i) => ({ name: t.name, l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: this.clipSamples(t.clips) })),
     }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
-    this.updateLength();
+    this.updateLength(true);
   },
 
   trackObject(t, p) {
-    const o = { name: t.name, peaks: t.peaks, muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1 };
-    if (t.user) {
-      Object.assign(o, { user: true, tid: t.tid, label: t.label, clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr });
-    } else {
-      o.clips = t.clips && t.clips.length !== undefined ? t.clips.map((c) => ({ ...c })) : defaultClips(t.name);
-    }
-    return o;
+    return {
+      name: t.name, song: t.song, part: t.part, label: t.label || '', peaks: t.peaks,
+      clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr,
+      muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1,
+    };
   },
 
   clipSamples(clips) {
     return clips.map((c) => ({ s: Math.round(c.start * this.sr), o: Math.round(c.offset * this.sr), d: Math.round(c.duration * this.sr) }));
   },
 
-  /** Clip per il motore: null = traccia separata intera (percorso veloce). */
-  engineClips(t) {
-    return !t.user && isDefaultClips(t) ? null : this.clipSamples(t.clips);
-  },
-
-  /** Durata = brano o fine dell'ultima clip, se va oltre. Restituisce true se è cambiata. */
-  updateLength() {
-    let end = this.songDuration || 0;
-    for (const t of this.tracks) for (const c of t.clips || []) end = Math.max(end, c.start + c.duration);
-    if (Math.abs(end - this.origDuration) < 1e-6) return false;
+  /** Durata della timeline: fine dell'ultima clip (almeno 20 s). true se è cambiata. */
+  updateLength(force) {
+    let end = 20;
+    for (const t of this.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.duration);
+    if (!force && Math.abs(end - this.origDuration) < 1e-6) return false;
     this.origDuration = end;
     this.duration = end * this.k();
     if (this.node) this.post({ type: 'length', length: Math.round(end * this.sr) });
     return true;
   },
 
-  addUserTrack(t) {
+  addTrack(t) {
     const o = this.trackObject(t, null);
     this.tracks.push(o);
     this.post({ type: 'add', name: o.name, l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o) },
@@ -135,7 +124,7 @@ const engine = {
 
   /** Comunica al motore le clip modificate; true se la durata complessiva è cambiata. */
   setClips(t) {
-    this.post({ type: 'clips', name: t.name, clips: this.engineClips(t) });
+    this.post({ type: 'clips', name: t.name, clips: this.clipSamples(t.clips) });
     return this.updateLength();
   },
 
@@ -280,6 +269,7 @@ async function refreshSongs() {
     state.songs = await api('/api/songs');
     renderPlaylists();
     renderSongs();
+    onSongsUpdated();
   } catch (e) {
     console.error(e);
   }
@@ -290,10 +280,10 @@ async function refreshSongs() {
 function statusText(s) {
   switch (s.status) {
     case 'downloading': return `Download ${Math.round(s.progress * 100)}%`;
-    case 'new': return 'Da elaborare';
+    case 'new': return 'Non separato';
     case 'queued': return 'In coda…';
     case 'processing': return `Separazione ${Math.round(s.progress * 100)}%`;
-    case 'ready': return `Pronto · ${s.stems.length} tracce${s.phase ? ` · ${s.phase}…` : ''}`;
+    case 'ready': return `Separato${s.phase ? ` · ${s.phase}…` : ''}`;
     default: return `Errore: ${s.error || 'sconosciuto'}`;
   }
 }
@@ -320,7 +310,7 @@ function renderSongs() {
   $('#lib-count').textContent = list.length ? `${list.length}` : '';
   const waiting = list.filter((x) => x.status === 'new');
   $('#process-all').classList.toggle('hidden', waiting.length < 2);
-  $('#process-all').textContent = `▶ Elabora tutti (${waiting.length})`;
+  $('#process-all').textContent = `⑂ Separa tutti (${waiting.length})`;
   const ul = $('#songs');
   ul.innerHTML = '';
   if (!list.length) {
@@ -332,23 +322,22 @@ function renderSongs() {
   }
   for (const s of list) {
     const li = document.createElement('li');
-    li.className = (state.current && state.current.id === s.id ? 'active ' : '') + (s.status !== 'ready' ? 'disabled' : '');
+    const used = state.current && engine.tracks.some((t) => t.song === s.id);
+    li.className = `song-item${used ? ' used' : ''}`;
+    li.title = 'Trascina nella timeline di un progetto (doppio clic: aggiungi alla testina)';
     li.draggable = true;
     const inPl = state.playlists.filter((p) => p.songs.includes(s.id)).length;
     li.innerHTML = `
       <div class="song-row">
         <span class="song-name" title="${esc(s.name)}">${esc(s.name)}</span>
-        ${s.status === 'new' ? '<button class="go" title="Avvia separazione e analisi">▶ Elabora</button>' : ''}
-        ${s.status === 'error' ? '<button class="go" title="Riprova l\'elaborazione">↻ Riprova</button>' : ''}
+        ${s.status === 'new' ? '<button class="go ghost-go" title="Separa le tracce in anticipo (si può fare anche dalla timeline)">⑂</button>' : ''}
+        ${s.status === 'error' ? '<button class="go" title="Riprova la separazione">↻ Riprova</button>' : ''}
         <button class="more" title="Playlist…">⋯</button>
         <button class="del" title="${pl ? 'Elimina dalla libreria' : 'Elimina'}">✕</button>
       </div>
       <span class="song-status ${s.status === 'error' ? 'error' : s.status === 'new' ? 'new' : ''}">${esc(statusText(s))}${s.status === 'new' ? '' : ` · ${MODEL_LABELS[s.model] || s.model}`}${inPl ? ` · ♫ ${inPl}` : ''}</span>
       ${['downloading', 'queued', 'processing'].includes(s.status) ? `<div class="bar"><div style="width:${s.progress * 100}%"></div></div>` : ''}`;
-    li.addEventListener('click', () => {
-      if (s.status === 'ready') selectSong(s);
-      else if (s.status === 'new' || s.status === 'error') openProcess([s]);
-    });
+    li.addEventListener('dblclick', () => addSongToProject(s.id, null));
     const go = li.querySelector('.go');
     if (go) go.addEventListener('click', (ev) => { ev.stopPropagation(); openProcess([s]); });
     li.addEventListener('dragstart', (e) => {
@@ -361,11 +350,13 @@ function renderSongs() {
     });
     li.querySelector('.del').addEventListener('click', async (ev) => {
       ev.stopPropagation();
-      if (!confirm(`Eliminare definitivamente "${s.name}"?${inPl ? '\nVerrà rimosso anche dalle playlist.' : ''}`)) return;
+      if (!confirm(`Eliminare definitivamente "${s.name}" dalla libreria?${inPl ? '\nVerrà rimosso anche dalle playlist.' : ''}\nLe sue tracce verranno tolte dai progetti che lo usano.`)) return;
+      const usedHere = state.current && engine.tracks.some((t) => t.song === s.id);
       await api(`/api/songs/${s.id}`, { method: 'DELETE' }).catch((e) => alert(e.message));
-      if (state.current && state.current.id === s.id) closePlayer();
       await refreshPlaylists();
-      refreshSongs();
+      await refreshSongs();
+      refreshProjects();
+      if (usedHere) { const id = state.current.id; state.current = null; openProject(id); }
     });
     ul.appendChild(li);
   }
@@ -516,9 +507,12 @@ function setupPlaylists() {
 // =================================================================== elaborazione
 
 let processTargets = [];
+let processDone = null;
 
-function openProcess(songs) {
+/** `done(started)` viene chiamata alla chiusura del dialog. */
+function openProcess(songs, done) {
   processTargets = songs;
+  processDone = done || null;
   $('#proc-names').textContent = songs.length === 1 ? songs[0].name : `${songs.length} brani in attesa`;
   const first = songs[0];
   if (first.status === 'error') {
@@ -551,8 +545,12 @@ async function startProcess() {
 }
 
 function setupProcess() {
-  $('#process-dlg').addEventListener('close', () => {
-    if ($('#process-dlg').returnValue === 'ok') startProcess();
+  $('#process-dlg').addEventListener('close', async () => {
+    const ok = $('#process-dlg').returnValue === 'ok';
+    const done = processDone;
+    processDone = null;
+    if (ok) await startProcess();
+    if (done) done(ok);
   });
   $('#process-all').addEventListener('click', () => {
     const waiting = visibleSongs().filter((x) => x.status === 'new');
@@ -633,41 +631,9 @@ function setupUpload() {
 
 // ======================================================================== player
 
-function selectSong(song) {
-  if (state.current && state.current.id === song.id) return;
-  if (state.current) { flushAutosave(); purgeRemoved(); }
-  state.ab = 'custom';
-  state.customSnap = null;
-  engine.init();
-  engine.clear();
-  state.current = song;
-  const cfg = song.settings || {};
-  state.pitch = cfg.pitch || 0;
-  state.tempo = cfg.tempo || 100;
-  state.sel = null;
-  state.loopOn = false;
-  // selezione e mix vengono applicati quando le tracce sono caricate
-  state.pending = { tracks: cfg.tracks || null, selection: cfg.selection || null, loop: !!cfg.loop };
-  state.saved = JSON.stringify(normalizeSettings(cfg));
-  setMaster(cfg.master ?? 1);
-  engine.loop = null;
-  engine.stopAt = null;
-  updateKnobs();
-  updateSelectionUI();
-  $('#empty').classList.add('hidden');
-  $('#player').classList.remove('hidden');
-  $('#title').textContent = song.name;
-  showSkeleton(song.stems.length);
-  renderSongs();
-  loadStems(false);
-  initLayout(song);
-  loadChords(song);
-  loadNotes(song);
-  loadMarkers(song);
-}
 
 function closePlayer() {
-  purgeRemoved();
+  flushProject();
   engine.clear();
   state.chords = null;
   state.notes = null;
@@ -725,92 +691,6 @@ function stemUrl(song, name) {
   return `/api/songs/${song.id}/stems/${encodeURIComponent(name)}?pitch=${state.pitch}&tempo=${state.tempo}`;
 }
 
-/** Scarica (ed eventualmente fa elaborare al server) le tracce per la tonalità/velocità correnti. */
-/** Scarica e decodifica le tracce originali del brano (una volta sola per brano). */
-async function loadStems(keepMix) {
-  const seq = ++state.loadSeq;
-  const song = state.current;
-  const removed = new Set((song.layout && song.layout.removed) || []);
-  const users = (song.user_tracks || []).filter((u) => !removed.has(`user:${u.id}`));
-  const n = song.stems.length + users.length;
-  const prog = Array.from({ length: n }, () => ({ started: false, got: 0, total: 0 }));
-  let decoded = 0;
-  const report = () => {
-    if (seq !== state.loadSeq) return;
-    const started = prog.filter((p) => p.started).length;
-    const got = prog.reduce((a, p) => a + p.got, 0);
-    const total = prog.reduce((a, p) => a + p.total, 0);
-    if (decoded > 0 || (started === n && got >= total && total > 0)) {
-      setLoader('Preparazione delle tracce…', `${decoded}/${n}`, 0.85 + 0.15 * (decoded / n));
-    } else if (total > 0 && started === n) {
-      setLoader('Caricamento tracce…', `${mb(got)} / ${mb(total)}`, 0.85 * (got / total));
-    } else {
-      setLoader('Caricamento tracce…', `${started}/${n}`, null);
-    }
-  };
-  report();
-  try {
-    await engine.ready;
-    const list = await Promise.all(song.stems.map(async (name, i) => {
-      const data = await fetchWithProgress(`/api/songs/${song.id}/stems/${encodeURIComponent(name)}`, (got, total) => {
-        Object.assign(prog[i], { started: true, got, total });
-        report();
-      }).catch((e) => { throw new Error(`${name}: ${e.message}`); });
-      const buffer = await engine.ctx.decodeAudioData(data);
-      decoded++;
-      report();
-      return { name, buffer };
-    }));
-    const userList = await Promise.all(users.map(async (u, j) => {
-      const i = song.stems.length + j;
-      const data = await fetchWithProgress(`/api/songs/${song.id}/tracks/${u.id}/audio`, (got, total) => {
-        Object.assign(prog[i], { started: true, got, total });
-        report();
-      }).catch((e) => { throw new Error(`${u.name}: ${e.message}`); });
-      const audio = await decodeToArrays(data);
-      decoded++;
-      report();
-      return { name: `user:${u.id}`, user: true, tid: u.id, label: u.name, clips: u.clips, ...audio };
-    }));
-    if (seq !== state.loadSeq) return;
-
-    // canali copiati in array propri (stessa lunghezza) da passare al motore audio
-    const length = Math.max(...list.map((t) => t.buffer.length));
-    const stems = list.map(({ name, buffer }) => {
-      const l = new Float32Array(length);
-      l.set(buffer.getChannelData(0));
-      let r = l;
-      if (buffer.numberOfChannels > 1) {
-        r = new Float32Array(length);
-        r.set(buffer.getChannelData(1));
-      }
-      const clips = song.layout && song.layout.stem_clips && song.layout.stem_clips[name];
-      return { name, l, r, peaks: computePeaks(l, r), clips };
-    });
-
-    const pending = state.pending;
-    state.pending = null;
-    engine.setTracks([...stems, ...userList], keepMix, pending && pending.tracks);
-    applyOrder();
-    engine.setRate(state.tempo, state.pitch);
-    engine.offset = 0;
-    if (pending && pending.selection) {
-      // la selezione è salvata in tempo originale (velocità 100%)
-      const k = 100 / state.tempo;
-      state.sel = { start: pending.selection.start * k, end: Math.min(pending.selection.end * k, engine.duration) };
-      state.loopOn = pending.loop;
-    }
-    engine.setLoop(state.loopOn && state.sel ? { ...state.sel } : null);
-    updateSelectionUI();
-    buildTracks();
-    setLoader(null);
-  } catch (e) {
-    if (seq !== state.loadSeq) return;
-    setLoader(null);
-    if (!engine.tracks.length) $('#tracks').innerHTML = '';
-    alert(`Errore nel caricamento delle tracce: ${e.message}`);
-  }
-}
 
 /** Applica subito tonalità e velocità correnti (motore in tempo reale). */
 function applyRate() {
@@ -827,10 +707,6 @@ function applyRate() {
     renderChords();
     lastChordShown = null;
     if (typeof sc !== 'undefined' && sc.data && !$('#score-view').classList.contains('hidden')) loadScore();
-  }
-  for (const t of engine.tracks) { // i download delle tracce usano tonalità/velocità correnti
-    const a = t.row && t.row.querySelector('a[download]');
-    if (a) a.href = stemUrl(state.current, t.name);
   }
   if (ratio === 1) { requestRedraw(); return; }
   if (state.sel) state.sel = { start: state.sel.start * ratio, end: Math.min(state.sel.end * ratio, engine.duration) };
@@ -928,52 +804,59 @@ const ZOOM_MIN = 2, ZOOM_MAX = 400;
 function buildTracks() {
   const root = $('#tracks');
   root.innerHTML = '';
-  const song = state.current;
+  for (const k of Object.keys(rolls)) delete rolls[k];
+  const ref = state.refSong;
   for (const t of engine.tracks) {
-    if (t.user) {
-      const row = document.createElement('div');
-      row.className = 'track audio-row user-row';
-      row.innerHTML = userRowHtml(t);
-      row.querySelector('.m').addEventListener('click', () => { t.muted = !t.muted; syncTrackButtons(); });
-      row.querySelector('.s').addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
-      row.querySelector('.vol').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
-      t.row = row;
-      t.canvas = row.querySelector('canvas');
-      t.color = USER_COLOR;
-      root.appendChild(row);
-      setupUserRow(t, row);
-      decorateRow(t, row);
-      continue;
-    }
-    const label = LABELS[t.name] || t.name;
-    const color = COLORS[t.name] || '#aaa';
+    const color = trackColor(t);
+    const title = trackTitle(t);
+    const song = songById(t.song);
+    const isRefStem = ref && t.song === ref.id && t.part !== 'original' && ref.status === 'ready';
     const row = document.createElement('div');
     row.className = 'track audio-row';
     row.innerHTML = `
       <div class="track-head">
-        <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>${esc(label)}</div>
+        <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>
+          <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} — clic per rinominare"></div>
         <div class="track-btns">
           <button class="m" title="Muto">M</button>
           <button class="s" title="Solo">S</button>
-          <input type="range" min="0" max="1.5" step="0.01" value="${t.volume}" title="Volume">
-          <button class="n" title="Mostra le note trascritte">♪</button>
-          <a title="Scarica traccia" download="${esc(`${song.name} - ${label}.flac`)}" href="${stemUrl(song, t.name)}">⤓</a>
+          <input type="range" class="vol" min="0" max="1.5" step="0.01" value="${t.volume}" title="Volume">
+          ${t.part === 'original'
+            ? `<button class="split" title="Separa le tracce di questo brano (voce, batteria, basso…)" ${song ? '' : 'disabled'}>⑂</button>`
+            : isRefStem ? '<button class="n" title="Mostra le note trascritte">♪</button>' : ''}
+          <button class="deltrack" title="Togli la traccia dal progetto (Ctrl+Z per annullare)">🗑</button>
         </div>
       </div>
-      <div class="lane"><canvas class="wave vcanvas"></canvas></div>`;
-    const m = row.querySelector('.m'), s = row.querySelector('.s');
-    m.addEventListener('click', () => { t.muted = !t.muted; syncTrackButtons(); });
-    s.addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
-    row.querySelector('input').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
-    row.querySelector('.n').addEventListener('click', () => toggleNotesLane(t.name));
+      <div class="lane"><canvas class="ucanvas vcanvas"></canvas></div>`;
+    row.querySelector('.m').addEventListener('click', () => { t.muted = !t.muted; syncTrackButtons(); });
+    row.querySelector('.s').addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
+    row.querySelector('.vol').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
+    const name = row.querySelector('.tname');
+    let renaming = false;
+    name.addEventListener('focus', () => { renaming = false; });
+    name.addEventListener('input', () => {
+      if (!renaming) { pushUndo('Rinomina traccia'); renaming = true; }
+      t.label = name.value.trim();
+      saveProject();
+    });
+    name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
+    const split = row.querySelector('.split');
+    if (split) split.addEventListener('click', () => splitTrack(t));
+    const n = row.querySelector('.n');
+    if (n) n.addEventListener('click', () => toggleNotesLane(t.part));
+    row.querySelector('.deltrack').addEventListener('click', () => deleteTrack(t));
     t.row = row;
     t.canvas = row.querySelector('canvas');
     t.color = color;
     root.appendChild(row);
     decorateRow(t, row);
-    root.appendChild(buildNotesRow(t));
+    if (isRefStem) root.appendChild(buildNotesRow({ name: t.part, color }));
+  }
+  if (!engine.tracks.length) {
+    root.innerHTML = '<div class="tracks-empty">Trascina qui un brano dalla <b>Libreria</b> (o un file audio dal disco)</div>';
   }
   syncTrackButtons();
+  updateSplitBadges();
   layoutTimeline();
   renderChords();
   updateRhythmControls();
@@ -986,7 +869,7 @@ function syncTrackButtons() {
     tr.row.querySelector('.m').classList.toggle('on', tr.muted);
     tr.row.querySelector('.s').classList.toggle('on', tr.solo);
     const n = tr.row.querySelector('.n');
-    if (n) n.classList.toggle('on', state.showNotes.has(tr.name));
+    if (n) n.classList.toggle('on', state.showNotes.has(tr.part));
     tr.row.classList.toggle('silent', !engine.isAudible(tr));
   }
   drawOverview();
@@ -1082,17 +965,20 @@ function drawOverview() {
   const mid = h / 2;
   // forma d'onda complessiva (massimo tra le tracce udibili, in grigio quelle mute)
   const cols = new Float32Array(w), colsAll = new Float32Array(w);
+  const bps = engine.sr / PEAK_BLOCK, D = engine.origDuration;
   for (const t of engine.tracks) {
-    if (t.user) continue; // la panoramica mostra il brano
-    const bps = engine.sr / PEAK_BLOCK / engine.k(), p = t.peaks;
-    const audible = engine.isAudible(t);
-    for (let x = 0; x < w; x++) {
-      const b0 = Math.floor((x / w) * engine.duration * bps), b1 = Math.max(b0 + 1, Math.floor(((x + 1) / w) * engine.duration * bps));
-      let m = 0;
-      const stride = Math.max(1, Math.floor((b1 - b0) / 48));
-      for (let i = b0; i < b1 && i < p.length; i += stride) if (p[i] > m) m = p[i];
-      if (m > colsAll[x]) colsAll[x] = m;
-      if (audible && m > cols[x]) cols[x] = m;
+    const p = t.peaks, audible = engine.isAudible(t);
+    for (const c of t.clips) {
+      const x0 = Math.max(0, Math.floor((c.start / D) * w)), x1 = Math.min(w, Math.ceil(((c.start + c.duration) / D) * w));
+      for (let x = x0; x < x1; x++) {
+        const t0 = (x / w) * D, t1 = ((x + 1) / w) * D;
+        const b0 = Math.max(0, Math.floor((t0 - c.start + c.offset) * bps)), b1 = Math.max(b0 + 1, Math.floor((t1 - c.start + c.offset) * bps));
+        let m = 0;
+        const stride = Math.max(1, Math.floor((b1 - b0) / 48));
+        for (let i = b0; i < b1 && i < p.length; i += stride) if (p[i] > m) m = p[i];
+        if (m > colsAll[x]) colsAll[x] = m;
+        if (audible && m > cols[x]) cols[x] = m;
+      }
     }
   }
   ctx.fillStyle = '#3a4050';
@@ -1191,10 +1077,10 @@ function setupTimeline() {
   let drag = null;
   tl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !engine.tracks.length) return;
-    if (!e.target.matches('canvas.wave, #ruler')) return;
+    if (!e.target.matches('canvas.ucanvas, #ruler')) return;
     e.preventDefault();
     drag = { x0: e.clientX, t0: timeAt(e.clientX), moved: false,
-      canvas: e.target.matches('canvas.wave') ? e.target : null,
+      canvas: e.target.matches('canvas.ucanvas') ? e.target : null,
       ev: { clientX: e.clientX, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey } };
     tl.setPointerCapture(e.pointerId);
   });
@@ -1213,7 +1099,7 @@ function setupTimeline() {
     if (!d.moved) {
       engine.stopAt = null;
       engine.seek(d.t0);
-      if (d.canvas) anchoredClick(d.canvas, d.ev);
+      if (d.canvas) trackClick(d.canvas, d.ev);
       return;
     }
     const sel = state.sel;
@@ -1346,7 +1232,7 @@ function flushAutosave(keepalive = false) {
   autosaveTimer = null;
   if (state.ab !== 'custom' || state.pending || !isDirty()) return;
   if (keepalive) {
-    fetch(`/api/songs/${state.current.id}/settings`, {
+    fetch(`/api/projects/${state.current.id}/settings`, {
       method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(currentSettings()),
     }).catch(() => {});
@@ -1385,8 +1271,6 @@ function updateSaveUI() {
 
 function storeSongSettings(settings) {
   state.current.settings = settings;
-  const s = state.songs.find((x) => x.id === state.current.id);
-  if (s) s.settings = settings;
   state.saved = JSON.stringify(normalizeSettings(settings || {}));
 }
 
@@ -1396,7 +1280,7 @@ async function saveSettings() {
   const cfg = currentSettings();
   autosaveStatus = 'saving';
   try {
-    await api(`/api/songs/${song.id}/settings`, {
+    await api(`/api/projects/${song.id}/settings`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg),
     });
     if (state.current === song) storeSongSettings(cfg);
@@ -1461,7 +1345,7 @@ async function resetSettings() {
   state.tempo = 100;
   if (reload) applyRate(); else updateKnobs();
   try {
-    if (song.settings) await api(`/api/songs/${song.id}/settings`, { method: 'DELETE' });
+    if (song.settings) await api(`/api/projects/${song.id}/settings`, { method: 'DELETE' });
     if (state.current === song) storeSongSettings(null);
   } catch (e) {
     alert(`Reset fallito: ${e.message}`);
@@ -1478,7 +1362,7 @@ function defaultExportName() {
   const song = state.current;
   const active = activeStems();
   const off = engine.tracks.filter((t) => !active.includes(t));
-  const lbl = (t) => t.label || LABELS[t.name] || t.name;
+  const lbl = (t) => trackTitle(t);
   let name = song.name;
   if (off.length) {
     name += off.length <= active.length
@@ -1494,7 +1378,7 @@ function openExport() {
   if (!engine.tracks.length) return;
   const active = activeStems();
   $('#exp-tracks').innerHTML = engine.tracks.map((t) =>
-    `<span class="chip ${active.includes(t) ? '' : 'off'}" style="--c:${t.color}">${esc(t.label || LABELS[t.name] || t.name)}</span>`).join('');
+    `<span class="chip ${active.includes(t) ? '' : 'off'}" style="--c:${t.color}">${esc(trackTitle(t))}</span>`).join('');
   const range = $('#exp-range');
   range.querySelector('[value=sel]').disabled = !state.sel;
   range.querySelector('[value=sel]').textContent = state.sel
@@ -1532,7 +1416,7 @@ async function doExport() {
   const filename = `${$('#exp-name').value.trim() || song.name}.${format}`;
   setLoader('Esportazione in corso…', filename, null);
   try {
-    const r = await fetch(`/api/songs/${song.id}/export`, {
+    const r = await fetch(`/api/projects/${song.id}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -1622,17 +1506,17 @@ function drawRuler() {
   }
   // battute (se il ritmo è stato analizzato): tacca viola e numero
   if (typeof hasGrid === 'function' && hasGrid()) {
-    const g = state.notes.grid, k = 100 / engine.tempo, bpb = g.beats_per_bar || 4;
+    const g = state.notes.grid, k = 100 / engine.tempo, bpb = g.beats_per_bar || 4, a = refAnchor();
     const barPx = (g.beats[Math.min(bpb, g.beats.length - 1)] - g.beats[0]) * k * z;
     const every = barPx >= 28 ? 1 : barPx >= 7 ? 4 : barPx >= 2 ? 16 : 0;
     if (every) {
       ctx.fillStyle = '#a48bff';
       ctx.font = `${10 * dpr}px system-ui, sans-serif`;
-      const first = Math.floor((beatPos(t0 / k) - g.downbeat) / bpb) - 1;
+      const first = Math.floor((beatPos(t0 / k - a) - g.downbeat) / bpb) - 1;
       for (let bar = Math.max(-1, first); ; bar++) {
-        const t = beatTime(g.downbeat + bar * bpb) * k;
+        const t = (beatTime(g.downbeat + bar * bpb) + a) * k;
         if (t > t1) break;
-        if (t < 0 || bar % every) continue;
+        if (t < a * k || bar % every) continue;
         const x = Math.round((t * z - sl) * dpr);
         ctx.fillRect(x, 0, dpr, h * 0.3);
         ctx.fillText(String(bar - Math.floor((beatPos(0) - g.downbeat) / bpb) + 1), x + 3 * dpr, h * 0.16);
@@ -1749,7 +1633,7 @@ async function loadChords(song) {
   renderChords('Analisi accordi…');
   try {
     const sheet = await api(`/api/songs/${song.id}/chords`);
-    if (seq !== chordSeq || !state.current || state.current.id !== song.id) return;
+    if (seq !== chordSeq || !state.refSong || state.refSong.id !== song.id) return;
     setChords(sheet);
   } catch (e) {
     if (seq !== chordSeq) return;
@@ -1778,7 +1662,7 @@ async function runChordAnalysis(song) {
   renderChords('Analisi accordi in corso…');
   try {
     const sheet = await api(`/api/songs/${song.id}/chords/analyze`, { method: 'POST' });
-    if (seq === chordSeq && state.current && state.current.id === song.id) setChords(sheet);
+    if (seq === chordSeq && state.refSong && state.refSong.id === song.id) setChords(sheet);
   } catch (e) {
     if (seq === chordSeq) renderChords(`Analisi accordi fallita: ${e.message}`);
   }
@@ -1800,13 +1684,17 @@ function renderChords(message) {
     ? (key.minor ? `${rootName(key.root + 9 + engine.pitch)}m` : rootName(key.root + engine.pitch)) : '';
   $('#chord-now').classList.toggle('hidden', !sheet);
   if (!sheet || !engine.duration) {
-    lane.innerHTML = `<div class="placeholder">${esc(message || (sheet ? '' : 'Caricamento accordi…'))}</div>`;
+    const idle = !engine.tracks.length ? 'Trascina un brano dalla libreria nella timeline'
+      : state.refSong && state.refSong.status !== 'ready' ? 'Brano non separato: usa ⑂ sulla traccia per accordi, note e ritmo'
+      : 'Caricamento accordi…';
+    lane.innerHTML = `<div class="placeholder">${esc(message || (sheet ? '' : idle))}</div>`;
     return;
   }
   const scale = 100 / engine.tempo * state.zoom; // secondi originali → pixel
+  const a = refAnchor(); // il brano di riferimento inizia qui nella timeline
   lane.innerHTML = sheet.chords.map((c, i) => `
     <div class="chord-block ${c.root == null ? 'nc' : ''} ${i === chordIdx ? 'current' : ''}" data-i="${i}"
-      style="left:${c.start * scale}px;width:${(c.end - c.start) * scale}px"
+      style="left:${(c.start + a) * scale}px;width:${(c.end - c.start) * scale}px"
       title="${esc(chordName(c))}${c.quality ? ` — ${QUALITY[c.quality][1]}` : ''}">
       ${i > 0 ? '<span class="chord-handle" title="Trascina per spostare il cambio di accordo"></span>' : ''}${esc(chordName(c))}
     </div>`).join('');
@@ -1817,7 +1705,7 @@ let lastChordShown = null;
 function updateChordNow(pos) {
   const sheet = state.chords;
   if (!sheet || !sheet.chords.length) return;
-  const t = pos * engine.tempo / 100; // posizione in secondi originali
+  const t = pos * engine.tempo / 100 - refAnchor(); // posizione nel brano di riferimento
   const list = sheet.chords;
   let i = chordIdx >= 0 && chordIdx < list.length && list[chordIdx].start <= t ? chordIdx : 0;
   while (i + 1 < list.length && list[i + 1].start <= t) i++;
@@ -1841,7 +1729,7 @@ function updateChordNow(pos) {
 
 function saveChords() {
   clearTimeout(chordSave);
-  const song = state.current, sheet = state.chords;
+  const song = state.refSong, sheet = state.chords;
   sheet.edited = true;
   $('#chord-restore').classList.remove('hidden');
   chordSave = setTimeout(async () => {
@@ -1864,7 +1752,7 @@ function closeChordMenu() {
 function openChordMenu(i, clickT, anchor) {
   const menu = $('#chord-menu');
   const list = state.chords.chords;
-  const toDisp = (t) => t * 100 / engine.tempo;
+  const toDisp = (t) => (t + refAnchor()) * 100 / engine.tempo;
   const build = () => {
     const c = list[i];
     if (!c) return closeChordMenu();
@@ -1940,13 +1828,13 @@ function setupChords() {
     lastChordShown = null;
   });
   $('#chord-restore').addEventListener('click', async () => {
-    const song = state.current;
+    const song = state.refSong;
     if (!confirm('Eliminare le correzioni e tornare agli accordi rilevati automaticamente?')) return;
     clearTimeout(chordSave);
     closeChordMenu();
     try {
       const sheet = await api(`/api/songs/${song.id}/chords/edits`, { method: 'DELETE' });
-      if (state.current === song) setChords(sheet);
+      if (state.refSong === song) setChords(sheet);
     } catch (e) {
       alert(e.message);
     }
@@ -1968,21 +1856,21 @@ function setupChords() {
       lane.setPointerCapture(e.pointerId);
       return;
     }
-    const t = timeAt(e.clientX) * engine.tempo / 100;
+    const t = timeAt(e.clientX) * engine.tempo / 100 - refAnchor();
     openChordMenu(i, t, block);
   });
   lane.addEventListener('pointermove', (e) => {
     if (!drag) return;
     const list = state.chords.chords;
     const prev = list[drag.i - 1], cur = list[drag.i];
-    const t = timeAt(e.clientX) * engine.tempo / 100;
+    const t = timeAt(e.clientX) * engine.tempo / 100 - refAnchor();
     const b = Math.min(Math.max(t, prev.start + 0.1), cur.end - 0.1);
     prev.end = cur.start = b;
     drag.moved = true;
     const scale = 100 / engine.tempo * state.zoom;
     const pEl = lane.querySelector(`[data-i="${drag.i - 1}"]`), cEl = lane.querySelector(`[data-i="${drag.i}"]`);
     pEl.style.width = `${(prev.end - prev.start) * scale}px`;
-    cEl.style.left = `${cur.start * scale}px`;
+    cEl.style.left = `${(cur.start + refAnchor()) * scale}px`;
     cEl.style.width = `${(cur.end - cur.start) * scale}px`;
   });
   const end = () => {
@@ -2016,6 +1904,7 @@ function startApp() {
   setupMarkers();
   setupUserTracks();
   setupEditor();
+  setupProjects();
   updateSelectionUI();
   setInterval(() => state.current && updateSaveUI(), 250);
   window.addEventListener('pagehide', () => state.current && flushAutosave(true));

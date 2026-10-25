@@ -79,7 +79,7 @@
         <strong>Trascina qui i file audio</strong>
         <span>oppure <button type="button" id="pick" class="link">sfoglia</button></span>
       </div>
-      <span class="dz-hint">I brani restano in attesa: l'elaborazione la avvii tu.</span>
+      <span class="dz-hint">I brani vanno nella libreria: poi trascinali nella timeline di un progetto.</span>
       <div id="upload-progress" class="bar hidden"><div></div></div>
     </form>
 
@@ -90,6 +90,12 @@
         <button id="yt-btn" type="submit" title="Scarica e separa">▶ Importa</button>
       </div>
     </form>
+
+    <div class="sec-head">
+      <h3>Progetti</h3>
+      <button id="project-new" class="icon" title="Nuovo progetto">＋</button>
+    </div>
+    <ul id="projects" class="projects"></ul>
 
     <div class="sec-head">
       <h3>Playlist</h3>
@@ -107,14 +113,17 @@
   </aside>
 
   <main id="main">
+    <div class="drop-overlay"><span id="drop-label">Rilascia per aggiungere il brano</span></div>
     <div id="empty" class="empty">
-      <p>Carica un brano e selezionalo dalla libreria per aprire il mixer.</p>
+      <div class="empty-icon">◧</div>
+      <p><b>Apri un progetto</b> dalla barra laterale oppure crea un nuovo progetto con <b>＋</b>.</p>
+      <p>Poi trascina i brani dalla <b>Libreria</b> nella timeline: puoi lasciarli interi o separarne le tracce.</p>
+      <p class="hint">Trascinando un brano qui ne nasce subito un progetto.</p>
     </div>
 
     <section id="player" class="hidden">
-      <div class="drop-overlay"><span>Rilascia per aggiungere una traccia audio</span></div>
       <header class="song-head">
-        <h1 id="title"></h1>
+        <input id="title" class="project-title" maxlength="80" title="Nome del progetto (clic per modificare)">
         <div id="chord-now" class="chord-now hidden" title="Accordo corrente → successivo">
           <span id="cn-cur" class="cn-cur">–</span>
           <span class="cn-next">→ <span id="cn-next"></span></span>
@@ -203,7 +212,7 @@
         <button id="group-btn" disabled title="Raggruppa le tracce selezionate (Ctrl+G): si spostano e si modificano insieme">⛓ Raggruppa</button>
         <button id="ungroup-btn" disabled title="Separa il gruppo delle tracce selezionate (Ctrl+Shift+G)">Separa</button>
         <span id="sel-tracks" class="sel-info"></span>
-        <button id="add-track" title="Aggiungi un file audio come nuova traccia, dalla posizione della testina (oppure trascina il file sull'editor)">＋ Traccia audio</button>
+        <button id="add-track" title="Carica un file audio nella libreria e aggiungilo al progetto dalla testina (oppure trascinalo sull'editor)">＋ Audio dal disco</button>
         <input id="add-track-file" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.aif,.aiff,.wma" multiple hidden>
         <span class="grow"></span>
         <div class="zoombar" title="Unità della timeline (Ctrl + rotella sulla timeline)">
@@ -249,7 +258,7 @@
         </div>
         <div class="chord-row">
           <div class="track-head chord-head">
-            <div class="track-title">Accordi <span id="chord-key" class="count"></span></div>
+            <div class="track-title">Accordi <span id="chord-key" class="count"></span><span id="chord-song" class="chord-song"></span></div>
             <div class="track-btns">
               <select id="chord-notation" title="Notazione">
                 <option value="en">C D E</option>
@@ -296,7 +305,7 @@
 
   <dialog id="process-dlg">
     <form method="dialog">
-      <h2>Elabora brano</h2>
+      <h2>Separa le tracce</h2>
       <p id="proc-names" class="hint"></p>
       <label class="field">Separazione delle tracce
         <select id="proc-model">
@@ -312,7 +321,7 @@
       <p class="hint">Le analisi non scelte si possono avviare anche dopo, dall'editor.</p>
       <menu>
         <button value="cancel" formnovalidate>Annulla</button>
-        <button value="ok" class="primary">▶ Avvia</button>
+        <button value="ok" class="primary">⑂ Separa</button>
       </menu>
     </form>
   </dialog>
@@ -412,6 +421,7 @@
   <script src="markers.js"></script>
   <script src="usertracks.js"></script>
   <script src="editor.js"></script>
+  <script src="project.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

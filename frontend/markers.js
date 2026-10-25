@@ -6,36 +6,21 @@ let markerSaveTimer = null;
 let markerMenuId = null;
 const mk = () => 100 / engine.tempo; // secondi originali → timeline corrente
 
-function loadMarkers(song) {
-  state.markers = (song.markers || []).map((m) => ({ ...m }));
+function loadMarkers(project) {
+  state.markers = (project.markers || []).map((m) => ({ ...m }));
   closeMarkerMenu();
   renderMarkers();
 }
 
 function saveMarkers() {
-  const song = state.current;
-  if (!song) return;
-  state.markers.sort((a, b) => a.t - b.t);
-  clearTimeout(markerSaveTimer);
-  markerSaveTimer = setTimeout(async () => {
-    const markers = state.markers.map((m) => ({ ...m }));
-    try {
-      await api(`/api/songs/${song.id}/markers`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markers }),
-      });
-      song.markers = markers;
-      const s = state.songs.find((x) => x.id === song.id);
-      if (s) s.markers = markers;
-    } catch (e) {
-      alert(`Salvataggio segnalibri fallito: ${e.message}`);
-    }
-  }, 300);
+  saveProject(); // i segnalibri fanno parte del progetto
 }
 
 /** Aggancia un tempo (secondi originali) al battito più vicino, se il ritmo è stato analizzato. */
 function snapMarker(t) {
   if (typeof hasGrid !== 'function' || !hasGrid()) return t;
-  return Math.max(0, beatTime(Math.round(beatPos(t))));
+  const a = refAnchor();
+  return Math.max(0, beatTime(Math.round(beatPos(t - a))) + a);
 }
 
 function addMarker(atDisplay) {
