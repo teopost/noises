@@ -276,6 +276,7 @@ pub async fn delete(State(st): State<AppState>, UrlPath(pid): UrlPath<String>) -
     }
     let _ = tokio::fs::remove_file(project_path(&st, &pid)).await;
     let _ = tokio::fs::remove_dir_all(st.0.data_dir.join("projects").join(&pid)).await;
+    crate::setlists::forget_project(&st, &pid);
     Ok(StatusCode::NO_CONTENT)
 }
 

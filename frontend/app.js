@@ -64,6 +64,7 @@ const engine = {
           if (this.playing && m.frame >= this.repMinFrame) this.rep = m;
         } else if (m.type === 'ended' && this.playing) {
           this.stop();
+          if (typeof onPlaybackEnded === 'function') onPlaybackEnded();
         }
       };
     });
@@ -791,7 +792,11 @@ function goToStart() {
 
 function togglePlay() {
   if (engine.playing) engine.pause();
-  else playWithCountIn();
+  else {
+    if (state.setlist) cancelCountdown(); // Play durante il conto alla rovescia: parte subito
+    playWithCountIn();
+  }
+  if (state.setlist) updateSetlistBar();
 }
 
 // ====================================================================== timeline
@@ -1518,6 +1523,7 @@ function tick() {
     } else if (engine.playing && pos >= engine.duration) {
       engine.stop();
       pos = engine.offset;
+      if (typeof onPlaybackEnded === 'function') onPlaybackEnded();
     }
     $('#pos').textContent = fmt(pos);
     const sec = currentSection(pos);

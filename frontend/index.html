@@ -62,6 +62,7 @@
     <div class="rail-logo" title="Noises">◉</div>
     <button class="rail-btn" data-panel="projects" title="Progetti"><span class="ri">◧</span><span class="rl">Progetti</span></button>
     <button class="rail-btn" data-panel="library" title="Libreria"><span class="ri">♫</span><span class="rl">Libreria</span></button>
+    <button class="rail-btn" data-panel="setlists" title="Scalette: progetti da suonare in sequenza"><span class="ri">≣</span><span class="rl">Scalette</span></button>
     <span class="grow"></span>
     <button id="user-btn" class="user-btn" title="Account"><span id="user-avatar" class="avatar"></span></button>
   </nav>
@@ -83,6 +84,35 @@
         <button class="drawer-close ghost" title="Chiudi (Esc)">✕</button>
       </div>
       <ul id="projects" class="projects"></ul>
+    </section>
+
+    <section class="panel" data-panel="setlists">
+      <div id="setlist-list">
+        <div class="panel-head">
+          <h2>Scalette</h2>
+          <button id="sl-new" class="primary" title="Nuova scaletta">＋ Nuova</button>
+          <button class="drawer-close ghost" title="Chiudi (Esc)">✕</button>
+        </div>
+        <ul id="setlists" class="projects"></ul>
+        <p class="hint drawer-hint">Una scaletta mette in fila i progetti da suonare: alla fine di uno parte il successivo.</p>
+      </div>
+      <div id="setlist-detail" class="hidden">
+        <div class="panel-head">
+          <button id="sl-back" class="ghost" title="Tutte le scalette">‹</button>
+          <input id="sl-name" class="sl-name" maxlength="80" title="Nome della scaletta (clic per modificare)">
+          <button class="drawer-close ghost" title="Chiudi (Esc)">✕</button>
+        </div>
+        <div class="sl-actions">
+          <button id="sl-play" class="primary" title="Suona la scaletta dall'inizio">▶ Suona</button>
+          <label class="sl-pause">Tra un brano e l'altro <select id="sl-pause"></select></label>
+        </div>
+        <ul id="sl-projects" class="projects"></ul>
+        <div class="sl-add-row">
+          <select id="sl-add" title="Aggiungi un progetto in fondo alla scaletta"></select>
+          <button id="sl-add-current" class="ghost" title="Aggiungi il progetto aperto">＋ Progetto aperto</button>
+        </div>
+        <button id="sl-delete" class="ghost danger-text">🗑 Elimina scaletta</button>
+      </div>
     </section>
 
     <section class="panel" data-panel="library">
@@ -136,6 +166,16 @@
     </div>
 
     <section id="player" class="hidden">
+      <div id="setlist-bar" class="setlist-bar hidden">
+        <button id="slb-name" class="slb-name link" title="Apri la scaletta"></button>
+        <span id="slb-pos" class="count"></span>
+        <span id="slb-status" class="slb-status"></span>
+        <button id="slb-now" class="primary hidden" title="Avvia subito">▶ Ora</button>
+        <span class="grow"></span>
+        <button id="slb-prev" title="Progetto precedente">⏮</button>
+        <button id="slb-next" title="Progetto successivo">⏭</button>
+        <button id="slb-exit" class="ghost" title="Esci dalla scaletta">✕</button>
+      </div>
       <header class="song-head">
         <input id="title" class="project-title" maxlength="80" title="Nome del progetto (clic per modificare)">
         <div id="chord-now" class="chord-now hidden" title="Accordo corrente → successivo">
@@ -463,6 +503,7 @@
   <script src="usertracks.js"></script>
   <script src="editor.js"></script>
   <script src="project.js"></script>
+  <script src="setlist.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

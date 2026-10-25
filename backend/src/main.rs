@@ -7,6 +7,7 @@
 
 mod auth;
 mod projects;
+mod setlists;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -284,6 +285,7 @@ struct Inner {
     data_dir: PathBuf,
     analysis_dir: PathBuf,
     playlists: RwLock<Vec<Playlist>>,
+    setlists: RwLock<Vec<setlists::Setlist>>,
     device: String,
     rubberband_args: Vec<String>,
     songs: RwLock<HashMap<String, Song>>,
@@ -371,6 +373,7 @@ fn owns_path(st: &AppState, user: &auth::User, path: &str) -> bool {
     match seg.as_slice() {
         ["api", "songs", id, ..] => song_ok(id),
         ["api", "projects", id, ..] => projects::owns(st, &user.id, id),
+        ["api", "setlists", id, ..] => setlists::owns(st, &user.id, id),
         ["api", "playlists", id, rest @ ..] => {
             let pl_ok = st.0.playlists
                 .read()
@@ -1919,12 +1922,14 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_default();
     let (tx, rx) = mpsc::unbounded_channel();
     let projects = projects::load_projects(&data_dir);
+    let saved_setlists = setlists::load(&data_dir);
     let st = AppState(Arc::new(Inner {
         auth: auth::Auth::open(&data_dir)?,
         projects: RwLock::new(projects),
         data_dir,
         analysis_dir: env("ANALYSIS_DIR", "/app/analysis").into(),
         playlists: RwLock::new(playlists),
+        setlists: RwLock::new(saved_setlists),
         device: env("DEMUCS_DEVICE", "cpu"),
         rubberband_args: env("RUBBERBAND_ARGS", "")
             .split_whitespace()
@@ -1988,6 +1993,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/songs/:id/stems/:stem", get(get_stem))
         .route("/api/songs/:id/process", axum::routing::post(start_processing))
         .route("/api/songs/:id/original", get(get_original))
+        .route("/api/setlists", get(setlists::list).post(setlists::create))
+        .route("/api/setlists/:id", axum::routing::put(setlists::update).delete(setlists::delete))
         .route("/api/projects", get(projects::list).post(projects::create))
         .route(
             "/api/projects/:pid",

@@ -112,7 +112,8 @@ function renderProjects() {
       if (!confirm(`Eliminare il progetto "${p.name}"?\nI brani restano nella libreria.`)) return;
       await api(`/api/projects/${p.id}`, { method: 'DELETE' }).catch((err) => alert(err.message));
       if (state.current && state.current.id === p.id) closePlayer();
-      refreshProjects();
+      await refreshProjects();
+      refreshSetlists(); // il progetto sparisce anche dalle scalette
     });
     ul.appendChild(li);
   }
@@ -257,6 +258,7 @@ function saveProject() {
       .then(() => {
         const s = state.projects.find((x) => x.id === p.id);
         if (s) {
+          if (s.name !== body.name && typeof renderSetlists === 'function') queueMicrotask(renderSetlists);
           s.name = body.name;
           s.songs = [...new Set(body.tracks.map((t) => (songById(t.song) || {}).name).filter(Boolean))];
           renderProjects();
@@ -441,6 +443,7 @@ function setupProjects() {
   $('#title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); e.stopPropagation(); });
   window.addEventListener('pagehide', () => flushProject(true));
   setupShell();
+  setupSetlists();
   refreshProjects().then(() => { if (!state.current) openDrawer('projects'); });
 }
 
