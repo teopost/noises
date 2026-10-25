@@ -96,6 +96,8 @@ function buildNotesRow(t) {
       <div class="track-title small"><span class="swatch" style="background:${t.color}"></span>Note · ${esc(LABELS[stem] || stem)} <span class="count"></span></div>
       <div class="track-btns">
         <button class="syn" title="Ascolta le note trascritte con un suono sintetico">🔊 Synth</button>
+        ${isDrums(stem) ? '' : `<select class="syn-sound" title="Suono del synth">${SOUNDS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+        <select class="syn-oct" title="Ottava del synth (+1 rende più udibile il basso)">${OCTAVES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>`}
         <button class="rst hidden" title="Annulla le correzioni e ripristina la trascrizione automatica">↺</button>
       </div>
     </div>
@@ -109,6 +111,21 @@ function buildNotesRow(t) {
     refreshNotesHeads();
   });
   row.querySelector('.rst').addEventListener('click', () => restoreNotes(stem));
+  const snd = row.querySelector('.syn-sound'), oct = row.querySelector('.syn-oct');
+  if (snd) {
+    const pref = synthPref(stem);
+    snd.value = pref.sound;
+    oct.value = String(pref.oct);
+    // anteprima: una nota centrale della parte con il nuovo suono
+    const demo = () => {
+      const ns = state.notes && state.notes.tracks[stem];
+      const p = ns && ns.length ? ns[Math.floor(ns.length / 2)].pitch : 60;
+      previewNote(stem, p);
+    };
+    snd.addEventListener('change', () => { setSynthPref(stem, { sound: snd.value }); synthResync(); demo(); });
+    oct.addEventListener('change', () => { setSynthPref(stem, { oct: Number(oct.value) }); synthResync(); demo(); });
+    for (const el of [snd, oct]) el.addEventListener('keydown', (e) => e.stopPropagation());
+  }
   setupRollEditing(stem, canvas);
   layoutRoll(stem);
   setTimeout(() => refreshNotesHeads(state.notes ? undefined
@@ -425,6 +442,130 @@ const SYNTH = {
   piano: { type: 'triangle', cutoff: 3500, a: 0.003, r: 0.25, decay: true },
   other: { type: 'square', cutoff: 1800, a: 0.01, r: 0.12 },
 };
+// Suoni selezionabili per traccia (oltre a "Automatico", il suono predefinito della parte).
+const SOUNDS = [
+  ['auto', 'Automatico'], ['piano', 'Piano'], ['epiano', 'Piano elettrico'], ['organ', 'Organo'],
+  ['marimba', 'Marimba'], ['pluck', 'Chitarra pizzicata'], ['sine', 'Sinusoide pura'], ['lead', 'Synth lead'],
+];
+const OCTAVES = [[-1, 'Ott. −1'], [0, 'Ott. 0'], [1, 'Ott. +1'], [2, 'Ott. +2']];
+
+/** Suono e ottava scelti per la traccia (preferenza del browser). */
+function synthPref(stem) {
+  if (!state.synthPrefs) {
+    try { state.synthPrefs = JSON.parse(localStorage.getItem('noises.synth') || '{}'); } catch { state.synthPrefs = {}; }
+  }
+  return { sound: 'auto', oct: 0, ...(state.synthPrefs[stem] || {}) };
+}
+
+function setSynthPref(stem, patch) {
+  synthPref(stem);
+  state.synthPrefs[stem] = { ...synthPref(stem), ...patch };
+  try { localStorage.setItem('noises.synth', JSON.stringify(state.synthPrefs)); } catch {}
+}
+
+/** Inviluppo: attacco, (decadimento verso `sustain`), rilascio a `off`. */
+function envelope(g, when, off, peak, { a = 0.005, tc = 0, sustain = 1, r = 0.08 }) {
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(peak, when + a);
+  if (tc) g.gain.setTargetAtTime(peak * sustain, when + a, tc);
+  g.gain.setTargetAtTime(0, Math.max(off, when + a + 0.01), r / 3);
+  return off + r + 0.05;
+}
+
+/** Strumenti sintetici: collegano a `out` e restituiscono [nodi, istante di fine]. */
+const INSTRUMENTS = {
+  piano(ctx, out, f, when, off, vol) {
+    // parziali armoniche con decadimento più rapido per quelle acute
+    const nodes = [];
+    let end = when;
+    [[1, 1], [2, 0.45], [3, 0.25], [4, 0.14], [5, 0.08], [6, 0.05]].forEach(([n, amp]) => {
+      if (f * n > 12000) return;
+      const o = ctx.createOscillator();
+      o.frequency.value = f * n * (1 + 0.0004 * n * n); // leggera inarmonicità delle corde
+      const g = ctx.createGain();
+      const decay = Math.min(2.5, 1.4 * 220 / f + 0.4) / n;
+      end = Math.max(end, envelope(g, when, Math.min(off, when + decay * 5), vol * amp, { a: 0.002, tc: decay, sustain: 0, r: 0.25 }));
+      o.connect(g).connect(out);
+      nodes.push(o, g);
+    });
+    return [nodes, end];
+  },
+  epiano(ctx, out, f, when, off, vol) {
+    // FM: modulatore 1:1 con indice che decade → attacco "a campana", corpo morbido
+    const car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain(), g = ctx.createGain();
+    car.frequency.value = f;
+    mod.frequency.value = f;
+    mg.gain.setValueAtTime(f * 2.5, when);
+    mg.gain.setTargetAtTime(f * 0.3, when, 0.25);
+    mod.connect(mg).connect(car.frequency);
+    const end = envelope(g, when, off, vol, { a: 0.003, tc: 0.9, sustain: 0.25, r: 0.2 });
+    car.connect(g).connect(out);
+    return [[car, mod, mg, g], end];
+  },
+  organ(ctx, out, f, when, off, vol) {
+    const nodes = [];
+    const g = ctx.createGain();
+    const end = envelope(g, when, off, vol, { a: 0.012, r: 0.06 });
+    [[1, 1], [2, 0.6], [3, 0.35], [4, 0.25], [8, 0.1]].forEach(([n, amp]) => {
+      if (f * n > 12000) return;
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.frequency.value = f * n;
+      og.gain.value = amp * 0.6;
+      o.connect(og).connect(g);
+      nodes.push(o, og);
+    });
+    g.connect(out);
+    return [[...nodes, g], end];
+  },
+  marimba(ctx, out, f, when, off, vol) {
+    const car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain(), g = ctx.createGain();
+    car.frequency.value = f;
+    mod.frequency.value = f * 4;
+    mg.gain.setValueAtTime(f * 3, when);
+    mg.gain.setTargetAtTime(0, when, 0.03);
+    mod.connect(mg).connect(car.frequency);
+    const decay = Math.min(0.6, 0.25 * 440 / f + 0.1);
+    const end = envelope(g, when, Math.min(off, when + decay * 4), vol * 1.3, { a: 0.002, tc: decay, sustain: 0, r: 0.1 });
+    car.connect(g).connect(out);
+    return [[car, mod, mg, g], end];
+  },
+  pluck(ctx, out, f, when, off, vol) {
+    const o = ctx.createOscillator(), flt = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.value = f;
+    flt.type = 'lowpass';
+    flt.Q.value = 2;
+    flt.frequency.setValueAtTime(Math.min(16000, f * 10), when);
+    flt.frequency.setTargetAtTime(f * 1.5, when, 0.12);
+    const end = envelope(g, when, Math.min(off, when + 2), vol, { a: 0.002, tc: 0.45, sustain: 0.05, r: 0.12 });
+    o.connect(flt).connect(g).connect(out);
+    return [[o, flt, g], end];
+  },
+  sine(ctx, out, f, when, off, vol) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = f;
+    const end = envelope(g, when, off, vol * 1.3, { a: 0.006, r: 0.05 });
+    o.connect(g).connect(out);
+    return [[o, g], end];
+  },
+  lead(ctx, out, f, when, off, vol) {
+    const flt = ctx.createBiquadFilter(), g = ctx.createGain();
+    flt.type = 'lowpass';
+    flt.frequency.value = Math.min(12000, Math.max(2500, f * 6));
+    const nodes = [-7, 7].map((cents) => {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.detune.value = cents;
+      o.connect(flt);
+      return o;
+    });
+    const end = envelope(g, when, off, vol * 0.6, { a: 0.01, r: 0.08 });
+    flt.connect(g).connect(out);
+    return [[...nodes, flt, g], end];
+  },
+};
+
 const voices = new Set();
 let noiseBuf = null, synthTimer = null, schedHorizon = null;
 
@@ -473,11 +614,19 @@ function playVoice(stem, pitch, velocity, when, dur) {
       src.stop(when + len + 0.02);
       nodes.push(src, f);
     }
+  } else if (synthPref(stem).sound !== 'auto' && INSTRUMENTS[synthPref(stem).sound]) {
+    const pref = synthPref(stem);
+    const f = 440 * Math.pow(2, (pitch + engine.pitch + 12 * pref.oct - 69) / 12);
+    const off = when + Math.max(dur, 0.06);
+    const [ns, end] = INSTRUMENTS[pref.sound](ctx, out, f, when, off, vol * 1.6);
+    const oscs = ns.filter((n) => n.start);
+    oscs.forEach((n) => { n.start(when); n.stop(end); });
+    nodes.push(...ns.filter((n) => !n.start), ...oscs);
   } else {
     const cfg = SYNTH[stem] || SYNTH.other;
     const o = ctx.createOscillator();
     o.type = cfg.type;
-    o.frequency.value = 440 * Math.pow(2, (pitch + engine.pitch - 69) / 12);
+    o.frequency.value = 440 * Math.pow(2, (pitch + engine.pitch + 12 * synthPref(stem).oct - 69) / 12);
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = cfg.cutoff;

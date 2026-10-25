@@ -779,3 +779,8 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .slb-name::before { content: '≣ '; }
 .slb-status { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .setlist-bar button:not(.link) { padding: 3px 10px; }
+/* suono e ottava del synth, accanto al pulsante */
+.notes-head .track-btns { flex-wrap: wrap; gap: 4px; }
+.notes-head select { font-size: 11px; padding: 2px 4px; height: 24px; }
+.notes-head .syn-sound { max-width: 112px; }
+.notes-head .syn-oct { width: 64px; }
