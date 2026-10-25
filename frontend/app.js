@@ -769,7 +769,7 @@ function setupControls() {
   $('#loop').addEventListener('click', toggleLoop);
   $('#play-sel').addEventListener('click', playSelection);
   $('#sel-clear').addEventListener('click', () => setSelection(null));
-  $('#export').addEventListener('click', openExport);
+  $('#export').addEventListener('click', () => openExport());
   $('#export-dlg').addEventListener('close', () => {
     if ($('#export-dlg').returnValue === 'ok') doExport();
   });
@@ -821,10 +821,8 @@ function buildTracks() {
           <button class="m" title="Muto">M</button>
           <button class="s" title="Solo">S</button>
           <input type="range" class="vol" min="0" max="1.5" step="0.01" value="${t.volume}" title="Volume">
-          ${t.part === 'original'
-            ? `<button class="split" title="Separa le tracce di questo brano (voce, batteria, basso…)" ${song ? '' : 'disabled'}>⑂</button>`
-            : isRefStem ? '<button class="n" title="Mostra le note trascritte">♪</button>' : ''}
-          <button class="deltrack" title="Togli la traccia dal progetto (Ctrl+Z per annullare)">🗑</button>
+          <span class="split-badge hidden" title="Separazione in corso"></span>
+          <button class="tmenu" title="Altre azioni">⋯</button>
         </div>
       </div>
       <div class="lane"><canvas class="ucanvas vcanvas"></canvas></div>`;
@@ -840,11 +838,7 @@ function buildTracks() {
       saveProject();
     });
     name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
-    const split = row.querySelector('.split');
-    if (split) split.addEventListener('click', () => splitTrack(t));
-    const n = row.querySelector('.n');
-    if (n) n.addEventListener('click', () => toggleNotesLane(t.part));
-    row.querySelector('.deltrack').addEventListener('click', () => deleteTrack(t));
+    row.querySelector('.tmenu').addEventListener('click', (e) => { e.stopPropagation(); openTrackMenu(t, e.currentTarget, isRefStem, song); });
     t.row = row;
     t.canvas = row.querySelector('canvas');
     t.color = color;
@@ -874,8 +868,6 @@ function syncTrackButtons() {
     if (!tr.row) continue;
     tr.row.querySelector('.m').classList.toggle('on', tr.muted);
     tr.row.querySelector('.s').classList.toggle('on', tr.solo);
-    const n = tr.row.querySelector('.n');
-    if (n) n.classList.toggle('on', state.showNotes.has(tr.part));
     tr.row.classList.toggle('silent', !engine.isAudible(tr));
   }
   drawOverview();
@@ -1359,13 +1351,18 @@ async function resetSettings() {
   updateSaveUI();
 }
 
-/** Tracce effettivamente udibili, con il loro volume. */
+/** Tracce da esportare: quelle udibili, oppure solo quella scelta dal menu ⋯ della traccia. */
 function activeStems() {
+  if (state.exportOnly) return engine.tracks.filter((t) => t.name === state.exportOnly);
   return engine.tracks.filter((t) => engine.isAudible(t) && t.volume > 0);
 }
 
 function defaultExportName() {
   const song = state.current;
+  if (state.exportOnly) {
+    const t = engine.tracks.find((x) => x.name === state.exportOnly);
+    return `${song.name} - ${trackTitle(t)}`.replace(/[\\/:*?"<>|]+/g, '_');
+  }
   const active = activeStems();
   const off = engine.tracks.filter((t) => !active.includes(t));
   const lbl = (t) => trackTitle(t);
@@ -1380,8 +1377,9 @@ function defaultExportName() {
   return name.replace(/[\\/:*?"<>|]+/g, '_');
 }
 
-function openExport() {
+function openExport(onlyTrack) {
   if (!engine.tracks.length) return;
+  state.exportOnly = onlyTrack ? onlyTrack.name : null;
   const active = activeStems();
   $('#exp-tracks').innerHTML = engine.tracks.map((t) =>
     `<span class="chip ${active.includes(t) ? '' : 'off'}" style="--c:${t.color}">${esc(trackTitle(t))}</span>`).join('');

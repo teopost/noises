@@ -531,3 +531,45 @@ function setupEditor() {
     else if (e.code === 'Escape' && state.selTracks.size) clearTrackSelection();
   });
 }
+
+// ------------------------------------------------------------ menu ⋯ della traccia
+
+function closeTrackMenu() {
+  $('#track-menu').classList.add('hidden');
+}
+
+function openTrackMenu(t, anchor, isRefStem, song) {
+  const menu = $('#track-menu');
+  const waiting = state.pendingSplits.has(t.name);
+  const items = [];
+  if (t.part === 'original') {
+    items.push({ icon: '⑂', label: waiting ? 'Separazione in corso…' : 'Separa traccia', disabled: waiting || !song, run: () => splitTrack(t) });
+  }
+  if (isRefStem) {
+    items.push({ icon: '♪', label: state.showNotes.has(t.part) ? 'Nascondi note' : 'Mostra note', run: () => toggleNotesLane(t.part) });
+    items.push({ icon: '𝄞', label: 'Spartito e tablatura', disabled: !state.notes, run: () => openScore(t.part) });
+  }
+  items.push({ icon: '✎', label: 'Rinomina', run: () => { const n = t.row.querySelector('.tname'); n.focus(); n.select(); } });
+  items.push({ icon: '⧉', label: 'Duplica', run: () => duplicateTrack(t) });
+  items.push({ icon: '⤓', label: 'Esporta', run: () => openExport(t) });
+  items.push({ sep: true });
+  items.push({ icon: '🗑', label: 'Elimina', danger: true, run: () => deleteTrack(t) });
+  menu.innerHTML = `<div class="menu-title">${esc(trackTitle(t))}</div>` + items.map((it, i) => it.sep
+    ? '<div class="menu-sep"></div>'
+    : `<button class="menu-item ${it.danger ? 'danger' : ''}" data-i="${i}" ${it.disabled ? 'disabled' : ''}><span class="mi">${it.icon}</span>${esc(it.label)}</button>`).join('');
+  menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => {
+    closeTrackMenu();
+    items[Number(b.dataset.i)].run();
+  }));
+  menu.classList.remove('hidden');
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)}px`;
+  const below = r.bottom + 4;
+  menu.style.top = `${below + menu.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - menu.offsetHeight - 4) : below}px`;
+}
+
+document.addEventListener('pointerdown', (e) => {
+  const m = document.getElementById('track-menu');
+  if (m && !m.classList.contains('hidden') && !m.contains(e.target) && !e.target.closest('.tmenu')) closeTrackMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.code === 'Escape') { const m = document.getElementById('track-menu'); if (m) m.classList.add('hidden'); } });

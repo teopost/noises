@@ -366,13 +366,35 @@ async function replaceWithStems(t) {
 /** Avanzamento della separazione sulle tracce in attesa; sostituzione al termine. */
 function updateSplitBadges() {
   for (const t of engine.tracks) {
-    const b = t.row && t.row.querySelector('.split');
+    const b = t.row && t.row.querySelector('.split-badge');
     if (!b) continue;
     const s = songById(t.song);
     const waiting = state.pendingSplits.has(t.name) && s && ['queued', 'processing'].includes(s.status);
-    b.textContent = waiting ? (s.status === 'queued' ? '⏳' : `${Math.round(s.progress * 100)}%`) : '⑂';
-    b.title = waiting ? (s.status === 'queued' ? 'Separazione in coda' : 'Separazione in corso') : 'Separa le tracce di questo brano (voce, batteria, basso…)';
-    b.disabled = waiting;
+    b.classList.toggle('hidden', !waiting);
+    if (waiting) b.textContent = s.status === 'queued' ? '⏳' : `⑂ ${Math.round(s.progress * 100)}%`;
+  }
+}
+
+/** Duplica la traccia (stesso audio e stesse clip), subito sotto l'originale. */
+async function duplicateTrack(t) {
+  setLoader(`Duplicazione di "${trackTitle(t)}"…`, '', null);
+  try {
+    const r = await fetch(sourceUrl(t.song, t.part));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const audio = await decodeToArrays(await r.arrayBuffer());
+    pushUndo('Duplica traccia');
+    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part,
+      label: `${trackTitle(t)} (copia)`, clips: t.clips.map((c) => ({ ...c, id: newClipId() })), ...audio });
+    engine.tracks.splice(engine.tracks.indexOf(copy), 1);
+    engine.tracks.splice(engine.tracks.indexOf(t) + 1, 0, copy);
+    Object.assign(copy, { muted: t.muted, solo: t.solo, volume: t.volume });
+    selectTracks([copy.name]);
+    saveProject();
+    buildTracks();
+  } catch (e) {
+    alert(`Duplicazione non riuscita: ${e.message}`);
+  } finally {
+    setLoader(null);
   }
 }
 
@@ -479,7 +501,6 @@ function setupShell() {
   $('#empty-library').addEventListener('click', () => openDrawer('library'));
   $('#empty-new').addEventListener('click', async () => { const p = await createProject(); if (p) openProject(p.id); });
 
-  $('#add-track').addEventListener('click', () => openAddTrack());
   document.querySelectorAll('.at-tabs button').forEach((b) => b.addEventListener('click', () => setAddTrackTab(b.dataset.tab)));
   $('#at-search').addEventListener('input', renderAddTrackList);
   $('#at-pick').addEventListener('click', () => { $('#addtrack-dlg').close(); $('#add-track-file').click(); });
