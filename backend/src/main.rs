@@ -665,11 +665,18 @@ struct ChordSheet {
 }
 
 /// Esegue il riconoscimento accordi (una volta sola) e restituisce il percorso del risultato.
-async fn analyze_chords(st: &AppState, id: &str, stems: &[String]) -> anyhow::Result<PathBuf> {
+/// Senza tracce separate si analizza il brano intero (meno preciso: voce e batteria disturbano).
+/// Con `redo` scarta il risultato precedente e le correzioni e ripete l'analisi.
+async fn analyze_chords(st: &AppState, id: &str, stems: &[String], redo: bool) -> anyhow::Result<PathBuf> {
     let dir = st.song_dir(id);
     let out = dir.join("chords.json");
     let lock = st.render_lock(&out);
     let _guard = lock.lock().await;
+    if redo {
+        for f in ["chords.json", "chords.edited.json"] {
+            let _ = tokio::fs::remove_file(dir.join(f)).await;
+        }
+    }
     if out.exists() {
         return Ok(out);
     }
@@ -679,12 +686,17 @@ async fn analyze_chords(st: &AppState, id: &str, stems: &[String]) -> anyhow::Re
         .filter(|s| *s != "vocals" && *s != "drums")
         .collect();
     let used = if harmonic.is_empty() { stems.iter().collect() } else { harmonic };
+    let inputs: Vec<PathBuf> = if used.is_empty() {
+        vec![ensure_original(st, id).await?]
+    } else {
+        used.iter().map(|s| dir.join("stems").join(format!("{s}.flac"))).collect()
+    };
     let tmp = dir.join("chords.json.tmp");
     let t0 = std::time::Instant::now();
     let output = Command::new("python3")
         .arg(st.0.analysis_dir.join("chords.py"))
         .arg(&tmp)
-        .args(used.iter().map(|s| dir.join("stems").join(format!("{s}.flac"))))
+        .args(&inputs)
         .stdin(Stdio::null())
         .output()
         .await
@@ -703,15 +715,15 @@ async fn analyze_chords(st: &AppState, id: &str, stems: &[String]) -> anyhow::Re
 }
 
 /// Accordi del brano; con `run` esegue l'analisi se manca, altrimenti risponde "non eseguita".
-async fn load_chords(st: &AppState, song: &Song, run: bool) -> Result<ChordSheet, AppError> {
+async fn load_chords(st: &AppState, song: &Song, run: bool, redo: bool) -> Result<ChordSheet, AppError> {
     let dir = st.song_dir(&song.id);
     let edited = dir.join("chords.edited.json");
     let auto = dir.join("chords.json");
     let analyzing = st.0.render_locks.lock().unwrap().get(&auto).is_some_and(|l| l.try_lock().is_err());
-    let (path, is_edited) = if edited.exists() {
+    let (path, is_edited) = if edited.exists() && !redo {
         (edited, true)
     } else if auto.exists() || run || analyzing {
-        (analyze_chords(st, &song.id, &song.stems).await?, false)
+        (analyze_chords(st, &song.id, &song.stems, redo).await?, false)
     } else {
         return Err(not_analyzed("analisi accordi"));
     };
@@ -726,20 +738,37 @@ fn ready_song(st: &AppState, id: &str) -> Result<Song, AppError> {
         .ok_or_else(not_found)
 }
 
+/// Brano su cui si possono analizzare gli accordi: separato, oppure intero (non durante la
+/// separazione, che li ricalcola sulle tracce separate).
+fn chord_song(st: &AppState, id: &str) -> Result<Song, AppError> {
+    let song = st.get(id).ok_or_else(not_found)?;
+    match song.status {
+        Status::Ready | Status::New | Status::Error => Ok(song),
+        _ => Err(AppError(StatusCode::CONFLICT, "separazione in corso: accordi non ancora disponibili".into())),
+    }
+}
+
 async fn get_chords(
     State(st): State<AppState>,
     UrlPath(id): UrlPath<String>,
 ) -> Result<Json<ChordSheet>, AppError> {
-    let song = ready_song(&st, &id)?;
-    Ok(Json(load_chords(&st, &song, false).await?))
+    let song = chord_song(&st, &id)?;
+    Ok(Json(load_chords(&st, &song, false, false).await?))
+}
+
+#[derive(Deserialize)]
+struct AnalyzeQuery {
+    #[serde(default)]
+    redo: bool,
 }
 
 async fn analyze_chords_now(
     State(st): State<AppState>,
     UrlPath(id): UrlPath<String>,
+    Query(q): Query<AnalyzeQuery>,
 ) -> Result<Json<ChordSheet>, AppError> {
-    let song = ready_song(&st, &id)?;
-    Ok(Json(load_chords(&st, &song, true).await?))
+    let song = chord_song(&st, &id)?;
+    Ok(Json(load_chords(&st, &song, true, q.redo).await?))
 }
 
 /// Salva gli accordi corretti dall'utente (quelli rilevati restano per il ripristino).
@@ -748,7 +777,7 @@ async fn put_chords(
     UrlPath(id): UrlPath<String>,
     Json(mut sheet): Json<ChordSheet>,
 ) -> Result<Json<ChordSheet>, AppError> {
-    ready_song(&st, &id)?;
+    chord_song(&st, &id)?;
     if sheet.chords.len() > 10_000 {
         return Err(bad_request("troppi accordi"));
     }
@@ -778,12 +807,12 @@ async fn reset_chords(
     State(st): State<AppState>,
     UrlPath(id): UrlPath<String>,
 ) -> Result<Json<ChordSheet>, AppError> {
-    let song = ready_song(&st, &id)?;
+    let song = chord_song(&st, &id)?;
     let path = st.song_dir(&id).join("chords.edited.json");
     if path.exists() {
         tokio::fs::remove_file(path).await?;
     }
-    Ok(Json(load_chords(&st, &song, false).await?))
+    Ok(Json(load_chords(&st, &song, false, false).await?))
 }
 
 // ---------------------------------------------------------------------- note
@@ -1652,7 +1681,7 @@ async fn worker(st: AppState, mut rx: mpsc::UnboundedReceiver<String>) {
                 let tasks = st.get(&id).map(|s| s.tasks).unwrap_or_default();
                 if tasks.chords {
                     st.update(&id, false, |s| s.phase = Some("Analisi accordi".into()));
-                    if let Err(e) = analyze_chords(&st, &id, &stems).await {
+                    if let Err(e) = analyze_chords(&st, &id, &stems, false).await {
                         warn!("{id}: {e:#}");
                     }
                 }

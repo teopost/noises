@@ -594,6 +594,8 @@ function openTrackMenu(t, anchor, isRefStem, song) {
     items.push({ icon: '♪', label: state.showNotes.has(t.part) ? 'Nascondi note' : 'Mostra note', run: () => toggleNotesLane(t.part) });
     items.push({ icon: '𝄞', label: 'Spartito e tablatura', disabled: !state.notes, run: () => openScore(t.part) });
   }
+  const busy = song && ['downloading', 'queued', 'processing'].includes(song.status);
+  items.push({ icon: '🎵', label: 'Ricalcola accordi', disabled: !song || busy, run: () => recomputeChords(t) });
   items.push({ icon: '✎', label: 'Rinomina', run: () => { const n = t.row.querySelector('.tname'); n.focus(); n.select(); } });
   items.push({ icon: '⧉', label: 'Duplica', run: () => duplicateTrack(t) });
   items.push({ icon: '⤓', label: 'Esporta', run: () => openExport(t) });

@@ -59,7 +59,9 @@ function setReference(t, force) {
     loadChords(song);
     loadNotes(song);
   } else {
-    renderChords('Brano non separato: usa "⑂ Separa" sulla traccia per accordi, note e ritmo');
+    // accordi anche sul brano intero; note e ritmo richiedono le tracce separate
+    if (['new', 'error'].includes(song.status)) loadChords(song);
+    else renderChords('Separazione in corso: gli accordi arrivano al termine');
     state.notesMissing = false;
     updateRhythmControls();
   }

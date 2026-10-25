@@ -1666,8 +1666,11 @@ async function loadChords(song) {
   } catch (e) {
     if (seq !== chordSeq) return;
     if (e.status === 409) {
-      const fresh = state.songs.find((x) => x.id === song.id);
-      if (fresh && fresh.phase === 'Analisi accordi') runChordAnalysis(song);
+      const fresh = state.songs.find((x) => x.id === song.id) || song;
+      if (fresh.phase === 'Analisi accordi') runChordAnalysis(song);
+      else if (['queued', 'processing', 'downloading'].includes(fresh.status)) renderChords('Separazione in corso: gli accordi arrivano al termine');
+      // brano non separato: gli accordi si calcolano subito sul brano intero
+      else if (fresh.status !== 'ready') runChordAnalysis(song);
       else showChordsMissing(song);
     } else {
       renderChords(`Accordi non disponibili: ${e.message}`);
@@ -1686,15 +1689,28 @@ function showChordsMissing(song) {
   ph.appendChild(b);
 }
 
-async function runChordAnalysis(song) {
+async function runChordAnalysis(song, redo) {
   const seq = ++chordSeq;
-  renderChords('Analisi accordi in corso…');
+  state.chords = null;
+  renderChords(song.status === 'ready' ? 'Analisi accordi in corso…' : 'Analisi accordi sul brano intero in corso…');
   try {
-    const sheet = await api(`/api/songs/${song.id}/chords/analyze`, { method: 'POST' });
+    const sheet = await api(`/api/songs/${song.id}/chords/analyze${redo ? '?redo=true' : ''}`, { method: 'POST' });
     if (seq === chordSeq && state.refSong && state.refSong.id === song.id) setChords(sheet);
   } catch (e) {
     if (seq === chordSeq) renderChords(`Analisi accordi fallita: ${e.message}`);
   }
+}
+
+/** Ripete il riconoscimento accordi del brano della traccia (scarta le correzioni). */
+async function recomputeChords(t) {
+  const song = songById(t.song);
+  if (!song) return;
+  if (state.refSong && state.refSong.id === song.id && state.chords && state.chords.edited
+    && !confirm('Le correzioni fatte a mano agli accordi andranno perse. Ricalcolare?')) return;
+  if (state.refTrack !== t.name) setReference(t);
+  chordSeq++; // annulla un eventuale caricamento avviato da setReference
+  await runChordAnalysis(song, true);
+  if (state.refSong && state.refSong.id === song.id && state.chords) toast(`Accordi di "${song.name}" ricalcolati`);
 }
 
 function setChords(sheet) {
@@ -1716,7 +1732,7 @@ function renderChords(message) {
   if (!sheet && !message && state.chordsMissing && state.refSong) { showChordsMissing(state.refSong); return; }
   if (!sheet || !engine.duration) {
     const idle = !engine.tracks.length ? 'Trascina un brano dalla libreria nella timeline'
-      : state.refSong && state.refSong.status !== 'ready' ? 'Brano non separato: usa ⑂ sulla traccia per accordi, note e ritmo'
+      : state.refSong && ['queued', 'processing', 'downloading'].includes(state.refSong.status) ? 'Separazione in corso: gli accordi arrivano al termine'
       : 'Caricamento accordi…';
     lane.innerHTML = `<div class="placeholder">${esc(message || (sheet ? '' : idle))}</div>`;
     return;
