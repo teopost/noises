@@ -24,11 +24,13 @@ const groupColor = (g) => GROUP_COLORS[[...g.id].reduce((a, c) => a + c.charCode
 const folderOf = (name) => { const g = groupOf(name); return g && g.folder ? g : null; };
 const folderKids = (g) => engine.tracks.filter((t) => g.tracks.includes(t.name));
 
-/** Tracce che si muovono insieme a `t`: il suo gruppo; dentro una cartella aperta, solo lei. */
+/** Tracce che si muovono insieme a `t`: tutto il suo gruppo (cartelle comprese).
+ *  Spostare, accorciare, tagliare ed eliminare pezzi vale sempre per tutto il gruppo,
+ *  così le tracce raggruppate restano allineate; eliminare la traccia, rinominarla,
+ *  muto/solo e volume restano invece azioni sulla singola traccia. */
 function peersOf(t) {
   const g = groupOf(t.name);
-  if (!g || g.folder) return [t];
-  return g.tracks.map(trackByName).filter(Boolean);
+  return g ? g.tracks.map(trackByName).filter(Boolean) : [t];
 }
 
 
