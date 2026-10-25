@@ -729,6 +729,13 @@ function openFolderMenu(g, anchor) {
   const kids = folderKids(g);
   const items = [
     { icon: g.collapsed ? '▾' : '▸', label: g.collapsed ? 'Apri gruppo' : 'Chiudi gruppo', run: () => { g.collapsed = !g.collapsed; saveProject(); buildTracks(); } },
+    // una voce per brano: un gruppo creato a mano può contenere brani diversi
+    ...[...new Set(kids.map((k) => k.song))].map((id, _, all) => {
+      const song = songById(id);
+      const busy = song && ['downloading', 'queued', 'processing'].includes(song.status);
+      return { icon: '🎵', label: all.length > 1 ? `Ricalcola accordi: ${song ? song.name : "brano rimosso"}` : 'Ricalcola accordi',
+        disabled: !song || busy, run: () => recomputeChords(kids.find((k) => k.song === id)) };
+    }),
     { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
     { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },
     { icon: '⑂', label: 'Sciogli gruppo', run: () => {
