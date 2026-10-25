@@ -80,7 +80,6 @@ function refreshNotesHeads(message) {
     const notes = state.notes && state.notes.tracks[stem];
     r.row.querySelector('.count').textContent = message || (notes ? `${notes.length}` : '');
     r.row.querySelector('.rst').classList.toggle('hidden', !(state.notes && state.notes.edited.includes(stem)));
-    r.row.querySelector('.sco').disabled = !notes;
     r.row.querySelector('.syn').disabled = !notes;
     r.row.querySelector('.syn').classList.toggle('on', state.synth.has(stem));
   }
@@ -97,7 +96,6 @@ function buildNotesRow(t) {
       <div class="track-title small"><span class="swatch" style="background:${t.color}"></span>Note · ${esc(LABELS[stem] || stem)} <span class="count"></span></div>
       <div class="track-btns">
         <button class="syn" title="Ascolta le note trascritte con un suono sintetico">🔊 Synth</button>
-        <button class="sco" title="${isDrums(stem) ? 'Spartito batteria' : 'Spartito e tablatura'}">𝄞 Spartito</button>
         <button class="rst hidden" title="Annulla le correzioni e ripristina la trascrizione automatica">↺</button>
       </div>
     </div>
@@ -110,7 +108,6 @@ function buildNotesRow(t) {
     synthResync();
     refreshNotesHeads();
   });
-  row.querySelector('.sco').addEventListener('click', () => openScore(stem));
   row.querySelector('.rst').addEventListener('click', () => restoreNotes(stem));
   setupRollEditing(stem, canvas);
   layoutRoll(stem);
