@@ -312,7 +312,21 @@ function alignedClips(t, c, peers) {
   return out;
 }
 
+/** Gli accordi (e le battute del righello) seguono il brano di riferimento: ridisegno
+ *  al massimo una volta per fotogramma mentre si trascina una sua traccia. */
+let chordFollowPending = false;
+function followReference(tracks) {
+  if (!tracks.some((t) => t.name === state.refTrack) || chordFollowPending) return;
+  chordFollowPending = true;
+  requestAnimationFrame(() => {
+    chordFollowPending = false;
+    renderChords();
+    lastChordShown = null;
+  });
+}
+
 function clipsChanged(tracks) {
+  followReference([...tracks]);
   let relayout = false;
   for (const t of new Set(tracks)) {
     t.clips.sort((a, b) => a.start - b.start);
@@ -444,6 +458,7 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
     }
     drag.moved = true;
     for (const v of drag.items) engine.setClips(v.t);
+    followReference(drag.items.map((v) => v.t));
     requestRedraw();
   });
   const end = () => {
