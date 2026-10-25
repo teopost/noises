@@ -86,6 +86,9 @@ struct Song {
     /// Tracce audio aggiunte dall'utente (trascinate sulla timeline), con le loro clip.
     #[serde(default)]
     user_tracks: Vec<UserTrack>,
+    /// Disposizione dell'editor: ordine, gruppi, clip delle tracce separate, tracce eliminate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    layout: Option<Layout>,
     /// Metro e correzioni della griglia ritmica scelti dall'utente.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     rhythm: Option<Rhythm>,
@@ -119,6 +122,31 @@ struct Clip {
     /// punto del file da cui parte la clip
     offset: f64,
     duration: f64,
+}
+
+/// Gruppo di tracce che si spostano e si modificano insieme.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TrackGroup {
+    id: String,
+    name: String,
+    tracks: Vec<String>,
+    /// gruppo ancorato alla sua posizione (le tracce separate del brano)
+    #[serde(default)]
+    anchored: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct Layout {
+    #[serde(default)]
+    order: Vec<String>,
+    #[serde(default)]
+    groups: Vec<TrackGroup>,
+    /// clip delle tracce separate, solo se modificate (assenti = traccia intera)
+    #[serde(default)]
+    stem_clips: HashMap<String, Vec<Clip>>,
+    /// tracce utente eliminate ma ancora ripristinabili con "annulla"
+    #[serde(default)]
+    removed: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -455,6 +483,7 @@ async fn upload(
         tasks: Tasks::default(),
         markers: vec![],
         user_tracks: vec![],
+        layout: None,
         rhythm: None,
         settings: None,
         created_at: now_secs(),
@@ -631,20 +660,8 @@ async fn put_user_track(
 ) -> Result<StatusCode, AppError> {
     let song = ready_song(&st, &id)?;
     let track = song.user_tracks.iter().find(|t| t.id == tid).ok_or_else(not_found)?;
-    if b.clips.len() > 500 {
-        return Err(bad_request("troppe clip"));
-    }
-    for c in &b.clips {
-        let ok = [c.start, c.offset, c.duration].iter().all(|v| v.is_finite())
-            && c.start >= 0.0
-            && c.offset >= 0.0
-            && c.duration > 0.0
-            && c.offset + c.duration <= track.duration + 0.05
-            && !c.id.is_empty()
-            && c.id.len() <= 64;
-        if !ok {
-            return Err(bad_request("clip non valida"));
-        }
+    if !valid_clips(&b.clips, track.duration) {
+        return Err(bad_request("clip non valida"));
     }
     let name: String = b.name.trim().chars().take(60).collect();
     st.update(&id, true, |s| {
@@ -666,7 +683,15 @@ async fn delete_user_track(
     if !song.user_tracks.iter().any(|t| t.id == tid) {
         return Err(not_found());
     }
-    st.update(&id, true, |s| s.user_tracks.retain(|t| t.id != tid));
+    let name = format!("user:{tid}");
+    st.update(&id, true, |s| {
+        s.user_tracks.retain(|t| t.id != tid);
+        if let Some(l) = s.layout.as_mut() {
+            l.order.retain(|n| n != &name);
+            l.removed.retain(|n| n != &name);
+            l.groups.iter_mut().for_each(|g| g.tracks.retain(|n| n != &name));
+        }
+    });
     let _ = tokio::fs::remove_file(user_audio(&st, &id, &tid)).await;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -681,6 +706,45 @@ async fn get_user_track_audio(
         return Err(not_found());
     }
     Ok(ServeFile::new(user_audio(&st, &id, &tid)).oneshot(req).await?.into_response())
+}
+
+fn valid_clips(clips: &[Clip], max_len: f64) -> bool {
+    clips.len() <= 500
+        && clips.iter().all(|c| {
+            [c.start, c.offset, c.duration].iter().all(|v| v.is_finite())
+                && c.start >= 0.0
+                && c.offset >= 0.0
+                && c.duration > 0.0
+                && c.offset + c.duration <= max_len + 0.05
+                && !c.id.is_empty()
+                && c.id.len() <= 64
+        })
+}
+
+/// Salva la disposizione dell'editor (ordine, gruppi, clip delle tracce separate).
+async fn put_layout(
+    State(st): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(l): Json<Layout>,
+) -> Result<StatusCode, AppError> {
+    let song = ready_song(&st, &id)?;
+    let known = |n: &String| {
+        song.stems.contains(n)
+            || n.strip_prefix("user:").is_some_and(|t| song.user_tracks.iter().any(|u| u.id == t))
+    };
+    let ok = l.order.len() <= 200
+        && l.groups.len() <= 100
+        && l.order.iter().all(known)
+        && l.removed.iter().all(known)
+        && l.groups.iter().all(|g| {
+            g.tracks.len() <= 200 && g.tracks.iter().all(known) && g.name.chars().count() <= 60 && !g.id.is_empty()
+        })
+        && l.stem_clips.iter().all(|(k, c)| song.stems.contains(k) && valid_clips(c, 24.0 * 3600.0));
+    if !ok {
+        return Err(bad_request("disposizione non valida"));
+    }
+    st.update(&id, true, |s| s.layout = Some(l)).ok_or_else(not_found)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -1296,6 +1360,7 @@ async fn import_url(
         tasks: Tasks::default(),
         markers: vec![],
         user_tracks: vec![],
+        layout: None,
         rhythm: None,
         settings: None,
         created_at: now_secs(),
@@ -1585,8 +1650,37 @@ async fn export_mix(
             if !song.stems.contains(&s.name) {
                 return Err(bad_request(format!("traccia sconosciuta: {}", s.name)));
             }
+            let clips = song.layout.as_ref().and_then(|l| l.stem_clips.get(&s.name));
+            if clips.is_some_and(|c| c.is_empty()) {
+                continue; // tutte le parti eliminate
+            }
             inputs.push(stem_path(&st, &id, &s.name, req.pitch, req.tempo).await?);
-            filter += &format!("[{k}:a]volume={g:.4}[a{mixed}];");
+            match clips {
+                Some(clips) => {
+                    let n = clips.len();
+                    filter += &format!("[{k}:a]asplit=outputs={n}");
+                    for j in 0..n {
+                        filter += &format!("[u{k}_{j}]");
+                    }
+                    filter += ";";
+                    for (j, c) in clips.iter().enumerate() {
+                        filter += &format!(
+                            "[u{k}_{j}]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,adelay=delays={}:all=1[c{k}_{j}];",
+                            c.offset * scale,
+                            c.duration * scale,
+                            (c.start * scale * 1000.0).round() as u64
+                        );
+                    }
+                    for j in 0..n {
+                        filter += &format!("[c{k}_{j}]");
+                    }
+                    if n > 1 {
+                        filter += &format!("amix=inputs={n}:normalize=0:duration=longest,");
+                    }
+                    filter += &format!("volume={g:.4}[a{mixed}];");
+                }
+                None => filter += &format!("[{k}:a]volume={g:.4}[a{mixed}];"),
+            }
         }
         mixed += 1;
     }
@@ -2038,6 +2132,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/songs/:id/process", axum::routing::post(start_processing))
         .route("/api/songs/:id/markers", axum::routing::put(put_markers))
+        .route("/api/songs/:id/layout", axum::routing::put(put_layout))
         .route(
             "/api/songs/:id/tracks",
             post(add_user_track).layer(DefaultBodyLimit::max(MAX_UPLOAD)),

@@ -583,3 +583,20 @@ button.wide { width: 100%; padding: 10px; }
   .user-row .track-btns input[type=range] { display: none; } /* volume: resta nel mix salvato */
   .user-row .tname { width: 100px; }
 }
+
+/* ---- editor: selezione, gruppi, riordino ---- */
+.grip { cursor: grab; color: #5c6476; margin-right: 2px; font-size: 13px; user-select: none; touch-action: none; }
+.grip:hover { color: var(--text); }
+.track.grouped .track-head { box-shadow: inset 4px 0 0 var(--gcolor); }
+.track.selected .track-head { background: #262a38 !important; }
+.track.selected .track-title { color: #fff; }
+.track.selected { background: #1d2029; }
+.track.dragging { opacity: .5; }
+.reorder-line { position: absolute; left: 0; right: 0; height: 3px; background: var(--accent); z-index: 9; pointer-events: none; }
+.selbar #group-btn:not(:disabled), .selbar #ungroup-btn:not(:disabled) { border-color: var(--accent); }
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); z-index: 90; pointer-events: none;
+  background: #2a2f3d; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 9px 16px;
+  font-size: 13px; box-shadow: 0 8px 30px #0009; opacity: 0; transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }

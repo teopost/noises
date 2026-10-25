@@ -78,25 +78,29 @@ const engine = {
   toSrc(t) { return (t / this.k()) * this.sr; },
 
   /**
-   * list: [{ name, l, r, peaks }] — tracce separate (stessa lunghezza) e tracce utente
-   * ({ user: true, tid, label, clips }) le cui clip sono posizionate sulla timeline.
+   * list: [{ name, l, r, peaks, clips? }] — tracce separate (stessa lunghezza, clip opzionali)
+   * e tracce utente ({ user: true, tid, label, clips }). Ogni traccia è un insieme di clip.
    */
   setTracks(list, keepMix, initialMix) {
     const prev = keepMix ? Object.fromEntries(this.tracks.map((t) => [t.name, t])) : (initialMix || {});
-    this.tracks = list.map((t) => this.trackObject(t, prev[t.name]));
     this.songDuration = Math.max(0, ...list.filter((t) => !t.user).map((t) => t.l.length)) / this.sr;
+    this.tracks = list.map((t) => this.trackObject(t, prev[t.name]));
     this.origDuration = this.songDuration;
     this.duration = this.origDuration * this.k();
     this.post({
       type: 'load', length: Math.round(this.origDuration * this.sr),
-      stems: list.map((t, i) => ({ l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: t.user ? this.clipSamples(t.clips) : null })),
+      stems: list.map((t, i) => ({ name: t.name, l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: this.engineClips(this.tracks[i]) })),
     }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
     this.updateLength();
   },
 
   trackObject(t, p) {
     const o = { name: t.name, peaks: t.peaks, muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1 };
-    if (t.user) Object.assign(o, { user: true, tid: t.tid, label: t.label, clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr });
+    if (t.user) {
+      Object.assign(o, { user: true, tid: t.tid, label: t.label, clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr });
+    } else {
+      o.clips = t.clips && t.clips.length !== undefined ? t.clips.map((c) => ({ ...c })) : defaultClips(t.name);
+    }
     return o;
   },
 
@@ -104,10 +108,15 @@ const engine = {
     return clips.map((c) => ({ s: Math.round(c.start * this.sr), o: Math.round(c.offset * this.sr), d: Math.round(c.duration * this.sr) }));
   },
 
+  /** Clip per il motore: null = traccia separata intera (percorso veloce). */
+  engineClips(t) {
+    return !t.user && isDefaultClips(t) ? null : this.clipSamples(t.clips);
+  },
+
   /** Durata = brano o fine dell'ultima clip, se va oltre. Restituisce true se è cambiata. */
   updateLength() {
     let end = this.songDuration || 0;
-    for (const t of this.tracks) if (t.user) for (const c of t.clips) end = Math.max(end, c.start + c.duration);
+    for (const t of this.tracks) for (const c of t.clips || []) end = Math.max(end, c.start + c.duration);
     if (Math.abs(end - this.origDuration) < 1e-6) return false;
     this.origDuration = end;
     this.duration = end * this.k();
@@ -118,7 +127,7 @@ const engine = {
   addUserTrack(t) {
     const o = this.trackObject(t, null);
     this.tracks.push(o);
-    this.post({ type: 'add', l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o) },
+    this.post({ type: 'add', name: o.name, l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o) },
       t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer]);
     this.updateLength();
     return o;
@@ -126,14 +135,14 @@ const engine = {
 
   /** Comunica al motore le clip modificate; true se la durata complessiva è cambiata. */
   setClips(t) {
-    this.post({ type: 'clips', index: this.tracks.indexOf(t), clips: this.clipSamples(t.clips) });
+    this.post({ type: 'clips', name: t.name, clips: this.engineClips(t) });
     return this.updateLength();
   },
 
   removeTrack(t) {
     const i = this.tracks.indexOf(t);
     if (i < 0) return;
-    this.post({ type: 'remove', index: i });
+    this.post({ type: 'remove', name: t.name });
     this.tracks.splice(i, 1);
     this.updateLength();
   },
@@ -258,7 +267,7 @@ const engine = {
   },
 
   updateGains() {
-    if (this.node) this.post({ type: 'gains', gains: this.tracks.map((t) => this.gainOf(t)) });
+    if (this.node) this.post({ type: 'gains', gains: Object.fromEntries(this.tracks.map((t) => [t.name, this.gainOf(t)])) });
   },
 };
 
@@ -626,7 +635,7 @@ function setupUpload() {
 
 function selectSong(song) {
   if (state.current && state.current.id === song.id) return;
-  if (state.current) flushAutosave();
+  if (state.current) { flushAutosave(); purgeRemoved(); }
   state.ab = 'custom';
   state.customSnap = null;
   engine.init();
@@ -651,12 +660,14 @@ function selectSong(song) {
   showSkeleton(song.stems.length);
   renderSongs();
   loadStems(false);
+  initLayout(song);
   loadChords(song);
   loadNotes(song);
   loadMarkers(song);
 }
 
 function closePlayer() {
+  purgeRemoved();
   engine.clear();
   state.chords = null;
   state.notes = null;
@@ -719,7 +730,8 @@ function stemUrl(song, name) {
 async function loadStems(keepMix) {
   const seq = ++state.loadSeq;
   const song = state.current;
-  const users = song.user_tracks || [];
+  const removed = new Set((song.layout && song.layout.removed) || []);
+  const users = (song.user_tracks || []).filter((u) => !removed.has(`user:${u.id}`));
   const n = song.stems.length + users.length;
   const prog = Array.from({ length: n }, () => ({ started: false, got: 0, total: 0 }));
   let decoded = 0;
@@ -772,12 +784,14 @@ async function loadStems(keepMix) {
         r = new Float32Array(length);
         r.set(buffer.getChannelData(1));
       }
-      return { name, l, r, peaks: computePeaks(l, r) };
+      const clips = song.layout && song.layout.stem_clips && song.layout.stem_clips[name];
+      return { name, l, r, peaks: computePeaks(l, r), clips };
     });
 
     const pending = state.pending;
     state.pending = null;
     engine.setTracks([...stems, ...userList], keepMix, pending && pending.tracks);
+    applyOrder();
     engine.setRate(state.tempo, state.pitch);
     engine.offset = 0;
     if (pending && pending.selection) {
@@ -928,6 +942,7 @@ function buildTracks() {
       t.color = USER_COLOR;
       root.appendChild(row);
       setupUserRow(t, row);
+      decorateRow(t, row);
       continue;
     }
     const label = LABELS[t.name] || t.name;
@@ -936,7 +951,7 @@ function buildTracks() {
     row.className = 'track audio-row';
     row.innerHTML = `
       <div class="track-head">
-        <div class="track-title"><span class="swatch" style="background:${color}"></span>${esc(label)}</div>
+        <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>${esc(label)}</div>
         <div class="track-btns">
           <button class="m" title="Muto">M</button>
           <button class="s" title="Solo">S</button>
@@ -955,6 +970,7 @@ function buildTracks() {
     t.canvas = row.querySelector('canvas');
     t.color = color;
     root.appendChild(row);
+    decorateRow(t, row);
     root.appendChild(buildNotesRow(t));
   }
   syncTrackButtons();
@@ -1177,7 +1193,9 @@ function setupTimeline() {
     if (e.button !== 0 || !engine.tracks.length) return;
     if (!e.target.matches('canvas.wave, #ruler')) return;
     e.preventDefault();
-    drag = { x0: e.clientX, t0: timeAt(e.clientX), moved: false };
+    drag = { x0: e.clientX, t0: timeAt(e.clientX), moved: false,
+      canvas: e.target.matches('canvas.wave') ? e.target : null,
+      ev: { clientX: e.clientX, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey } };
     tl.setPointerCapture(e.pointerId);
   });
   tl.addEventListener('pointermove', (e) => {
@@ -1195,6 +1213,7 @@ function setupTimeline() {
     if (!d.moved) {
       engine.stopAt = null;
       engine.seek(d.t0);
+      if (d.canvas) anchoredClick(d.canvas, d.ev);
       return;
     }
     const sel = state.sel;
@@ -1633,7 +1652,7 @@ function drawRuler() {
 function drawAll() {
   if (!state.current || !engine.tracks.length) return;
   drawRuler();
-  engine.tracks.forEach((t) => (t.user ? drawUserTrack(t) : drawWave(t)));
+  engine.tracks.forEach(drawTrack);
   drawAllRolls();
 }
 
@@ -1996,6 +2015,7 @@ function startApp() {
   setupScore();
   setupMarkers();
   setupUserTracks();
+  setupEditor();
   updateSelectionUI();
   setInterval(() => state.current && updateSaveUI(), 250);
   window.addEventListener('pagehide', () => state.current && flushAutosave(true));

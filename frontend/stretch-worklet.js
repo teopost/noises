@@ -54,24 +54,28 @@ class StretchPlayer extends AudioWorkletProcessor {
   onMessage(m) {
     switch (m.type) {
       case 'load':
-        this.stems = m.stems.map((s) => ({ l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, clips: s.clips || null }));
+        this.stems = m.stems.map((s) => ({ name: s.name, l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, clips: s.clips || null }));
         this.len = m.length;
         this.playing = false;
         break;
       case 'add':
-        this.stems.push({ l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, clips: m.clips || [] });
+        this.stems = this.stems.filter((s) => s.name !== m.name);
+        this.stems.push({ name: m.name, l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, clips: m.clips || [] });
         break;
       case 'remove':
-        this.stems.splice(m.index, 1);
+        this.stems = this.stems.filter((s) => s.name !== m.name);
         break;
-      case 'clips':
-        if (this.stems[m.index]) this.stems[m.index].clips = m.clips;
+      case 'clips': {
+        // null = traccia intera (percorso veloce), altrimenti elenco di clip
+        const s = this.stems.find((x) => x.name === m.name);
+        if (s) s.clips = m.clips;
         break;
+      }
       case 'length':
         this.len = m.length;
         break;
       case 'gains':
-        m.gains.forEach((g, i) => { if (this.stems[i]) this.stems[i].target = g; });
+        for (const s of this.stems) if (s.name in m.gains) s.target = m.gains[s.name];
         break;
       case 'play':
         this.playing = true;

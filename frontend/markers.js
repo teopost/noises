@@ -44,6 +44,7 @@ function addMarker(atDisplay) {
   const near = state.markers.find((m) => Math.abs(m.t - t) < 0.05);
   if (near) { openMarkerMenu(near.id, true); return; }
   const m = { id: Math.random().toString(36).slice(2, 10), t, name: `Segnalibro ${state.markers.length + 1}` };
+  pushUndo('Aggiungi segnalibro');
   state.markers.push(m);
   saveMarkers();
   renderMarkers();
@@ -128,7 +129,13 @@ function openMarkerMenu(id, focusName) {
       <button data-act="del" class="danger">Elimina</button>
     </div>`;
   const input = menu.querySelector('#mk-name');
-  input.addEventListener('input', () => { m.name = input.value; renderMarkers(); saveMarkers(); });
+  let renamed = false;
+  input.addEventListener('input', () => {
+    if (!renamed && !focusName) { pushUndo('Rinomina segnalibro'); renamed = true; }
+    m.name = input.value;
+    renderMarkers();
+    saveMarkers();
+  });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closeMarkerMenu(); }
     e.stopPropagation();
@@ -144,6 +151,7 @@ function openMarkerMenu(id, focusName) {
     closeMarkerMenu();
   });
   menu.querySelector('[data-act=del]').addEventListener('click', () => {
+    pushUndo('Elimina segnalibro');
     state.markers = state.markers.filter((x) => x.id !== m.id);
     saveMarkers();
     closeMarkerMenu();
@@ -176,6 +184,7 @@ function setupMarkers() {
   lane.addEventListener('pointermove', (e) => {
     if (!drag) return;
     if (!drag.moved && Math.abs(e.clientX - drag.x0) < 4) return;
+    if (!drag.moved) pushUndo('Sposta segnalibro');
     drag.moved = true;
     const m = state.markers.find((x) => x.id === drag.id);
     let t = timeAt(e.clientX) / mk();
