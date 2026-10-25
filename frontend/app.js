@@ -846,7 +846,7 @@ function buildTracks() {
           <button class="tmenu" title="Altre azioni">⋯</button>
         </div>
       </div>
-      <div class="lane"><canvas class="ucanvas vcanvas" title="Trascina una clip per spostarla (con il suo gruppo) · Alt+trascina: solo questa traccia · bordi: accorcia · Shift: senza griglia"></canvas></div>`;
+      <div class="lane"><canvas class="ucanvas vcanvas"></canvas></div>`;
     row.querySelector('.m').addEventListener('click', () => { t.muted = !t.muted; syncTrackButtons(); });
     row.querySelector('.s').addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
     row.querySelector('.vol').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
@@ -1101,7 +1101,7 @@ function setupTimeline() {
     e.preventDefault();
     drag = { x0: e.clientX, t0: timeAt(e.clientX), moved: false,
       canvas: e.target.matches('canvas.ucanvas') ? e.target : null,
-      ev: { clientX: e.clientX, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey } };
+      ev: { clientX: e.clientX, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey } };
     tl.setPointerCapture(e.pointerId);
   });
   tl.addEventListener('pointermove', (e) => {

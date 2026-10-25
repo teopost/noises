@@ -349,7 +349,7 @@ function deleteSelectedClip() {
   if (!c) return false;
   pushUndo('Elimina parte');
   const g = sel.folder && state.groups.find((x) => x.id === sel.folder);
-  const victims = sel.alone ? [{ t, c }] : [{ t, c }, ...alignedClips(t, c, g ? folderKids(g) : null)];
+  const victims = [{ t, c }, ...alignedClips(t, c, g ? folderKids(g) : null)];
   for (const v of victims) v.t.clips = v.t.clips.filter((x) => x !== v.c);
   state.selClip = null;
   clipsChanged(victims.map((v) => v.t));
@@ -404,12 +404,9 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
     e.stopPropagation();
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     if (folder) selectFolder(folder, additive);
-    else if (e.altKey) selectTracks([t.name], additive);
     else if (!additive || !state.selTracks.has(t.name)) selectTrack(t, additive);
-    // Alt: solo questa traccia, ignorando il gruppo (che resta com'è)
-    const alone = e.altKey && !folder;
-    state.selClip = { name: t.name, cid: hit.c.id, folder: folder ? folder.id : null, alone };
-    const linked = alone ? [] : hit.mode === 'move' ? alignedClips(t, hit.c, peers) : alignedClips(t, hit.c, peers).filter((v) =>
+    state.selClip = { name: t.name, cid: hit.c.id, folder: folder ? folder.id : null };
+    const linked = hit.mode === 'move' ? alignedClips(t, hit.c, peers) : alignedClips(t, hit.c, peers).filter((v) =>
       Math.abs(v.c.start - hit.c.start) < 0.002 && Math.abs(v.c.duration - hit.c.duration) < 0.002);
     drag = { mode: hit.mode, t0: hit.time, items: [{ t, c: hit.c }, ...linked].map((v) => ({ ...v, orig: { ...v.c } })), moved: false, undone: false };
     canvas.setPointerCapture(e.pointerId);
@@ -516,8 +513,7 @@ function decorateRow(t, row) {
   row.querySelector('.track-head').addEventListener('pointerdown', (e) => {
     // il campo del nome seleziona la traccia e resta modificabile; pulsanti e cursori no
     if (e.target.closest('button, a, select, .grip, input[type=range]')) return;
-    if (e.altKey) selectTracks([t.name], e.ctrlKey || e.metaKey || e.shiftKey); // solo lei, senza il gruppo
-    else selectTrack(t, e.ctrlKey || e.metaKey || e.shiftKey);
+    selectTrack(t, e.ctrlKey || e.metaKey || e.shiftKey);
   });
   setupGrip(t, row);
   setupClipCanvas(t);
@@ -525,10 +521,6 @@ function decorateRow(t, row) {
 
 /** Clic sullo spazio vuoto di una traccia (gestito dalla timeline): seleziona la traccia. */
 function trackClick(canvas, e) {
-  if (e.altKey) {
-    const one = engine.tracks.find((x) => x.canvas === canvas);
-    if (one) { selectTracks([one.name], e.ctrlKey || e.metaKey || e.shiftKey); state.selClip = null; requestRedraw(); return; }
-  }
   const g = state.groups.find((x) => x.folder && x._canvas === canvas);
   if (g) { selectFolder(g, e.ctrlKey || e.metaKey || e.shiftKey); state.selClip = null; requestRedraw(); return; }
   const t = engine.tracks.find((x) => x.canvas === canvas);
