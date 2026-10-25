@@ -137,7 +137,6 @@ async function openProject(id) {
   const p = await api(`/api/projects/${id}`);
   if (seq !== projectSeq) return;
   state.ab = 'custom';
-  state.customSnap = null;
   engine.init();
   engine.clear();
   state.current = p;

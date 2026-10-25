@@ -794,11 +794,13 @@ function setupClick() {
 /** Abilita i comandi del ritmo quando la griglia è disponibile. */
 function updateRhythmControls() {
   const ok = hasGrid();
+  // booleano esplicito: con `undefined` classList.toggle alternerebbe invece di impostare
+  const hide = !ok && !!(state.notesMissing || state.notesBusy);
   for (const id of ['#click', '#click-mode', '#countin-sel', '#meter-btn', '#fixed-bpm']) {
     $(id).disabled = !ok;
-    $(id).classList.toggle('hidden', !ok && (state.notesMissing || state.notesBusy));
+    $(id).classList.toggle('hidden', hide);
   }
-  $('#click-vol').classList.toggle('hidden', !ok && (state.notesMissing || state.notesBusy));
+  $('#click-vol').classList.toggle('hidden', hide);
   const btn = $('#analyze-notes');
   btn.classList.toggle('hidden', ok || !(state.notesMissing || state.notesBusy));
   btn.disabled = !!state.notesBusy;

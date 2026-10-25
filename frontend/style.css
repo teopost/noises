@@ -483,12 +483,6 @@ button.wide { width: 100%; padding: 10px; }
 
 /* ---- salvataggio automatico / confronto A/B ---- */
 .actions { align-items: center; }
-.ab button { font-size: 13px; padding: 6px 10px; }
-.ab.original [data-ab=original].on { background: #f5c542; border-color: #f5c542; color: #111; font-weight: 700; }
-.autosave { font-size: 12px; color: #2bd47d; min-width: 110px; white-space: nowrap; }
-.autosave.busy { color: var(--muted); }
-.autosave.err { color: var(--danger); }
-.autosave.orig { color: #f5c542; }
 
 .fixed-bpm { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .fixed-bpm input {
