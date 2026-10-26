@@ -1455,6 +1455,15 @@ struct ClickSpec {
     times: Vec<f64>,
     accents: Vec<bool>,
     gain: f32,
+    /// suono del metronomo scelto (campioni a 44,1 kHz); senza, un "tic" sinusoidale
+    #[serde(default)]
+    samples: Option<ClickSamples>,
+}
+
+#[derive(Deserialize)]
+struct ClickSamples {
+    accent: Vec<f32>,
+    normal: Vec<f32>,
 }
 
 /// Traccia di click (WAV stereo 16 bit): un breve "tic" sinusoidale smorzato per ogni battito,
@@ -1467,8 +1476,16 @@ fn write_click_wav(path: &Path, c: &ClickSpec) -> anyhow::Result<()> {
     let burst = (0.05 * SR as f64) as usize;
     for (i, &t) in c.times.iter().enumerate() {
         let accent = c.accents.get(i).copied().unwrap_or(false);
-        let (freq, amp) = if accent { (1760.0f32, 0.75f32) } else { (1175.0, 0.5) };
         let start = (t * SR as f64) as usize;
+        if let Some(s) = &c.samples {
+            let src = if accent { &s.accent } else { &s.normal };
+            for (n, x) in src.iter().enumerate() {
+                let Some(v) = buf.get_mut(start + n) else { break };
+                *v += x * c.gain;
+            }
+            continue;
+        }
+        let (freq, amp) = if accent { (1760.0f32, 0.75f32) } else { (1175.0, 0.5) };
         for n in 0..burst {
             let Some(v) = buf.get_mut(start + n) else { break };
             let tt = n as f32 / SR as f32;
@@ -1584,7 +1601,11 @@ async fn run_export(
         Some(c) if !c.times.is_empty() => {
             let valid = c.times.len() <= 50_000
                 && c.gain.is_finite()
-                && c.times.iter().all(|t| t.is_finite() && (0.0..=7200.0).contains(t));
+                && c.times.iter().all(|t| t.is_finite() && (0.0..=7200.0).contains(t))
+                && c.samples.as_ref().map_or(true, |s| {
+                    s.accent.len() <= 44_100 && s.normal.len() <= 44_100
+                        && s.accent.iter().chain(&s.normal).all(|x| x.is_finite() && x.abs() <= 4.0)
+                });
             if !valid {
                 return Err(bad_request("click non valido"));
             }

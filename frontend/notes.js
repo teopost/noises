@@ -785,20 +785,96 @@ function clickTimes(from, to) {
 }
 
 const clickNodes = new Set();
+
+// Suoni del metronomo (sintetizzati): ognuno collega le sorgenti a `g` e restituisce
+// [sorgenti, durata]. L'accento (primo tempo) è più acuto e/o più forte.
+const CLICK_SOUNDS = [
+  ['beep', 'Beep'], ['wood', 'Legnetto'], ['clave', 'Claves'], ['cowbell', 'Campanaccio'],
+  ['hihat', 'Charleston'], ['rim', 'Bordo rullante'],
+];
+const clickVoices = {
+  beep(ctx, g, when, accent, peak) {
+    const o = ctx.createOscillator();
+    o.frequency.value = accent ? 1760 : 1175;
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(peak, when + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.06);
+    o.connect(g);
+    return [[o], 0.08];
+  },
+  wood(ctx, g, when, accent, peak) {
+    // legnetto: sinusoide breve con leggera discesa di intonazione, più un "toc" filtrato
+    const o = ctx.createOscillator(), f = ctx.createBiquadFilter();
+    o.type = 'triangle';
+    const base = accent ? 1250 : 950;
+    o.frequency.setValueAtTime(base * 1.15, when);
+    o.frequency.exponentialRampToValueAtTime(base, when + 0.012);
+    f.type = 'bandpass'; f.frequency.value = base; f.Q.value = 3;
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(peak * 1.6, when + 0.0008);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.05);
+    o.connect(f).connect(g);
+    return [[o], 0.07];
+  },
+  clave(ctx, g, when, accent, peak) {
+    const o = ctx.createOscillator();
+    o.frequency.value = accent ? 2500 : 2000;
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(peak * 1.1, when + 0.0005);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.035);
+    o.connect(g);
+    return [[o], 0.05];
+  },
+  cowbell(ctx, g, when, accent, peak) {
+    // campanaccio: due onde quadre non armoniche (540/800 Hz) in un passa-banda
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = accent ? 1000 : 800; f.Q.value = 1.2;
+    const k = accent ? 1.15 : 1;
+    const os = [540, 800].map((hz) => { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = hz * k; o.connect(f); return o; });
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(peak * 0.5, when + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.18);
+    f.connect(g);
+    return [os, 0.2];
+  },
+  hihat(ctx, g, when, accent, peak) {
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter();
+    src.buffer = noiseBuffer(ctx);
+    f.type = 'highpass'; f.frequency.value = 7000;
+    const len = accent ? 0.09 : 0.04;
+    g.gain.setValueAtTime(peak * (accent ? 1.0 : 1.4), when);
+    g.gain.exponentialRampToValueAtTime(0.001, when + len);
+    src.connect(f).connect(g);
+    return [[src], len + 0.02];
+  },
+  rim(ctx, g, when, accent, peak) {
+    // bordo del rullante: rumore a banda stretta più un corpo breve
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), o = ctx.createOscillator(), og = ctx.createGain();
+    src.buffer = noiseBuffer(ctx);
+    f.type = 'bandpass'; f.frequency.value = accent ? 2400 : 1900; f.Q.value = 4;
+    o.type = 'triangle'; o.frequency.value = accent ? 520 : 420;
+    og.gain.value = 0.6;
+    g.gain.setValueAtTime(peak * 2.0, when);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.045);
+    src.connect(f).connect(g);
+    o.connect(og).connect(g);
+    return [[src, o], 0.06];
+  },
+};
+
 function playClick(when, accent, gain = state.clickVol) {
   const ctx = engine.ctx;
-  const o = ctx.createOscillator();
   const g = ctx.createGain();
-  o.frequency.value = accent ? 1760 : 1175;
-  g.gain.setValueAtTime(0, when);
-  g.gain.linearRampToValueAtTime((accent ? 0.75 : 0.5) * gain, when + 0.001);
-  g.gain.exponentialRampToValueAtTime(0.001, when + 0.06);
-  o.connect(g).connect(ctx.destination); // fuori dal master: il volume del brano non lo cambia
-  o.start(when);
-  o.stop(when + 0.08);
-  const v = { o, g };
+  g.connect(ctx.destination); // fuori dal master: il volume del brano non lo cambia
+  const voice = clickVoices[state.clickSound] || clickVoices.beep;
+  const [srcs, dur] = voice(ctx, g, when, accent, (accent ? 0.75 : 0.5) * gain);
+  for (const s of srcs) {
+    if (s.buffer) s.start(when, Math.random() * 0.5); else s.start(when);
+    s.stop(when + dur);
+  }
+  const v = { o: srcs[0], srcs, g };
   clickNodes.add(v);
-  o.onended = () => { clickNodes.delete(v); g.disconnect(); };
+  srcs[0].onended = () => { clickNodes.delete(v); g.disconnect(); };
 }
 
 // ------------------------------------------------------------- pre-conteggio
@@ -864,13 +940,30 @@ function countInStop() {
   countTimers = [];
   showCount(null);
   for (const v of clickNodes) {
-    try { v.o.stop(); } catch {}
+    for (const s of v.srcs || [v.o]) { try { s.stop(); } catch {} }
     try { v.g.disconnect(); } catch {}
   }
   clickNodes.clear();
 }
 
 /** Opzioni click/pre-conteggio per l'esportazione (tempi relativi all'inizio del file). */
+/** I due colpi del metronomo scelto (accento, normale) come campioni a 44,1 kHz:
+ *  il server li usa per la traccia di click del file esportato. */
+async function renderClickSamples() {
+  const SR = 44100, len = Math.round(SR * 0.25);
+  const one = async (accent) => {
+    const ctx = new OfflineAudioContext(1, len, SR);
+    const g = ctx.createGain();
+    g.connect(ctx.destination);
+    const voice = clickVoices[state.clickSound] || clickVoices.beep;
+    const [srcs, dur] = voice(ctx, g, 0, accent, accent ? 0.75 : 0.5);
+    for (const s of srcs) { if (s.buffer) s.start(0, 0.1); else s.start(0); s.stop(dur); }
+    const buf = await ctx.startRendering();
+    return Array.from(buf.getChannelData(0), (v) => Math.round(v * 1e4) / 1e4);
+  };
+  return { accent: await one(true), normal: await one(false) };
+}
+
 function exportClickOptions(range) {
   const withClick = $('#exp-click').checked && hasGrid();
   const bars = hasGrid() ? Number($('#exp-countin').value) : 0;
@@ -886,7 +979,8 @@ function exportClickOptions(range) {
     for (const b of plan.beats) { times.push(b.rel); accents.push(b.num === 1); }
   }
   if (withClick) {
-    for (const b of clickTimes(s, e)) { times.push(b.t - s + preRoll); accents.push(b.accent); }
+    const n = clickNudge(); // stessa regolazione fine dell'ascolto
+    for (const b of clickTimes(s, e)) { times.push(b.t + n - s + preRoll); accents.push(b.accent); }
   }
   state.fixedAnchor = savedAnchor;
   fixedCache = null;
@@ -904,8 +998,9 @@ function setupClick() {
     // predefinito: aderente. Chiave nuova, così la vecchia predefinita (fluido) salvata
     // automaticamente non resta: la scelta riparte da "aderente" una volta sola
     state.clickMode = localStorage.getItem('noises.clickMode2') || 'tight';
+    state.clickSound = localStorage.getItem('noises.clickSound') || 'beep';
   } catch {
-    state.click = false; state.clickVol = 0.8; state.countIn = 0; state.clickMode = 'tight';
+    state.click = false; state.clickVol = 0.8; state.countIn = 0; state.clickMode = 'tight'; state.clickSound = 'beep';
   }
   const save = () => {
     try {
@@ -913,6 +1008,7 @@ function setupClick() {
       localStorage.setItem('noises.clickVol', String(state.clickVol));
       localStorage.setItem('noises.countIn', String(state.countIn));
       localStorage.setItem('noises.clickMode2', state.clickMode);
+      localStorage.setItem('noises.clickSound', state.clickSound);
     } catch {}
   };
   $('#click').classList.toggle('on', state.click);
@@ -945,6 +1041,18 @@ function setupClick() {
     if (v !== cur) setRhythm({ nudge_ms: v });
   }));
   $('#nudge-reset').addEventListener('click', () => hasGrid() && setRhythm({ nudge_ms: 0 }));
+  // suono del metronomo: anteprima con accento e battito normale
+  $('#click-sound').innerHTML = CLICK_SOUNDS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  $('#click-sound').value = state.clickSound;
+  $('#click-sound').addEventListener('change', (e) => {
+    state.clickSound = e.target.value;
+    save();
+    if (!engine.ctx) return;
+    engine.ctx.resume();
+    const t = engine.ctx.currentTime + 0.05;
+    playClick(t, true, Math.max(0.6, state.clickVol));
+    playClick(t + 0.35, false, Math.max(0.6, state.clickVol));
+  });
   $('#click-mode').addEventListener('change', (e) => {
     state.clickMode = e.target.value;
     if (engine.tracks.length) setFixedAnchor(engine.position());

@@ -1383,6 +1383,8 @@ async function doExport() {
     return;
   }
   const clickOpts = exportClickOptions(useSel ? state.sel : null);
+  // stesso suono del metronomo scelto per l'ascolto
+  if (clickOpts.click) clickOpts.click.samples = await renderClickSamples();
   const body = {
     ...clickOpts,
     stems: activeStems().map((t) => ({ name: t.name, gain: t.volume })),
