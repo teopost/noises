@@ -1303,7 +1303,7 @@ async function saveSettings() {
 
 async function resetSettings() {
   const song = state.current;
-  if (!song || !confirm('Ripristinare tutte le impostazioni originali del brano?\n(tonalità, velocità, volumi, muto/solo, selezione e loop; le impostazioni salvate verranno eliminate)')) return;
+  if (!song || !confirm('Reimpostare il progetto ai valori originali?\n\nSi perdono tonalità, velocità, volumi, muto/solo, master, selezione e loop.\nTracce, clip e segnalibri restano come sono.')) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = null;
   state.ab = 'custom';
