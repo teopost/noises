@@ -198,12 +198,13 @@
           <span class="time"><span id="pos">0:00</span> / <span id="dur">0:00</span><span id="section" class="section"></span></span>
         </div>
 
+        <span class="tsep"></span>
+
         <div class="knob">
           <span class="lbl">Tonalità</span>
           <button data-pitch="-1">−</button>
-          <output id="pitch">0</output>
+          <output id="pitch" title="Semitoni">0</output>
           <button data-pitch="1">+</button>
-          <span class="unit">semitoni</span>
         </div>
 
         <div class="knob">
@@ -211,10 +212,11 @@
           <button data-tempo="-5">−</button>
           <output id="tempo">100%</output>
           <button data-tempo="5">+</button>
-          <input id="tempo-range" type="range" min="50" max="150" step="5" value="100">
         </div>
 
         <button id="reset" class="ghost" title="Riporta tonalità e velocità ai valori originali">Azzera</button>
+
+        <span class="tsep"></span>
 
         <div class="knob rhythm">
           <span class="lbl">Ritmo</span>

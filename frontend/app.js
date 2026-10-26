@@ -726,7 +726,6 @@ function updateKnobs() {
   const p = state.pitch;
   $('#pitch').textContent = p > 0 ? `+${p}` : `${p}`;
   $('#tempo').textContent = `${state.tempo}%`;
-  $('#tempo-range').value = state.tempo;
 }
 
 function setupControls() {
@@ -744,10 +743,6 @@ function setupControls() {
     const v = Math.max(50, Math.min(150, state.tempo + Number(b.dataset.tempo)));
     if (v !== state.tempo) { state.tempo = v; applyRate(); }
   }));
-  $('#tempo-range').addEventListener('input', (e) => {
-    state.tempo = Number(e.target.value);
-    applyRate();
-  });
   $('#reset').addEventListener('click', () => {
     if (state.pitch === 0 && state.tempo === 100) return;
     state.pitch = 0;
