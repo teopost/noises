@@ -961,7 +961,8 @@ function updateRhythmControls() {
   }
   if (ok) {
     const g = state.notes.grid;
-    $('#bpm').textContent = `${Math.round(g.bpm * engine.tempo / 100)} BPM`;
+    // con il click regolare i BPM sono nella casella modificabile: niente doppione
+    $('#bpm').textContent = fixed ? '' : `${Math.round(g.bpm * engine.tempo / 100)} BPM`;
     $('#meter-btn').textContent = `${(g.time_signature || [4, 4]).join('/')} ▾`;
   } else {
     $('#bpm').textContent = '';
