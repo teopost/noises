@@ -279,7 +279,8 @@ function setupRollEditing(stem, canvas) {
   const at = (e) => {
     const r = rolls[stem];
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const z = uiZoom();
+    const x = (e.clientX - rect.left) / z, y = (e.clientY - rect.top) / z;
     const t = (tlEl().scrollLeft + x) / state.zoom / dispK() - anc();
     const rowIdx = Math.min(r.rows.length - 1, Math.max(0, Math.floor(y / r.rowH)));
     return { x, t, rowIdx, shown: r.rows[rowIdx] };
@@ -909,6 +910,16 @@ function setupClick() {
   $('#click-vol').addEventListener('input', (e) => { state.clickVol = Number(e.target.value); save(); });
   $('#countin-sel').addEventListener('change', (e) => { state.countIn = Number(e.target.value); save(); });
   $('#click-mode').value = state.clickMode;
+  // pannello ⚙ del click: si apre sotto il pulsante, si chiude cliccando fuori o con Esc
+  $('#click-cfg').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#click-panel').classList.toggle('hidden');
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('#click-panel, #click-cfg')) $('#click-panel').classList.add('hidden');
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#click-panel').classList.add('hidden'); });
+  $('#click-panel').addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
   $('#click-mode').addEventListener('change', (e) => {
     state.clickMode = e.target.value;
     if (engine.tracks.length) setFixedAnchor(engine.position());
@@ -942,7 +953,7 @@ function updateRhythmControls() {
   const ok = hasGrid();
   // booleano esplicito: con `undefined` classList.toggle alternerebbe invece di impostare
   const hide = !ok && !!(state.notesMissing || state.notesBusy);
-  for (const id of ['#click', '#click-mode', '#countin-sel', '#meter-btn', '#fixed-bpm']) {
+  for (const id of ['#click', '#click-cfg', '#click-mode', '#countin-sel', '#meter-btn', '#fixed-bpm']) {
     $(id).disabled = !ok;
     $(id).classList.toggle('hidden', hide);
   }
@@ -961,8 +972,9 @@ function updateRhythmControls() {
   }
   if (ok) {
     const g = state.notes.grid;
-    // con il click regolare i BPM sono nella casella modificabile: niente doppione
-    $('#bpm').textContent = fixed ? '' : `${Math.round(g.bpm * engine.tempo / 100)} BPM`;
+    // con il click regolare si mostra il BPM fisso (modificabile nel pannello ⚙)
+    $('#bpm').textContent = `${Math.round((fixed ? fixedBpm() : g.bpm) * engine.tempo / 100)} BPM`;
+    $('#bpm').title = fixed ? 'BPM del click regolare: si cambia da ⚙' : 'BPM rilevati nel brano';
     $('#meter-btn').textContent = `${(g.time_signature || [4, 4]).join('/')} ▾`;
   } else {
     $('#bpm').textContent = '';
@@ -1010,9 +1022,7 @@ function setupMeter() {
     if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
     renderMeterMenu();
     menu.classList.remove('hidden');
-    const r = e.currentTarget.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-    menu.style.top = `${r.bottom + 4}px`;
+    placeMenu(menu, e.currentTarget.getBoundingClientRect(), { flip: false });
   });
   menu.querySelectorAll('[data-ts]').forEach((b) => b.addEventListener('click', () =>
     setRhythm({ time_signature: b.dataset.ts.split('/').map(Number), offset: 0 })));

@@ -47,7 +47,7 @@ function setupUserTracks() {
   const overLanes = (e) => {
     const r = tl.getBoundingClientRect();
     return !player.classList.contains('hidden') && e.clientY >= r.top && e.clientY <= r.bottom
-      && e.clientX >= r.left + headWidth() && e.clientX <= r.right;
+      && e.clientX >= r.left + headWidth() * uiZoom() && e.clientX <= r.right;
   };
   // fuori dall'editor il browser non deve aprire il file al posto dell'app
   window.addEventListener('dragover', (e) => { if (kind(e) === 'files') e.preventDefault(); });

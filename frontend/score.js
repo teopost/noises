@@ -168,7 +168,7 @@ function updateScoreCursor(pos) {
 function followInView(container, el) {
   const r = el.getBoundingClientRect(), c = container.getBoundingClientRect();
   if (r.top < c.top + c.height * 0.15 || r.bottom > c.top + c.height * 0.75) {
-    container.scrollBy({ top: r.top - c.top - c.height * 0.3, behavior: 'smooth' });
+    container.scrollBy({ top: (r.top - c.top - c.height * 0.3) / uiZoom(), behavior: 'smooth' });
   }
 }
 

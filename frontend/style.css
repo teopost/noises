@@ -10,7 +10,11 @@
   --accent-2: #a48bff;
   --danger: #ff5c7a;
   --head-w: 250px;
+  /* tutta l'interfaccia al 95%, tranne la barra di sinistra (rail) */
+  --ui-zoom: .95;
 }
+html { zoom: var(--ui-zoom); }
+.rail { zoom: calc(1 / var(--ui-zoom)); }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -75,7 +79,7 @@ select {
 /* ---- main ---- */
 #main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: auto; }
 .empty { margin: auto; color: var(--muted); }
-#player { padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+#player { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
 .song-head { display: flex; align-items: center; gap: 16px; }
 .song-head h1 { margin: 0; font-size: 22px; flex: 1; }
 
@@ -88,12 +92,12 @@ select {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .controls {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px;
-  padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
 }
 .transport { display: flex; align-items: center; gap: 6px; }
 .transport .play {
-  width: 46px; height: 46px; border-radius: 50%;
+  width: 36px; height: 36px; border-radius: 50%; padding: 0;
   background: var(--accent); border-color: var(--accent); font-size: 18px;
 }
 .time { margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--muted); }
@@ -645,7 +649,7 @@ button.wide { width: 100%; padding: 10px; }
 .user-menu { position: fixed; left: 72px; top: auto; bottom: 16px; min-width: 240px; z-index: 60; }
 
 #sidebar.drawer {
-  position: fixed; left: 64px; top: 0; bottom: 0; width: 340px; max-width: calc(100vw - 64px); z-index: 40;
+  position: fixed; left: calc(64px / var(--ui-zoom)); top: 0; bottom: 0; width: 340px; max-width: calc(100vw - 64px); z-index: 40;
   padding: 18px; background: var(--panel); border-right: 1px solid var(--border); box-shadow: 12px 0 40px #0008;
   transform: translateX(-110%); transition: transform .22s ease; display: block; max-height: none;
   overflow-y: auto; scrollbar-width: none; /* niente barra di scorrimento: si scorre con rotella/trackpad */
@@ -703,7 +707,7 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
   body { flex-direction: row; }
   .rail { width: 52px; }
   .rail-btn { width: 46px; }
-  #sidebar.drawer { left: 52px; width: calc(100vw - 52px); }
+  #sidebar.drawer { left: calc(52px / var(--ui-zoom)); width: calc(100vw - 52px); }
 }
 
 /* barre di scorrimento sottili e scure in tutta l'app */
@@ -786,3 +790,25 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .notes-head .syn-oct { width: 64px; }
 /* icone emoji in scala di grigi, coerenti con il resto dell'interfaccia */
 .emo, .menu-item .mi { filter: grayscale(1) brightness(1.1); }
+
+/* barra dei comandi compatta (una riga) */
+.song-head .actions { margin-left: auto; flex: none; }
+.controls .tsep { margin: 0; }
+.knob.rhythm { position: relative; }
+.master { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex: 1 1 70px; min-width: 70px; }
+.master input[type=range] { width: 100%; min-width: 40px; max-width: 120px; }
+.master-ico { display: inline-flex; color: var(--muted); }
+.master-ico svg { width: 18px; height: 18px; fill: currentColor; }
+#reset.icon-btn { width: 34px; font-size: 16px; }
+#click-cfg { width: 30px; font-size: 15px; }
+.click-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 230px;
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+}
+.click-panel label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); }
+.click-panel select { font-size: 12px; padding: 4px; }
+.click-panel input[type=range] { width: 120px; }
+.click-panel .fixed-bpm { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.click-panel .fixed-bpm.hidden { display: none; }
+.mk-btns { display: inline-flex; gap: 3px; }
+.mk-btns button { min-width: 22px; }

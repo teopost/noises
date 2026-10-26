@@ -267,8 +267,9 @@ function moveTrackTo(t, index) {
 function scrollTrackIntoView(t) {
   if (!t.row) return;
   const tl = tlEl(), rr = t.row.getBoundingClientRect(), tr = tl.getBoundingClientRect();
-  if (rr.bottom > tr.bottom) tl.scrollTop += rr.bottom - tr.bottom + 20;
-  else if (rr.top < tr.top + 92) tl.scrollTop -= tr.top + 92 - rr.top;
+  const z = uiZoom();
+  if (rr.bottom > tr.bottom) tl.scrollTop += (rr.bottom - tr.bottom) / z + 20;
+  else if (rr.top < tr.top + 92 * z) tl.scrollTop -= (tr.top - rr.top) / z + 92;
 }
 
 /** Riordino trascinando la maniglia ⠿ dell'intestazione. */
@@ -292,7 +293,7 @@ function setupGrip(t, row) {
       target = idx;
       const ref = rows[Math.min(idx, rows.length - 1)].getBoundingClientRect();
       const inner = $('#tl-inner').getBoundingClientRect();
-      marker.style.top = `${(idx < rows.length ? ref.top : ref.bottom) - inner.top - 1}px`;
+      marker.style.top = `${((idx < rows.length ? ref.top : ref.bottom) - inner.top) / uiZoom() - 1}px`;
       marker.classList.remove('hidden');
     };
     const up = () => {
@@ -609,10 +610,7 @@ function openTrackMenu(t, anchor, isRefStem, song) {
     items[Number(b.dataset.i)].run();
   }));
   menu.classList.remove('hidden');
-  const r = anchor.getBoundingClientRect();
-  menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)}px`;
-  const below = r.bottom + 4;
-  menu.style.top = `${below + menu.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - menu.offsetHeight - 4) : below}px`;
+  placeMenu(menu, anchor.getBoundingClientRect());
 }
 
 document.addEventListener('pointerdown', (e) => {
@@ -763,8 +761,5 @@ function openFolderMenu(g, anchor) {
     : `<button class="menu-item ${it.danger ? 'danger' : ''}" data-i="${i}"><span class="mi">${it.icon}</span>${esc(it.label)}</button>`).join('');
   menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => { closeTrackMenu(); items[Number(b.dataset.i)].run(); }));
   menu.classList.remove('hidden');
-  const r = anchor.getBoundingClientRect();
-  menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)}px`;
-  const below = r.bottom + 4;
-  menu.style.top = `${below + menu.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - menu.offsetHeight - 4) : below}px`;
+  placeMenu(menu, anchor.getBoundingClientRect());
 }

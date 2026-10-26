@@ -146,13 +146,11 @@ function openMarkerMenu(id, focusName) {
   menu.classList.remove('hidden');
   const el = $(`#marker-lane .marker[data-id="${id}"]`);
   const r = (el || $('#marker-lane')).getBoundingClientRect();
-  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-  menu.style.top = `${r.bottom + 6}px`;
+  placeMenu(menu, r, { gap: 6, flip: false });
   if (focusName) setTimeout(() => { input.focus(); input.select(); }, 20);
 }
 
 function setupMarkers() {
-  $('#mk-add').addEventListener('click', () => addMarker());
   $('#mk-prev').addEventListener('click', prevMarker);
   $('#mk-next').addEventListener('click', nextMarker);
   $('#mk-add-lane').addEventListener('click', () => addMarker());

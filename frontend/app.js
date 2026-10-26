@@ -486,11 +486,7 @@ function openPlaylistMenu(song, anchor) {
   };
   build();
   menu.classList.remove('hidden');
-  const r = anchor.getBoundingClientRect();
-  const left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8);
-  const top = r.bottom + menu.offsetHeight > window.innerHeight - 8 ? r.top - menu.offsetHeight - 4 : r.bottom + 4;
-  menu.style.left = `${Math.max(8, left)}px`;
-  menu.style.top = `${Math.max(8, top)}px`;
+  placeMenu(menu, anchor.getBoundingClientRect());
 }
 
 function setupPlaylists() {
@@ -1032,7 +1028,7 @@ function setupOverview(zoomWheel) {
   const ov = $('#overview'), win = $('#ov-win');
   let drag = null;
   const xToTime = (clientX) => Math.min(engine.duration, Math.max(0,
-    ((clientX - ov.getBoundingClientRect().left - headWidth()) / ovW()) * engine.duration));
+    (((clientX - ov.getBoundingClientRect().left) / uiZoom() - headWidth()) / ovW()) * engine.duration));
   ov.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !engine.duration) return;
     e.preventDefault();
@@ -1059,7 +1055,7 @@ function setupOverview(zoomWheel) {
     }
     const tl = tlEl();
     if (drag.mode === 'move') {
-      const dx = e.clientX - drag.x0;
+      const dx = (e.clientX - drag.x0) / uiZoom();
       tl.scrollLeft = drag.scroll0 + (dx / drag.W) * contentWidth();
       return;
     }
@@ -1089,9 +1085,26 @@ function setupOverview(zoomWheel) {
 // ===================================================== selezione, loop, esportazione
 
 /** Tempo (timeline corrente) corrispondente a una coordinata X dello schermo. */
+/** Zoom dell'interfaccia (html { zoom }): le coordinate del mouse e di getBoundingClientRect
+ *  sono già ridotte, le misure CSS (larghezze, scroll, left/top) no. */
+function uiZoom() {
+  return parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+}
+
+/** Posiziona un menu fisso sotto (o sopra, se non c'è spazio) il rettangolo `r`. */
+function placeMenu(menu, r, { gap = 4, flip = true } = {}) {
+  const z = uiZoom();
+  const mw = menu.offsetWidth * z, mh = menu.offsetHeight * z;
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8));
+  let top = r.bottom + gap;
+  if (flip && top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - gap);
+  menu.style.left = `${left / z}px`;
+  menu.style.top = `${top / z}px`;
+}
+
 function timeAt(clientX) {
   const tl = tlEl();
-  const x = clientX - tl.getBoundingClientRect().left - headWidth() + tl.scrollLeft;
+  const x = (clientX - tl.getBoundingClientRect().left) / uiZoom() - headWidth() + tl.scrollLeft;
   return Math.min(Math.max(0, x / state.zoom), engine.duration);
 }
 
@@ -1168,7 +1181,7 @@ function updateSelectionUI() {
   $('#loop').classList.toggle('on', state.loopOn);
   $('#sel-info').textContent = sel
     ? `${fmtPrecise(sel.start)} – ${fmtPrecise(sel.end)} (${(sel.end - sel.start).toFixed(1)} s)`
-    : 'Trascina sulla timeline per selezionare';
+    : '';
   $('#selection').classList.toggle('loop', state.loopOn);
   positionSelection();
   positionOverview();
@@ -1407,8 +1420,11 @@ async function doExport() {
   }
 }
 
+let uiZoomCache = 0;
 function fitCanvas(c) {
-  const dpr = window.devicePixelRatio || 1;
+  // un pixel del canvas per pixel dello schermo anche con lo zoom dell'interfaccia
+  if (!uiZoomCache) uiZoomCache = uiZoom();
+  const dpr = (window.devicePixelRatio || 1) * uiZoomCache;
   const w = Math.max(1, Math.round(c.clientWidth * dpr));
   const h = Math.max(1, Math.round(c.clientHeight * dpr));
   c.width = w;
@@ -1799,10 +1815,7 @@ function openChordMenu(i, clickT, anchor) {
   build();
   highlight();
   menu.classList.remove('hidden');
-  const r = anchor.getBoundingClientRect();
-  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-  const below = r.bottom + 4;
-  menu.style.top = `${below + menu.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - menu.offsetHeight - 4) : below}px`;
+  placeMenu(menu, anchor.getBoundingClientRect());
 }
 
 function setupChords() {

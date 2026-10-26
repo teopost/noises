@@ -182,6 +182,10 @@
           <span id="cn-cur" class="cn-cur">–</span>
           <span class="cn-next">→ <span id="cn-next"></span></span>
         </div>
+        <div class="actions">
+          <button id="reset-all" title="Ripristina tutte le impostazioni originali (le impostazioni si salvano automaticamente)">↺ Reimposta</button>
+          <button id="export" class="primary" title="Esporta le tracce attive">⤓ Esporta</button>
+        </div>
       </header>
 
       <div class="controls">
@@ -191,10 +195,6 @@
           <button id="play" class="play" title="Play/Pausa (spazio)">▶</button>
           <button id="stop" class="icon-btn" title="Stop"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
           <button id="fwd" class="icon-btn" title="Avanti 5 s (→)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12l8-6zM13 6v12l8-6z"/></svg></button>
-          <span class="tsep"></span>
-          <button id="mk-prev" class="icon-btn" title="Segnalibro precedente ( , )"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6l-6 6 6 6z"/><path d="M13 4h7v16l-3.5-3-3.5 3z"/></svg></button>
-          <button id="mk-add" class="icon-btn" title="Aggiungi un segnalibro qui (M)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9v18l-4.5-4L6 21z"/><path d="M17 8h2V6h2v2h2v2h-2v2h-2v-2h-2z"/></svg></button>
-          <button id="mk-next" class="icon-btn" title="Segnalibro successivo ( . )"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v16l-3.5-3L4 20z"/><path d="M14 6l6 6-6 6z"/></svg></button>
           <span class="time"><span id="pos">0:00</span> / <span id="dur">0:00</span><span id="section" class="section"></span></span>
         </div>
 
@@ -214,7 +214,7 @@
           <button data-tempo="5">+</button>
         </div>
 
-        <button id="reset" class="ghost" title="Riporta tonalità e velocità ai valori originali">Azzera</button>
+        <button id="reset" class="icon-btn ghost" title="Azzera: riporta tonalità e velocità ai valori originali">↺</button>
 
         <span class="tsep"></span>
 
@@ -224,36 +224,38 @@
           <button id="meter-btn" title="Metro, primo tempo della battuta e correzione del battito">4/4 ▾</button>
           <button id="analyze-notes" class="hidden" title="Rileva battiti e trascrive le note di tutte le tracce"><span class="emo">🎼</span> Analizza ritmo e note</button>
           <button id="click" class="toggle" title="Click che segue i battiti rilevati nel brano (accento sul primo tempo)"><span class="emo">🥁</span> Click</button>
-          <input id="click-vol" type="range" min="0" max="1.5" step="0.05" title="Volume del click">
-          <select id="click-mode" title="Fluido: stabile, segue solo i cambi di tempo graduali. Aderente: ogni colpo segue il battito reale della registrazione. Regolare: metronomo a BPM fisso, non segue i musicisti.">
-            <option value="smooth">Click fluido</option>
-            <option value="tight">Click aderente</option>
-            <option value="fixed">Click regolare</option>
-          </select>
-          <span id="fixed-bpm-box" class="fixed-bpm hidden">
-            <input id="fixed-bpm" type="number" min="20" max="400" step="0.1" title="BPM del click regolare"> BPM
-            <button id="fixed-bpm-reset" class="hidden" title="Torna al tempo rilevato">↺</button>
-          </span>
-          <select id="countin-sel" title="Pre-conteggio prima dell'avvio">
-            <option value="0">Nessun pre-conteggio</option>
-            <option value="1">Pre-conteggio 1 battuta</option>
-            <option value="2">Pre-conteggio 2 battute</option>
-          </select>
+          <button id="click-cfg" class="icon-btn" title="Impostazioni del click: volume, modalità, pre-conteggio">⚙</button>
+          <div id="click-panel" class="menu click-panel hidden">
+            <label>Volume <input id="click-vol" type="range" min="0" max="1.5" step="0.05" title="Volume del click"></label>
+            <label>Modalità
+              <select id="click-mode" title="Fluido: stabile, segue solo i cambi di tempo graduali. Aderente: ogni colpo segue il battito reale della registrazione. Regolare: metronomo a BPM fisso, non segue i musicisti.">
+                <option value="smooth">Click fluido</option>
+                <option value="tight">Click aderente</option>
+                <option value="fixed">Click regolare</option>
+              </select>
+            </label>
+            <span id="fixed-bpm-box" class="fixed-bpm hidden">
+              <input id="fixed-bpm" type="number" min="20" max="400" step="0.1" title="BPM del click regolare"> BPM
+              <button id="fixed-bpm-reset" class="hidden" title="Torna al tempo rilevato">↺</button>
+            </span>
+            <label>Pre-conteggio
+              <select id="countin-sel" title="Pre-conteggio prima dell'avvio">
+                <option value="0">Nessuno</option>
+                <option value="1">1 battuta</option>
+                <option value="2">2 battute</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div class="actions">
-          <button id="reset-all" title="Ripristina tutte le impostazioni originali (le impostazioni si salvano automaticamente)">↺ Reimposta</button>
-          <button id="export" class="primary" title="Esporta le tracce attive">⤓ Esporta</button>
-        </div>
-
-        <div class="knob master">
-          <span class="lbl">Master</span>
+        <div class="knob master" title="Volume generale (master)">
+          <span class="master-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
           <input id="master" type="range" min="0" max="1.5" step="0.01" value="1">
         </div>
       </div>
 
       <div class="selbar">
-        <button id="play-sel" title="Riproduci la selezione">▶ Selezione</button>
+        <button id="play-sel" title="Riproduci la selezione (trascina sulla timeline per selezionare)">▶ Selezione</button>
         <button id="loop" title="Ripeti la selezione in loop (L)">⟳ Loop</button>
         <span id="sel-info" class="sel-info"></span>
         <button id="sel-clear" class="ghost" title="Annulla selezione (Esc)">✕</button>
@@ -302,7 +304,11 @@
         <div class="marker-row">
           <div class="track-head marker-head">
             <div class="track-title"><span class="emo">🔖</span> Segnalibri</div>
-            <button id="mk-add-lane" class="icon" title="Aggiungi un segnalibro nella posizione attuale (M)">＋</button>
+            <span class="mk-btns">
+              <button id="mk-prev" class="icon" title="Segnalibro precedente ( , )">‹</button>
+              <button id="mk-add-lane" class="icon" title="Aggiungi un segnalibro nella posizione attuale (M)">＋</button>
+              <button id="mk-next" class="icon" title="Segnalibro successivo ( . )">›</button>
+            </span>
           </div>
           <div id="marker-lane" class="lane marker-lane"></div>
         </div>
