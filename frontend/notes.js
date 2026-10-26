@@ -886,16 +886,18 @@ function setupClick() {
     state.click = localStorage.getItem('noises.click') === '1';
     state.clickVol = Number(localStorage.getItem('noises.clickVol') || 0.8);
     state.countIn = Number(localStorage.getItem('noises.countIn') || 0);
-    state.clickMode = localStorage.getItem('noises.clickMode') || 'smooth';
+    // predefinito: aderente. Chiave nuova, così la vecchia predefinita (fluido) salvata
+    // automaticamente non resta: la scelta riparte da "aderente" una volta sola
+    state.clickMode = localStorage.getItem('noises.clickMode2') || 'tight';
   } catch {
-    state.click = false; state.clickVol = 0.8; state.countIn = 0; state.clickMode = 'smooth';
+    state.click = false; state.clickVol = 0.8; state.countIn = 0; state.clickMode = 'tight';
   }
   const save = () => {
     try {
       localStorage.setItem('noises.click', state.click ? '1' : '0');
       localStorage.setItem('noises.clickVol', String(state.clickVol));
       localStorage.setItem('noises.countIn', String(state.countIn));
-      localStorage.setItem('noises.clickMode', state.clickMode);
+      localStorage.setItem('noises.clickMode2', state.clickMode);
     } catch {}
   };
   $('#click').classList.toggle('on', state.click);
