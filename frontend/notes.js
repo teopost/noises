@@ -821,7 +821,8 @@ function countInPlan(p, bars) {
   // colpi: l'ultimo cade un battito prima di bNext, così il "4" porta dritto sul battito
   const beats = [];
   for (let j = n; j >= 1; j--) beats.push({ rel: delay + lead - j * period, num: ((n - j) % bpb) + 1 });
-  return { delay, beats };
+  // end: istante (dall'inizio del conteggio) del primo "1" di battuta della musica
+  return { delay, beats, end: delay + lead };
 }
 
 /** Avvia la riproduzione, preceduta dal pre-conteggio se attivo. */
@@ -843,7 +844,8 @@ function playWithCountIn() {
     playClick(when, b.num === 1, Math.max(0.6, state.clickVol));
     countTimers.push(setTimeout(() => showCount(b.num), Math.max(0, (when - engine.ctx.currentTime) * 1000)));
   }
-  countTimers.push(setTimeout(() => showCount(null), Math.max(0, (engine.t0 - engine.ctx.currentTime) * 1000)));
+  // il conteggio può proseguire sopra l'inizio della musica: il numero sparisce sull'"1"
+  countTimers.push(setTimeout(() => showCount(null), Math.max(0, (start + plan.end + nudge - engine.ctx.currentTime) * 1000)));
 }
 
 function showCount(n) {
