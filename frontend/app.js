@@ -651,8 +651,8 @@ function showInsecureNotice() {
   el.id = 'insecure-notice';
   el.className = 'insecure-notice';
   el.innerHTML = `<strong>L'audio non può funzionare in questa pagina.</strong>
-    Il browser attiva il motore audio solo in pagine sicure: apri Noises con <b>https://${esc(host)}</b>
-    (sul server: <code>make up-https</code>) oppure su <b>localhost</b> dal computer del server.`;
+    Il browser attiva il motore audio solo in pagine sicure: apri Noises in <b>HTTPS</b>
+    (per esempio tramite Cloudflare Tunnel) oppure su <b>localhost</b> dal computer del server.`;
   document.body.appendChild(el);
 }
 

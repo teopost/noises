@@ -34,38 +34,42 @@ click intelligente ed esportazione di basi.
 
 ## Funzionalità
 
-### Separazione e mixer
-- **Separazione delle tracce** con [Demucs v4](https://github.com/facebookresearch/demucs): 4 tracce (voce, batteria, basso, altro), 4 tracce in alta qualità, oppure 6 tracce (+ chitarra e piano).
-- **Elaborazione su richiesta**: i brani caricati restano "da elaborare"; sei tu a scegliere quando avviare separazione e analisi.
-- **Import da URL** (YouTube e gli altri siti supportati da yt-dlp).
-- **Mixer** con muto, solo e volume per traccia, volume master e download delle singole tracce.
-- **Tonalità** (±12 semitoni) e **velocità** (50–150%) indipendenti, con [Rubber Band](https://breakfastquay.com/rubberband/); le versioni elaborate restano in cache.
+### Libreria e progetti
+- **Libreria** dei brani (caricati dal computer o importati da **YouTube** e dagli altri siti supportati da yt-dlp, con avanzamento del download), con **playlist** e ricerca.
+- **Progetti**: timeline multitraccia salvate, separate dalla libreria. Trascini i brani nella timeline e li tieni interi o ne separi le tracce.
+- **Scalette**: elenchi ordinati di progetti da suonare in sequenza, con pausa configurabile tra un brano e l'altro (o attesa del Play), avanzamento automatico e barra con posizione e brano successivo.
+- **Impostazioni salvate automaticamente** per progetto (tonalità, velocità, volumi, muto/solo, selezione, loop), con **Reimposta** per tornare all'originale.
 
-### Timeline
-- **Zoom** in pixel al secondo (slider, `Ctrl` + rotella o pinch), **panoramica** del brano con un riquadro da trascinare.
-- **Selezione** col trascinamento, **loop** sincronizzato con precisione al campione, riproduzione della sola selezione.
-- **Impostazioni salvate per brano** (tonalità, velocità, volumi, muto/solo, selezione, loop) con pulsanti Salva e Reset.
+### Separazione e mixer
+- **Separazione delle tracce** con [Demucs v4](https://github.com/facebookresearch/demucs): 4 tracce (voce, batteria, basso, altro), 4 tracce in alta qualità, oppure 6 tracce (+ chitarra e piano). Si avvia dal menu ⋯ della traccia, quando vuoi tu.
+- **Mixer** con muto, solo e volume per traccia e per gruppo, volume master.
+- **Tonalità** (±12 semitoni) e **velocità** (50–150%) indipendenti, applicate **in tempo reale** nel browser; nei file esportati con [Rubber Band](https://breakfastquay.com/rubberband/). La tonalità del brano, già trasposta, compare accanto ai comandi.
+
+### Editor multitraccia
+- **Clip** spostabili, tagliabili (`X`) ed eliminabili; tracce aggiungibili da libreria, computer o YouTube, duplicabili, rinominabili, riordinabili.
+- **Gruppi**: le tracce separate di un brano stanno in un gruppo apribile e chiudibile; con **Raggruppa** ne crei altri. Le tracce di un gruppo si spostano e si modificano insieme.
+- **Annulla/ripeti** (`Ctrl+Z` / `Ctrl+Y`), **segnalibri** con nome e navigazione, **selezione** e **loop** con precisione al campione.
+- **Zoom** in pixel al secondo (slider, `Ctrl` + rotella o pinch) e **panoramica** del progetto con un riquadro da trascinare.
 
 ### Analisi musicale
-- **Accordi** con [BTC](https://github.com/jayg996/BTC-ISMIR19): 170 accordi (maj, min, 7, maj7, m7, 6, m6, sus2, sus4, dim, dim7, m7♭5, aug, m(maj7)). Corsia degli accordi, accordo corrente e successivo, notazione C D E / Do Re Mi, **correzione manuale** (cambiare, dividere, unire, spostare i cambi).
+- **Accordi** con [BTC](https://github.com/jayg996/BTC-ISMIR19): 170 accordi (maj, min, 7, maj7, m7, 6, m6, sus2, sus4, dim, dim7, m7♭5, aug, m(maj7)), riconosciuti sulle tracce separate o anche sul **brano intero**. Corsia degli accordi, accordo corrente e successivo, notazione C D E / Do Re Mi, **correzione manuale** e **ricalcolo**.
 - **Trascrizione delle note** di tutte le tracce con [Basic Pitch](https://github.com/spotify/basic-pitch) e un rilevatore dei colpi di batteria per bande di frequenza (cassa, rullante, hi-hat).
 - **Piano roll modificabile** per ogni traccia: spostare, allungare, aggiungere ed eliminare note, agganciate alla griglia ritmica.
-- **Synth** per ascoltare le note trascritte insieme all'audio originale.
+- **Synth** per ascoltare le note trascritte, con 8 suoni (piano, piano elettrico, organo, marimba…) e scelta dell'ottava.
 
 ### Spartito, ritmo e basi
 - **Spartito** (MusicXML generato con music21, visualizzato con OpenSheetMusicDisplay): pianoforte su doppio pentagramma, batteria in notazione percussiva, alterazioni secondo la tonalità. Stampa, PDF ed export MusicXML.
 - **Tablatura** per chitarra (anche Drop D) e basso a 4 o 5 corde, con corde e tasti scelti per limitare gli spostamenti della mano e gli accordi sopra le battute.
 - **Cursore** che segue la riproduzione nello spartito e nella tablatura.
-- **Click intelligente** che segue i battiti rilevati nel brano, anche quando il tempo varia, con l'accento sul primo tempo.
+- **Click** con tre modalità: **Adattivo** (segue ogni colpo della batteria registrata), **Tempo medio** (segue il tempo della canzone livellando le irregolarità), **Metronomo** (BPM fisso, regolabile). Sei suoni, volume, **spostamento fine a orecchio** (±5 ms per passo) e accento sul primo tempo.
 - **Metro** selezionabile (2/4, 3/4, 4/4, 5/4, 6/8, 12/8), spostamento del primo tempo, correzione del battito ×2/÷2.
-- **Pre-conteggio** di 1 o 2 battute, che porta esattamente sul battito successivo.
-- **Esportazione** in MP3, WAV, FLAC o MIDI delle sole tracce attive (per esempio la base senza voce), del brano intero o della selezione, con **click e pre-conteggio** inclusi per creare basi.
+- **Pre-conteggio** di 1 o 2 battute, che porta sempre sul primo tempo della battuta.
+- **Esportazione** in MP3, WAV, FLAC o MIDI delle sole tracce attive (per esempio la base senza voce), del progetto intero o della selezione, con **click e pre-conteggio** inclusi per creare basi.
 
 ### Account
 - **Registrazione con verifica dell'email**, accesso, password dimenticata con reset via email, cambio password.
 - **Accesso con Google** (OAuth 2.0 / OpenID Connect con PKCE).
-- **Più utenti**: ognuno vede solo i propri brani e le proprie playlist.
-- **Playlist** (un brano può stare in più playlist) e ricerca nella libreria.
+- **Più utenti**: ognuno vede solo i propri brani, progetti, scalette e playlist.
 
 ## Avvio rapido
 
@@ -89,40 +93,65 @@ make logs   # cerca la riga "[email non inviata — SMTP assente] … → http:/
 
 ## Raspberry Pi e server in rete
 
-Noises gira anche su **Raspberry Pi 4 o 5** (o qualsiasi computer ARM a 64 bit): l'immagine si costruisce sul Raspberry con lo stesso compose.
+Noises gira anche su **Raspberry Pi 4 o 5** e su qualsiasi computer ARM a 64 bit.
 
 **Requisiti**
 - **Raspberry Pi OS a 64 bit** (o un'altra distribuzione `arm64`): PyTorch non esiste per i sistemi a 32 bit, e la build si ferma con un messaggio chiaro.
 - **Almeno 4 GB di RAM** (8 GB consigliati per i modelli più pesanti) e circa 8 GB liberi su disco, meglio un SSD che la scheda SD.
-- Docker con Compose v2 e `make`:
+- Docker con Compose v2, `make` e `git`:
   ```sh
   curl -fsSL https://get.docker.com | sh
   sudo usermod -aG docker $USER   # poi esci e rientra
   sudo apt install -y make git
   ```
 
-**HTTPS: necessario aprendo l'app da un altro computer.** Il browser attiva il motore audio (tonalità e velocità in tempo reale) solo in pagine sicure: HTTPS oppure `localhost`. Aprendo `http://raspberrypi.local:8080` da un altro PC l'audio non funziona e l'app lo segnala. Il profilo `https` del compose aggiunge [Caddy](https://caddyserver.com/), che crea da solo un certificato locale.
+**Installazione con l'immagine pronta** (consigliata: niente compilazione sul Raspberry). La [CI](#immagine-docker-ci) pubblica l'immagine per `amd64` e `arm64` su GitHub Container Registry:
 
 ```sh
 git clone https://github.com/teopost/noises.git
 cd noises
 cp .env.example .env
 # in .env:
-#   HTTPS_HOSTS=raspberrypi.local, 192.168.1.50   # nome e/o IP del Raspberry
-#   HTTPS_DEFAULT_SNI=192.168.1.50                 # solo se lo apri con l'indirizzo IP
-#   PUBLIC_URL=https://raspberrypi.local
-make up-https     # build (la prima volta 20–40 minuti) + avvio con HTTPS
+#   NOISES_IMAGE=ghcr.io/teopost/noises:latest
+#   PUBLIC_URL=https://noises.tuodominio.it      # l'indirizzo del tunnel (vedi sotto)
+docker login ghcr.io -u teopost                  # solo se il repository è privato: token con "read:packages"
+make pull                                        # scarica l'immagine e avvia
 ```
 
-Poi apri `https://raspberrypi.local` da qualsiasi computer della rete. Il certificato è firmato da una CA locale: la prima volta il browser mostra un avviso da accettare. Per toglierlo, `make https-ca` crea `noises-ca.crt`, da installare come autorità attendibile sui dispositivi.
+Per aggiornare basta ripetere `make pull`. In alternativa `make up` costruisce l'immagine sul Raspberry (la prima volta 20–40 minuti).
 
-**Prestazioni.** La separazione su Raspberry Pi è lenta: conta svariati minuti per brano con il modello veloce (molto di più con "alta qualità" o 6 tracce). Ascolto, tonalità e velocità girano nel browser, quindi restano fluidi. `DEMUCS_THREADS=4` in `.env` usa tutti i core del Pi.
+**Accesso da fuori con Cloudflare Tunnel.** Il browser attiva il motore audio (tonalità e velocità in tempo reale) solo in pagine sicure: **HTTPS** oppure `localhost`. Aperta con `http://raspberrypi.local:8080` da un altro computer, l'app segnala che l'audio non può funzionare. Un [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) risolve il problema: fornisce l'HTTPS e rende l'app raggiungibile anche fuori casa, senza aprire porte sul router.
+
+1. Installa `cloudflared` sul Raspberry e crea un tunnel dalla dashboard di Cloudflare (Zero Trust → Networks → Tunnels).
+2. Aggiungi un *public hostname*, per esempio `noises.tuodominio.it`, con servizio `http://localhost:8080`.
+3. Imposta in `.env` `PUBLIC_URL=https://noises.tuodominio.it` (serve per i link delle email, per il redirect di Google e per i cookie sicuri), poi `make pull` o `make restart`.
+
+Per l'accesso con Google, aggiungi `https://noises.tuodominio.it/api/auth/google/callback` ai redirect URI autorizzati.
+
+**Limiti di Cloudflare da tenere presenti**
+- **Caricamenti fino a 100 MB** per file con il piano gratuito: i file audio più grandi vanno compressi, oppure importati da YouTube.
+- **Risposte entro 100 secondi**: sul Raspberry il riconoscimento accordi e la trascrizione delle note, avviati dall'editor, possono richiedere di più. La separazione delle tracce invece lavora in coda e non ha questo limite.
+
+**Prestazioni.** La separazione su Raspberry Pi è lenta: conta svariati minuti per brano con il modello veloce, molto di più con "alta qualità" o 6 tracce. Ascolto, tonalità e velocità girano nel browser, quindi restano fluidi. `DEMUCS_THREADS=4` in `.env` usa tutti i core del Pi.
+
+### Immagine Docker (CI)
+
+Il workflow [`.github/workflows/docker.yml`](.github/workflows/docker.yml) costruisce l'immagine per `linux/amd64` e `linux/arm64` (ARM in emulazione, un job per architettura) e la pubblica su `ghcr.io/teopost/noises`:
+
+| Evento | Tag |
+|---|---|
+| push su `main` | `latest`, `sha-<commit>` |
+| tag `v1.2.3` | `1.2.3`, `1.2` |
+| avvio manuale (Actions → Immagine Docker → Run workflow) | come sopra, per il ramo scelto |
+
+Le modifiche che toccano solo la documentazione non avviano la build. Con il repository privato, anche l'immagine è privata: per scaricarla serve `docker login ghcr.io` con un token che abbia il permesso `read:packages`.
 
 ## Guida all'uso
 
-1. **Carica** uno o più file audio (trascinali nella barra laterale) oppure incolla un link YouTube.
-2. Premi **▶ Elabora** sul brano, scegli il tipo di separazione e le analisi da eseguire (accordi; ritmo e note).
-3. Quando il brano è **Pronto**, aprilo: hai la timeline con le tracce, gli accordi e i comandi.
+1. Dalla barra a sinistra apri **Progetti** e crea un progetto con **＋ Nuovo**.
+2. Aggiungi un brano con **＋ Aggiungi traccia** (libreria, computer o YouTube), oppure trascinalo dalla **Libreria** o dal computer nella timeline.
+3. Per separare le tracce usa il menu **⋯** della traccia → **Separa traccia**, scegli il tipo di separazione e le analisi da eseguire (accordi; ritmo e note).
+4. Per suonare più progetti di fila crea una **Scaletta** dalla barra a sinistra.
 
 | Azione | Come |
 |---|---|
@@ -131,13 +160,19 @@ Poi apri `https://raspberrypi.local` da qualsiasi computer della rete. Il certif
 | Selezionare una porzione | trascina sulla timeline o sul righello |
 | Loop della selezione | `L` o ⟳ Loop |
 | Annullare selezione / chiudere i menu | `Esc` |
+| Tagliare le clip selezionate alla testina | `X` |
+| Eliminare la clip selezionata | `Canc` |
+| Annulla / ripeti | `Ctrl+Z` / `Ctrl+Y` |
+| Raggruppare / sciogliere le tracce selezionate | `Ctrl+G` / `Ctrl+Shift+G` |
+| Riordinare le tracce | trascina la maniglia ⠿, oppure `Alt+↑` / `Alt+↓` |
+| Segnalibri | `M` per aggiungere, `,` e `.` per il precedente e il successivo (anche ‹ ＋ › nella corsia) |
 | Zoom | `Ctrl` + rotella, pinch, slider, oppure i bordi del riquadro nella panoramica |
 | Scorrere | trascina il riquadro della panoramica, `Shift` + rotella, trackpad |
-| Note di una traccia | pulsante ♪ sulla traccia → piano roll |
+| Separare, rinominare, duplicare, esportare, eliminare una traccia | menu **⋯** della traccia |
+| Note e spartito di una traccia separata | menu **⋯** → Mostra note · Spartito e tablatura |
 | Modificare le note | clic per selezionare · trascina per spostare · bordo destro per la durata · doppio clic per aggiungere · `Canc` per eliminare · `↑`/`↓` per un semitono · `Shift` per muoversi senza griglia |
 | Correggere un accordo | clic sull'accordo; trascina il bordo sinistro per spostare il cambio |
-| Spartito / tablatura | 𝄞 Spartito nella corsia delle note |
-| Metro e click | sezione **Ritmo**: `4/4 ▾`, 🥁 Click, pre-conteggio |
+| Metro e click | sezione **Ritmo**: `4/4 ▾`, **Click** e **⚙** (suono, volume, modalità, spostamento fine, pre-conteggio) |
 
 Per creare una **base**: metti in muto la voce, poi **⤓ Esporta** con *Click per tutto il brano* e *Pre-conteggio 1 battuta*.
 
@@ -172,6 +207,7 @@ Tutte le variabili si possono impostare in `.env` (vedi [`.env.example`](.env.ex
 
 | Variabile | Default | Descrizione |
 |---|---|---|
+| `NOISES_IMAGE` | `noises:latest` | immagine da usare: quella costruita in locale o quella della CI (`ghcr.io/teopost/noises:latest`) |
 | `NOISES_PORT` | `8080` | porta esposta |
 | `PUBLIC_URL` | `http://localhost:8080` | URL pubblico, usato nei link delle email e nel redirect di Google |
 | `EMAIL_VERIFICATION` | `true` | richiede la conferma dell'email alla registrazione |
@@ -206,13 +242,15 @@ flowchart LR
 |---|---|---|
 | Server HTTP, coda, autenticazione, streaming | Rust · axum · tokio · rusqlite · argon2 · lettre · reqwest | `backend/` |
 | Separazione | Demucs v4 (PyTorch, CPU) | — |
-| Tonalità e velocità | Rubber Band (C++) | — |
+| Tonalità e velocità | AudioWorklet nel browser (ascolto) · Rubber Band (export) | `frontend/stretch-worklet.js` |
 | Accordi | BTC, vocabolario da 170 classi | `analysis/chords.py` |
 | Note e battiti | Basic Pitch (ONNX, senza TensorFlow), librosa | `analysis/transcribe.py` |
 | Spartito | music21 → MusicXML | `analysis/score.py` |
 | Frontend | HTML/CSS/JS senza framework, Web Audio API, OpenSheetMusicDisplay | `frontend/` |
 
-Il lavoro pesante lo fanno librerie native (PyTorch, Rubber Band, ffmpeg) che il server Rust orchestra. Il browser decodifica le tracce una volta sola, poi mixa, fa il loop e suona il synth localmente con la Web Audio API, così la riproduzione resta sincronizzata.
+Il lavoro pesante lo fanno librerie native (PyTorch, ffmpeg, Rubber Band) che il server Rust orchestra. Il browser decodifica le tracce una volta sola, poi le mixa e applica tonalità e velocità in tempo reale con un motore AudioWorklet (WSOLA e ricampionamento). Click, synth e loop restano sincronizzati al campione. Rubber Band si usa per i file esportati.
+
+Il motore AudioWorklet funziona solo in pagine sicure: HTTPS oppure `localhost` (vedi [Raspberry Pi e server in rete](#raspberry-pi-e-server-in-rete)).
 
 ### Dati
 
@@ -222,8 +260,11 @@ Tutto sta nel volume Docker `noises-data` (`/data`):
 /data
 ├── noises.db                 # utenti, sessioni, token (SQLite)
 ├── playlists.json
+├── setlists.json             # scalette
+├── projects/<id>.json        # progetti: tracce, clip, gruppi, segnalibri, impostazioni
 └── songs/<id>/
-    ├── meta.json             # stato, proprietario, impostazioni, metro
+    ├── meta.json             # stato, proprietario, metro, regolazione del click
+    ├── original.flac         # brano intero (per le tracce non separate)
     ├── input.<ext>           # file originale
     ├── stems/*.flac          # tracce separate
     ├── render/*.flac         # cache di tonalità e velocità
@@ -251,13 +292,17 @@ Tutte le API sotto `/api` (tranne `/api/auth/*` e `/api/health`) richiedono una 
 | `POST` | `/api/import` | import da URL |
 | `GET` `DELETE` | `/api/songs/:id` | dettagli, eliminazione |
 | `POST` | `/api/songs/:id/process` | avvio di separazione e analisi |
-| `GET` | `/api/songs/:id/stems/:stem?pitch=&tempo=` | traccia (FLAC), con tonalità e velocità applicate |
-| `POST` | `/api/songs/:id/export` | mix delle tracce attive, con click e pre-conteggio opzionali |
-| `PUT` `DELETE` | `/api/songs/:id/settings` | impostazioni del mixer |
-| `GET` `PUT` | `/api/songs/:id/chords` | accordi (`POST …/analyze`, `DELETE …/edits`) |
+| `GET` | `/api/songs/:id/original` | brano intero (FLAC) |
+| `GET` | `/api/songs/:id/stems/:stem` | traccia separata (FLAC) |
+| `GET` `PUT` | `/api/songs/:id/chords` | accordi (`POST …/analyze[?redo=true]`, `DELETE …/edits`) |
 | `GET` | `/api/songs/:id/notes` | note e griglia (`POST …/analyze`, `PUT …/:stem`, `DELETE …/:stem/edits`) |
-| `PUT` | `/api/songs/:id/rhythm` | metro, primo tempo, correzione del battito |
+| `PUT` | `/api/songs/:id/rhythm` | metro, primo tempo, correzione del battito, spostamento del click |
 | `POST` | `/api/songs/:id/score/:stem` | MusicXML ed eventi per la tablatura |
+| `GET` `POST` | `/api/projects` | progetti: elenco, creazione |
+| `GET` `PUT` `DELETE` | `/api/projects/:id` | progetto: tracce, clip, gruppi, segnalibri |
+| `PUT` `DELETE` | `/api/projects/:id/settings` | impostazioni del mixer |
+| `POST` | `/api/projects/:id/export` | mix delle tracce attive, con click e pre-conteggio opzionali |
+| `GET` `POST` | `/api/setlists` | scalette (`PUT`/`DELETE /:id`) |
 | `GET` `POST` | `/api/playlists` | playlist (`PATCH`/`DELETE /:id`, `PUT`/`DELETE /:id/songs/:song`) |
 
 </details>
@@ -267,8 +312,7 @@ Tutte le API sotto `/api` (tranne `/api/auth/*` e `/api/health`) richiedono una 
 | Comando | Descrizione |
 |---|---|
 | `make up` | build e avvio in background |
-| `make up-https` | come `up`, con HTTPS davanti (server aperto da altri computer, es. Raspberry Pi) |
-| `make https-ca` | esporta il certificato della CA locale (`noises-ca.crt`) da installare sui dispositivi |
+| `make pull` | scarica l'immagine pronta della CI (`NOISES_IMAGE` in `.env`) e avvia, senza build |
 | `make down` / `make stop` / `make restart` | ferma e rimuove, ferma, riavvia |
 | `make logs` | segue i log |
 | `make ps` | stato dei container |
