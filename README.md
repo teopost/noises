@@ -9,10 +9,13 @@ cambio di tonalità e velocità indipendenti, accordi, trascrizione delle note, 
 click intelligente ed esportazione di basi.
 
 ![Versione](https://img.shields.io/badge/versione-1.0.0-7c5cff)
+![Licenza](https://img.shields.io/badge/licenza-MIT-2bd47d)
 ![Rust](https://img.shields.io/badge/backend-Rust%20%2B%20axum-orange)
 ![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
 
-<img src="docs/login.png" alt="Schermata di accesso" width="640">
+**[Sito del progetto →](https://teopost.github.io/noises/)**
+
+<img src="docs/screenshot.png" alt="Editor di Noises con il brano Horny separato in sei tracce, accordi, segnalibri e piano roll del basso" width="900">
 
 </div>
 
@@ -31,6 +34,7 @@ click intelligente ed esportazione di basi.
 - [Comandi make](#comandi-make)
 - [Limiti noti](#limiti-noti)
 - [Crediti e licenze di terze parti](#crediti-e-licenze-di-terze-parti)
+- [Licenza](#licenza)
 
 ## Funzionalità
 
@@ -345,3 +349,7 @@ Tutte le API sotto `/api` (tranne `/api/auth/*` e `/api/health`) richiedono una 
 | [librosa](https://github.com/librosa/librosa) | ISC |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense |
 | [FFmpeg](https://ffmpeg.org/) | LGPL/GPL |
+
+## Licenza
+
+Noises è distribuito con licenza [MIT](LICENSE.md). I componenti di terze parti mantengono le proprie licenze, elencate sopra.

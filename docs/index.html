@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noises — separa le tracce, studia e suona</title>
+<meta name="description" content="Noises è una web app open source e self-hosted per musicisti: separazione delle tracce con l'AI, tonalità e velocità in tempo reale, accordi, spartito, tablatura, click adattivo e basi. Licenza MIT.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Noises — separa le tracce, studia e suona">
+<meta property="og:description" content="Separazione AI, accordi, spartito, click adattivo e basi. Self-hosted, open source (MIT), gira anche su Raspberry Pi.">
+<meta property="og:image" content="https://teopost.github.io/noises/assets/og.jpg">
+<meta property="og:url" content="https://teopost.github.io/noises/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0d0f14">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='none' stroke='%237c5cff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%237c5cff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --bg-2: #12151c;
+    --panel: #171a22;
+    --panel-2: #1e222c;
+    --border: #2a2f3b;
+    --text: #e9ebf1;
+    --muted: #9aa1b2;
+    --accent: #7c5cff;
+    --accent-2: #a48bff;
+    --pink: #ff6b9a;
+    --amber: #f5b942;
+    --teal: #3dd6c4;
+    --green: #2bd47d;
+    --radius: 16px;
+    --max: 1180px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  a { color: inherit; }
+  img { max-width: 100%; height: auto; display: block; }
+  .wrap { width: min(var(--max), 100% - 32px); margin: 0 auto; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } html { scroll-behavior: auto; } }
+
+  /* ---------- barra superiore ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 20; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--bg) 78%, transparent); border-bottom: 1px solid #ffffff0d;
+  }
+  .nav .wrap { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; text-decoration: none; letter-spacing: -.2px; }
+  .logo { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--accent); display: grid; place-items: center; }
+  .logo::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .nav-links { display: flex; gap: 24px; margin-left: auto; }
+  .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; }
+  .nav-links a:hover { color: var(--text); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px; padding: 12px 20px; border-radius: 12px; font-weight: 600; font-size: 15px;
+    text-decoration: none; border: 1px solid var(--border); background: var(--panel); color: var(--text); transition: transform .15s, border-color .15s, background .15s;
+  }
+  .btn:hover { transform: translateY(-1px); border-color: #3b4252; }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), #9b6bff); border-color: transparent; box-shadow: 0 8px 30px #7c5cff55; }
+  .btn.primary:hover { box-shadow: 0 10px 36px #7c5cff77; }
+  .btn.small { padding: 8px 14px; font-size: 14px; border-radius: 10px; }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; }
+  @media (max-width: 760px) { .nav-links { display: none; } .nav .btn.small { margin-left: auto; } }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; padding: 84px 0 40px; text-align: center; isolation: isolate; }
+  .hero::before {
+    content: ''; position: absolute; inset: -120px 0 auto; height: 720px; z-index: -1;
+    background:
+      radial-gradient(600px 320px at 50% 18%, #7c5cff40, transparent 70%),
+      radial-gradient(380px 260px at 20% 40%, #ff6b9a1f, transparent 70%),
+      radial-gradient(420px 260px at 82% 38%, #3dd6c41c, transparent 70%);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 500;
+    color: var(--accent-2); background: #7c5cff17; border: 1px solid #7c5cff40;
+  }
+  .pill b { color: var(--text); font-weight: 600; }
+  h1 {
+    font-size: clamp(40px, 7vw, 78px); line-height: 1.02; letter-spacing: -2.4px; font-weight: 800; margin: 22px auto 18px; max-width: 900px;
+  }
+  .grad { background: linear-gradient(100deg, #fff 10%, var(--accent-2) 45%, var(--pink) 75%, var(--amber)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { color: var(--muted); font-size: clamp(17px, 2.2vw, 20px); max-width: 720px; margin: 0 auto 32px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .meta { margin-top: 22px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .meta span::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  /* onde animate decorative */
+  .bars { display: flex; justify-content: center; align-items: center; gap: 4px; height: 34px; margin: 0 auto 6px; }
+  .bars i { width: 4px; border-radius: 3px; background: linear-gradient(var(--accent-2), var(--pink)); animation: eq 1.2s ease-in-out infinite; opacity: .85; }
+  @keyframes eq { 0%, 100% { height: 6px; } 50% { height: 30px; } }
+
+  /* ---------- screenshot ---------- */
+  .shot { margin: 56px auto 0; width: min(1240px, 100% - 32px); perspective: 1800px; }
+  .frame {
+    border-radius: 18px; overflow: hidden; border: 1px solid #ffffff1a; background: var(--panel);
+    box-shadow: 0 40px 120px -20px #000c, 0 0 0 1px #00000080, 0 0 90px -10px #7c5cff55;
+    transform: rotateX(8deg) scale(.98); transform-origin: 50% 0; transition: transform .8s cubic-bezier(.2,.7,.2,1);
+  }
+  .frame.flat { transform: none; }
+  @media (max-width: 760px) { .frame { transform: none; } .shot { margin-top: 40px; } }
+  .frame-bar { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; background: #12141b; border-bottom: 1px solid #ffffff10; }
+  .frame-bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3f4c; }
+  .frame-bar i:nth-child(1) { background: #ff5f57; } .frame-bar i:nth-child(2) { background: #febc2e; } .frame-bar i:nth-child(3) { background: #28c840; }
+  .frame-bar span { margin: 0 auto; font-size: 12px; color: var(--muted); background: #0d0f14; padding: 3px 14px; border-radius: 7px; transform: translateX(-26px); }
+  .caption { text-align: center; color: var(--muted); font-size: 13px; margin-top: 16px; }
+
+  /* ---------- sezioni ---------- */
+  section { padding: 96px 0; }
+  .kicker { color: var(--accent-2); font-weight: 600; font-size: 13px; letter-spacing: 1.6px; text-transform: uppercase; }
+  h2 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.1; letter-spacing: -1.2px; margin: 10px 0 14px; font-weight: 800; }
+  .sub { color: var(--muted); font-size: 18px; max-width: 680px; margin: 0; }
+  .center { text-align: center; } .center .sub { margin: 0 auto; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+  @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    position: relative; padding: 26px; border-radius: var(--radius); background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--border); overflow: hidden; transition: border-color .2s, transform .2s;
+  }
+  .card:hover { border-color: #7c5cff66; transform: translateY(-2px); }
+  .card::after { content: ''; position: absolute; inset: auto -40% -60% auto; width: 220px; height: 220px; border-radius: 50%; background: var(--glow, #7c5cff); opacity: .07; filter: blur(30px); }
+  .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 18px; background: color-mix(in srgb, var(--glow, #7c5cff) 16%, transparent); color: var(--glow, var(--accent-2)); }
+  .ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .card h3 { margin: 0 0 8px; font-size: 18px; letter-spacing: -.2px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* blocchi affiancati */
+  .split { display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
+  .split.rev { grid-template-columns: 1.15fr 1fr; }
+  .split.rev .media { order: -1; }
+  @media (max-width: 900px) { .split, .split.rev { grid-template-columns: 1fr; gap: 32px; } .split.rev .media { order: 0; } }
+  .split > *, .grid > *, .steps > * { min-width: 0; } /* il terminale scorre al suo interno, non allarga la pagina */
+  @media (max-width: 520px) { .frame-bar span { display: none; } }
+  .ticks { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 12px; }
+  .ticks li { display: flex; gap: 12px; color: var(--muted); }
+  .ticks li::before { content: ''; flex: none; width: 20px; height: 20px; margin-top: 2px; border-radius: 6px; background: #7c5cff26 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a48bff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center/13px no-repeat; }
+  .ticks b { color: var(--text); font-weight: 600; }
+  .media .frame { transform: none; }
+
+  /* demo del click */
+  .click-modes { display: grid; gap: 12px; margin-top: 28px; }
+  .mode { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); }
+  .mode strong { font-size: 15px; }
+  .mode small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .ticks-row { position: relative; height: 26px; }
+  .ticks-row i { position: absolute; top: 3px; width: 3px; height: 20px; border-radius: 2px; background: var(--accent-2); }
+  .ticks-row i.acc { background: var(--amber); height: 24px; top: 1px; }
+  .ticks-row .kick { position: absolute; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--teal); opacity: .5; transform: translateX(-3px); }
+  @media (max-width: 520px) { .mode { grid-template-columns: 1fr; } }
+
+  /* passi */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 48px; counter-reset: s; }
+  @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
+  .step { padding: 28px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-2); }
+  .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--pink)); margin-bottom: 18px; }
+  .step h3 { margin: 0 0 6px; font-size: 18px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* codice */
+  .term { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: #0a0c10; box-shadow: 0 30px 80px -30px #000; }
+  .term .frame-bar span { transform: none; }
+  pre { margin: 0; padding: 22px 24px; overflow-x: auto; font: 14px/1.75 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #d6d9e3; }
+  pre .c { color: #6b7385; } pre .p { color: var(--green); user-select: none; } pre .k { color: var(--accent-2); }
+  .tabs { display: inline-flex; padding: 4px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); margin: 28px 0 16px; }
+  .tabs button { font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 8px 16px; border-radius: 9px; cursor: pointer; }
+  .tabs button.on { background: var(--accent); color: #fff; }
+  .panel-hidden { display: none; }
+  .note { color: var(--muted); font-size: 14px; margin-top: 14px; }
+  .note code, .sub code { background: var(--panel-2); padding: 2px 7px; border-radius: 6px; font-size: 13px; color: var(--text); }
+
+  /* tecnologie */
+  .stack { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 36px; }
+  .stack span { padding: 9px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-2); color: var(--muted); font-size: 14px; font-weight: 500; }
+  .stack span b { color: var(--text); font-weight: 600; }
+
+  /* invito finale */
+  .final { text-align: center; padding: 72px 28px; border-radius: 28px; border: 1px solid #7c5cff40; position: relative; overflow: hidden;
+    background: radial-gradient(500px 240px at 50% 0%, #7c5cff33, transparent 70%), var(--bg-2); }
+  .final h2 { margin-top: 0; }
+  .final .cta { margin-top: 28px; }
+
+  footer { padding: 48px 0 64px; color: var(--muted); font-size: 14px; border-top: 1px solid #ffffff0d; margin-top: 96px; }
+  footer .wrap { display: flex; gap: 24px; justify-content: space-between; flex-wrap: wrap; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--text); }
+
+  /* comparsa allo scorrimento */
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="#"><span class="logo"></span>Noises</a>
+    <div class="nav-links">
+      <a href="#funzionalita">Funzionalità</a>
+      <a href="#click">Click</a>
+      <a href="#come-funziona">Come funziona</a>
+      <a href="#installa">Installa</a>
+    </div>
+    <a class="btn small" href="https://github.com/teopost/noises">
+      <svg viewBox="0 0 24 24"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="bars" aria-hidden="true"></div>
+    <span class="pill">Open source · <b>Licenza MIT</b> · Self-hosted</span>
+    <h1>Separa le tracce.<br><span class="grad">Studia. Suona.</span></h1>
+    <p class="lead">Noises è lo studio di pratica per musicisti che gira sul tuo server: isola voce, batteria e basso con l'AI, cambia tonalità e velocità in tempo reale, legge accordi e spartiti, e ti dà un click che segue davvero la band.</p>
+    <div class="cta">
+      <a class="btn primary" href="#installa">Installa in pochi minuti →</a>
+      <a class="btn" href="https://github.com/teopost/noises">Guarda il codice</a>
+    </div>
+    <div class="meta"><span>Docker Compose</span><span>x86-64 e ARM64</span><span>Raspberry Pi 4/5</span><span>Funziona offline</span></div>
+  </div>
+  <div class="shot">
+    <div class="frame" id="hero-frame">
+      <div class="frame-bar"><i></i><i></i><i></i><span>noises.local — Horny</span></div>
+      <img src="assets/hero.webp" width="2400" height="1590" alt="Editor di Noises con il brano Horny separato in sei tracce: voce, batteria, basso con piano roll delle note, chitarra, piano; corsia degli accordi, segnalibri, loop sul ritornello e click attivo.">
+    </div>
+    <p class="caption">"Horny" separato in 6 tracce, con accordi, segnalibri, piano roll del basso e loop sul ritornello.</p>
+  </div>
+</header>
+
+<section id="funzionalita">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="kicker">Funzionalità</div>
+      <h2>Tutto quello che serve per imparare un brano</h2>
+      <p class="sub">Dall'ascolto alla base per il concerto, nello stesso posto. Senza abbonamenti e senza caricare la tua musica sul cloud di qualcun altro.</p>
+    </div>
+    <div class="grid">
+      <article class="card reveal" style="--glow:#7c5cff">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/><circle cx="18" cy="12" r="2"/></svg></div>
+        <h3>Separazione con l'AI</h3>
+        <p>Demucs v4 divide il brano in voce, batteria, basso e altro, oppure in 6 tracce con chitarra e piano. Muto, solo e volume per traccia.</p>
+      </article>
+      <article class="card reveal" style="--glow:#ff6b9a">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg></div>
+        <h3>Tonalità e velocità live</h3>
+        <p>±12 semitoni e 50–150% di velocità, indipendenti e applicati in tempo reale nel browser. La tonalità del brano si aggiorna mentre trasponi.</p>
+      </article>
+      <article class="card reveal" style="--glow:#f5b942">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9v6M11 9v6M15 9v6"/></svg></div>
+        <h3>Accordi</h3>
+        <p>170 accordi riconosciuti con BTC, anche sul brano non separato. Accordo corrente e successivo, notazione C D E o Do Re Mi, correzione a mano.</p>
+      </article>
+      <article class="card reveal" style="--glow:#3dd6c4">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 18h4v-5H3zM10 18h4V8h-4zM17 18h4V4h-4z"/></svg></div>
+        <h3>Note e piano roll</h3>
+        <p>Trascrizione automatica di ogni traccia, piano roll modificabile e synth con otto suoni per ascoltare le note, anche un'ottava sopra.</p>
+      </article>
+      <article class="card reveal" style="--glow:#a48bff">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/><circle cx="9" cy="16" r="2.2" fill="currentColor"/></svg></div>
+        <h3>Spartito e tablatura</h3>
+        <p>MusicXML per pianoforte, batteria, chitarra e basso a 4 o 5 corde, con il cursore che segue la musica. Stampa, PDF ed export.</p>
+      </article>
+      <article class="card reveal" style="--glow:#2bd47d">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5z"/><path d="M12 15l5-8"/></svg></div>
+        <h3>Click adattivo</h3>
+        <p>Il metronomo che segue i colpi reali della batteria, oppure il tempo medio o un BPM fisso. Pre-conteggio che porta sempre sull'"1".</p>
+      </article>
+      <article class="card reveal" style="--glow:#ff6b9a">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="11" height="5" rx="1.5"/><path d="M17 13.5h4M19 11.5v4"/></svg></div>
+        <h3>Editor multitraccia</h3>
+        <p>Progetti con più brani, clip da tagliare e spostare, gruppi, segnalibri, annulla e ripeti. Trascini i file dal computer o importi da YouTube.</p>
+      </article>
+      <article class="card reveal" style="--glow:#f5b942">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+        <h3>Scalette per il palco</h3>
+        <p>Metti in fila i progetti della serata: alla fine di un brano parte il successivo dopo la pausa che scegli, oppure aspetta il tuo Play.</p>
+      </article>
+      <article class="card reveal" style="--glow:#3dd6c4">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></div>
+        <h3>Basi pronte</h3>
+        <p>Esporta in MP3, WAV, FLAC o MIDI solo le tracce attive, per esempio tutto tranne il tuo strumento, con click e pre-conteggio inclusi.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="click" style="padding-top: 24px">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="kicker">Ritmo</div>
+      <h2>Un click che va a tempo con la band</h2>
+      <p class="sub">I batteristi veri non suonano come un metronomo. Noises rileva ogni colpo di cassa e aggancia il click al momento in cui il colpo si sente davvero.</p>
+      <div class="click-modes" id="click-demo" aria-hidden="true">
+        <div class="mode"><strong>Adattivo<small>segue ogni colpo</small></strong><div class="ticks-row" data-mode="adapt"></div></div>
+        <div class="mode"><strong>Tempo medio<small>stabile, segue le derive</small></strong><div class="ticks-row" data-mode="smooth"></div></div>
+        <div class="mode"><strong>Metronomo<small>BPM fisso, per studiare</small></strong><div class="ticks-row" data-mode="fixed"></div></div>
+      </div>
+      <p class="note">● cassa registrata &nbsp; ▍ click &nbsp; <span style="color:var(--amber)">▍</span> primo tempo della battuta</p>
+    </div>
+    <div class="reveal">
+      <ul class="ticks">
+        <li><span><b>Metro e primo tempo</b> regolabili: 2/4, 3/4, 4/4, 6/8, 12/8, battito doppio o dimezzato.</span></li>
+        <li><span><b>Spostamento fine a orecchio</b>, 5 ms alla volta, salvato per ogni brano.</span></li>
+        <li><span><b>Sei suoni</b>: beep, legnetto, claves, campanaccio, charleston, bordo del rullante.</span></li>
+        <li><span><b>Pre-conteggio</b> di una o due battute che porta sempre sul primo tempo, anche partendo a metà battuta.</span></li>
+        <li><span><b>Nelle basi esportate</b> il click è identico a quello che senti.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top: 24px">
+  <div class="wrap split rev">
+    <div class="reveal">
+      <div class="kicker">Dallo strumento alla carta</div>
+      <h2>Lo spartito si scrive da solo</h2>
+      <p class="sub">Ogni traccia separata diventa uno spartito: pentagramma, tablatura o entrambi. È un punto di partenza da correggere nel piano roll, non un lavoro da rifare da zero.</p>
+      <ul class="ticks">
+        <li><span><b>Basso a 4 o 5 corde e chitarra</b> (anche Drop D), con diteggiature che limitano gli spostamenti della mano.</span></li>
+        <li><span><b>Batteria in notazione percussiva</b>: cassa, rullante e hi-hat.</span></li>
+        <li><span><b>Cursore</b> che segue la riproduzione, alterazioni secondo la tonalità, export MusicXML e stampa.</span></li>
+      </ul>
+    </div>
+    <div class="media reveal">
+      <div class="frame flat">
+        <div class="frame-bar"><i></i><i></i><i></i><span>Spartito — Basso</span></div>
+        <img src="assets/score.webp" width="1800" height="780" decoding="async" alt="Spartito del basso di Horny generato automaticamente, in chiave di basso a 128 BPM.">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="come-funziona" style="padding-top: 24px">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="kicker">Come funziona</div>
+      <h2>Dal file al palco in tre passi</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal"><h3>Carica</h3><p>Trascina un file audio nella timeline o incolla un link YouTube. Il brano entra nella libreria e nel progetto.</p></div>
+      <div class="step reveal"><h3>Separa e analizza</h3><p>Dal menu ⋯ della traccia scegli separazione, accordi, ritmo e note. Tutto gira sul tuo server, anche senza internet.</p></div>
+      <div class="step reveal"><h3>Suona</h3><p>Rallenta, trasponi, metti in loop il passaggio difficile, togli il tuo strumento, accendi il click. Poi esporta la base.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="installa" style="padding-top: 24px">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="kicker">Installa</div>
+      <h2>Tuo, sul tuo hardware</h2>
+      <p class="sub">Un'unica immagine Docker con modelli e librerie già dentro. Gira su un PC, su un server o su un <b>Raspberry Pi 4/5</b> a 64 bit, per più utenti, ognuno con la sua libreria.</p>
+      <ul class="ticks">
+        <li><span><b>Account</b> con verifica email o accesso con Google.</span></li>
+        <li><span><b>I tuoi dati restano a casa</b>: brani, progetti e analisi stanno in un volume Docker.</span></li>
+        <li><span><b>Fuori casa</b> con HTTPS, per esempio tramite Cloudflare Tunnel.</span></li>
+      </ul>
+    </div>
+    <div class="reveal">
+      <div class="tabs" role="tablist">
+        <button class="on" data-tab="pc" role="tab" aria-selected="true">PC o server</button>
+        <button data-tab="pi" role="tab" aria-selected="false">Raspberry Pi</button>
+      </div>
+      <div class="term" data-panel="pc">
+        <div class="frame-bar"><i></i><i></i><i></i><span>terminale</span></div>
+<pre><span class="p">$ </span>git clone https://github.com/teopost/noises.git
+<span class="p">$ </span>cd noises
+<span class="p">$ </span>make up      <span class="c"># build + avvio</span>
+<span class="p">$ </span>make open    <span class="c"># http://localhost:8080</span></pre>
+      </div>
+      <div class="term panel-hidden" data-panel="pi">
+        <div class="frame-bar"><i></i><i></i><i></i><span>raspberrypi</span></div>
+<pre><span class="p">$ </span>git clone https://github.com/teopost/noises.git
+<span class="p">$ </span>cd noises &amp;&amp; cp .env.example .env
+<span class="c"># in .env: immagine pronta della CI</span>
+<span class="k">NOISES_IMAGE</span>=ghcr.io/teopost/noises:latest
+<span class="p">$ </span>make pull    <span class="c"># scarica e avvia, niente build</span></pre>
+      </div>
+      <p class="note">Requisiti: Docker con Compose v2 e <code>make</code>. Il motore audio del browser richiede HTTPS oppure <code>localhost</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top: 24px">
+  <div class="wrap center reveal">
+    <div class="kicker">Sotto il cofano</div>
+    <h2>Costruito su strumenti eccellenti</h2>
+    <p class="sub">Un server in Rust coordina librerie di riferimento per l'audio. Il browser fa il resto: mixa, cambia tonalità e velocità e tiene il click a tempo.</p>
+    <div class="stack">
+      <span><b>Rust</b> · axum · tokio</span><span><b>Demucs v4</b> separazione</span><span><b>BTC</b> accordi</span>
+      <span><b>Basic Pitch</b> note</span><span><b>librosa</b> ritmo</span><span><b>music21</b> + <b>OSMD</b> spartito</span>
+      <span><b>Rubber Band</b> export</span><span><b>Web Audio</b> AudioWorklet</span><span><b>yt-dlp</b> import</span><span><b>SQLite</b> account</span>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top: 24px; padding-bottom: 0">
+  <div class="wrap">
+    <div class="final reveal">
+      <h2>Libero, aperto, tuo.</h2>
+      <p class="sub" style="margin: 0 auto">Noises è distribuito con licenza MIT: usalo, modificalo, condividilo.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/teopost/noises">Vai al repository →</a>
+        <a class="btn" href="https://github.com/teopost/noises/blob/main/README.md">Leggi la documentazione</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div><a class="brand" href="#" style="font-size:16px"><span class="logo"></span>Noises</a></div>
+    <div>Licenza <a href="https://github.com/teopost/noises/blob/main/LICENSE.md">MIT</a> · © 2026 Stefano Teodorani</div>
+    <div>Usa solo contenuti per cui hai i diritti.</div>
+  </div>
+</footer>
+
+<script>
+  // onde decorative nell'intestazione
+  const bars = document.querySelector('.bars');
+  for (let i = 0; i < 28; i++) {
+    const b = document.createElement('i');
+    b.style.animationDelay = `${(Math.sin(i * 1.7) * 0.5 + 0.5) * -1.2}s`;
+    b.style.animationDuration = `${0.9 + ((i * 37) % 7) / 10}s`;
+    bars.appendChild(b);
+  }
+
+  // lo screenshot si "raddrizza" scorrendo
+  const frame = document.getElementById('hero-frame');
+  const flat = () => frame.classList.toggle('flat', window.scrollY > 60);
+  addEventListener('scroll', flat, { passive: true }); flat();
+
+  // comparsa delle sezioni
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver((es) => es.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), { rootMargin: '0px 0px -8% 0px' }) : null;
+  document.querySelectorAll('.reveal').forEach((el) => (io ? io.observe(el) : el.classList.add('in')));
+
+  // demo del click: casse "umane" (leggermente irregolari) e le tre modalità
+  const N = 12, beat = 100 / N;
+  const kicks = Array.from({ length: N }, (_, i) => beat * (i + 0.5) + [0.9, -0.6, 1.4, -1.1, 0.4, 1.8, -0.3, 1.2, 2.1, 1.5, 2.6, 2.2][i]);
+  const drift = (i) => (kicks.slice(Math.max(0, i - 2), i + 3).reduce((a, k, j, arr) => a + k - beat * (Math.max(0, i - 2) + j + 0.5), 0)
+    / kicks.slice(Math.max(0, i - 2), i + 3).length);
+  document.querySelectorAll('.ticks-row').forEach((row) => {
+    const mode = row.dataset.mode;
+    kicks.forEach((k) => { const d = document.createElement('span'); d.className = 'kick'; d.style.left = `${k}%`; row.appendChild(d); });
+    for (let i = 0; i < N; i++) {
+      const x = mode === 'adapt' ? kicks[i] : mode === 'smooth' ? beat * (i + 0.5) + drift(i) : beat * (i + 0.5);
+      const t = document.createElement('i');
+      if (i % 4 === 0) t.className = 'acc';
+      t.style.left = `calc(${x}% - 1.5px)`;
+      row.appendChild(t);
+    }
+  });
+
+  // schede di installazione
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b); });
+    document.querySelectorAll('[data-panel]').forEach((p) => p.classList.toggle('panel-hidden', p.dataset.panel !== b.dataset.tab));
+  }));
+</script>
+</body>
+</html>
