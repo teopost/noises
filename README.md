@@ -118,7 +118,6 @@ cp .env.example .env
 # in .env:
 #   NOISES_IMAGE=ghcr.io/teopost/noises:latest
 #   PUBLIC_URL=https://noises.tuodominio.it      # l'indirizzo del tunnel (vedi sotto)
-docker login ghcr.io -u teopost                  # solo se il repository è privato: token con "read:packages"
 make pull                                        # scarica l'immagine e avvia
 ```
 
@@ -148,7 +147,7 @@ Il workflow [`.github/workflows/docker.yml`](.github/workflows/docker.yml) costr
 | tag `v1.2.3` | `1.2.3`, `1.2` |
 | avvio manuale (Actions → Immagine Docker → Run workflow) | come sopra, per il ramo scelto |
 
-Le modifiche che toccano solo la documentazione non avviano la build. Con il repository privato, anche l'immagine è privata: per scaricarla serve `docker login ghcr.io` con un token che abbia il permesso `read:packages`.
+Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano la build. L'immagine è pubblica: si scarica senza login.
 
 ## Guida all'uso
 
