@@ -49,10 +49,19 @@ const engine = {
 
   init() {
     if (this.ctx) return;
+    if (!window.isSecureContext || typeof AudioWorkletNode === 'undefined') {
+      // il motore audio (AudioWorklet) esiste solo in pagine sicure: HTTPS o localhost
+      showInsecureNotice();
+    }
     this.ctx = new AudioContext({ latencyHint: 'interactive' });
     this.sr = this.ctx.sampleRate;
     this.master = this.ctx.createGain();
     this.master.connect(this.ctx.destination);
+    if (!this.ctx.audioWorklet) {
+      // senza motore l'interfaccia resta utilizzabile (tracce, accordi, note): l'audio no
+      this.ready = Promise.resolve();
+      return;
+    }
     this.ready = this.ctx.audioWorklet.addModule('stretch-worklet.js').then(() => {
       this.node = new AudioWorkletNode(this.ctx, 'stretch-player', {
         numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
@@ -71,6 +80,7 @@ const engine = {
   },
 
   post(msg, transfer) {
+    if (!this.node) return; // pagina non sicura: motore audio non disponibile
     this.node.port.postMessage(msg, transfer || []);
   },
 
@@ -632,6 +642,21 @@ function setupUpload() {
 
 // ======================================================================== player
 
+
+/** Pagina non sicura (es. http://192.168.…): spiega come aprire l'app perché l'audio funzioni. */
+function showInsecureNotice() {
+  if (document.querySelector('#insecure-notice')) return;
+  const host = location.hostname;
+  const el = document.createElement('div');
+  el.id = 'insecure-notice';
+  el.className = 'insecure-notice';
+  el.innerHTML = `<strong>L'audio non può funzionare in questa pagina.</strong>
+    Il browser attiva il motore audio solo in pagine sicure: apri Noises con <b>https://${esc(host)}</b>
+    (sul server: <code>make up-https</code>) oppure su <b>localhost</b> dal computer del server.`;
+  document.body.appendChild(el);
+}
+
+if (!window.isSecureContext) showInsecureNotice();
 
 function closePlayer() {
   flushProject();

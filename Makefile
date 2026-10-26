@@ -4,7 +4,7 @@ PORT    ?= 8080
 export NOISES_PORT := $(PORT)
 
 .DEFAULT_GOAL := help
-.PHONY: help build rebuild update-ytdlp up start down stop restart logs ps shell status open clean purge
+.PHONY: help build rebuild update-ytdlp up up-https https-ca start down stop restart logs ps shell status open clean purge
 
 help: ## Mostra questo aiuto
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -23,10 +23,18 @@ up: ## Avvia in background (costruisce se necessario)
 	$(COMPOSE) up -d --build
 	@echo "Noises in esecuzione su http://localhost:$(PORT)"
 
+up-https: ## Avvia con HTTPS (necessario aprendo l'app da un altro computer, es. Raspberry Pi)
+	$(COMPOSE) --profile https up -d --build
+	@echo "Noises in esecuzione su https://$$(echo $${HTTPS_HOSTS:-$$(grep -s '^HTTPS_HOSTS=' .env | cut -d= -f2)} | cut -d, -f1 | tr -d ' ')"
+
+https-ca: ## Esporta il certificato della CA locale (noises-ca.crt) da installare sui dispositivi
+	$(COMPOSE) --profile https cp https:/data/caddy/pki/authorities/local/root.crt ./noises-ca.crt
+	@echo "Creato noises-ca.crt: installalo come autorità attendibile per evitare l'avviso del browser"
+
 start: up ## Alias di up
 
 down: ## Ferma e rimuove i container (i dati restano)
-	$(COMPOSE) down
+	$(COMPOSE) --profile https down
 
 stop: ## Ferma i container senza rimuoverli
 	$(COMPOSE) stop
@@ -49,7 +57,7 @@ open: ## Apre l'applicazione nel browser
 	@xdg-open http://localhost:$(PORT) 2>/dev/null || explorer.exe http://localhost:$(PORT) 2>/dev/null || echo "Apri http://localhost:$(PORT)"
 
 clean: ## Rimuove container, immagine e volume dati (CANCELLA i brani!)
-	$(COMPOSE) down -v --rmi local --remove-orphans
+	$(COMPOSE) --profile https down -v --rmi local --remove-orphans
 
 purge: clean ## clean + pulizia della build cache di Docker
 	docker builder prune -f

@@ -2,6 +2,13 @@
 
 # ---------- build del server Rust ----------
 FROM rust:1-bookworm AS builder
+# Architetture supportate: x86-64 e ARM a 64 bit (es. Raspberry Pi 4/5 con sistema a 64 bit).
+# PyTorch non esiste per ARM a 32 bit: meglio fermarsi subito con un messaggio chiaro.
+RUN case "$(dpkg --print-architecture)" in \
+      amd64|arm64) ;; \
+      *) echo "Noises richiede un sistema a 64 bit (amd64 o arm64): trovato $(dpkg --print-architecture)." \
+              "Su Raspberry Pi installa Raspberry Pi OS a 64 bit." >&2; exit 1 ;; \
+    esac
 WORKDIR /src
 # Cache delle dipendenze: compila prima un main vuoto.
 COPY backend/Cargo.toml backend/Cargo.lock* ./

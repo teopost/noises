@@ -35,5 +35,25 @@ services:
     volumes:
       - noises-data:/data
 
+  # HTTPS con certificato locale (facoltativo): `make up-https`.
+  # Necessario quando l'app si apre da un altro computer (es. server su Raspberry Pi):
+  # il motore audio del browser funziona solo in HTTPS o su localhost.
+  https:
+    image: caddy:2
+    container_name: noises-https
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [noises]
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      HTTPS_HOSTS: ${HTTPS_HOSTS:-localhost}
+      # indirizzo IP con cui si apre l'app (se si usa l'IP invece del nome)
+      HTTPS_DEFAULT_SNI: ${HTTPS_DEFAULT_SNI:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - noises-https:/data
+
 volumes:
   noises-data:
+  noises-https:

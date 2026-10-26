@@ -22,6 +22,7 @@ click intelligente ed esportazione di basi.
 
 - [Funzionalità](#funzionalità)
 - [Avvio rapido](#avvio-rapido)
+- [Raspberry Pi e server in rete](#raspberry-pi-e-server-in-rete)
 - [Guida all'uso](#guida-alluso)
 - [Autenticazione](#autenticazione)
 - [Configurazione](#configurazione)
@@ -85,6 +86,37 @@ make logs   # cerca la riga "[email non inviata — SMTP assente] … → http:/
 ```
 
 > In alternativa, imposta `EMAIL_VERIFICATION=false` in `.env` per attivare gli account senza conferma.
+
+## Raspberry Pi e server in rete
+
+Noises gira anche su **Raspberry Pi 4 o 5** (o qualsiasi computer ARM a 64 bit): l'immagine si costruisce sul Raspberry con lo stesso compose.
+
+**Requisiti**
+- **Raspberry Pi OS a 64 bit** (o un'altra distribuzione `arm64`): PyTorch non esiste per i sistemi a 32 bit, e la build si ferma con un messaggio chiaro.
+- **Almeno 4 GB di RAM** (8 GB consigliati per i modelli più pesanti) e circa 8 GB liberi su disco, meglio un SSD che la scheda SD.
+- Docker con Compose v2 e `make`:
+  ```sh
+  curl -fsSL https://get.docker.com | sh
+  sudo usermod -aG docker $USER   # poi esci e rientra
+  sudo apt install -y make git
+  ```
+
+**HTTPS: necessario aprendo l'app da un altro computer.** Il browser attiva il motore audio (tonalità e velocità in tempo reale) solo in pagine sicure: HTTPS oppure `localhost`. Aprendo `http://raspberrypi.local:8080` da un altro PC l'audio non funziona e l'app lo segnala. Il profilo `https` del compose aggiunge [Caddy](https://caddyserver.com/), che crea da solo un certificato locale.
+
+```sh
+git clone https://github.com/teopost/noises.git
+cd noises
+cp .env.example .env
+# in .env:
+#   HTTPS_HOSTS=raspberrypi.local, 192.168.1.50   # nome e/o IP del Raspberry
+#   HTTPS_DEFAULT_SNI=192.168.1.50                 # solo se lo apri con l'indirizzo IP
+#   PUBLIC_URL=https://raspberrypi.local
+make up-https     # build (la prima volta 20–40 minuti) + avvio con HTTPS
+```
+
+Poi apri `https://raspberrypi.local` da qualsiasi computer della rete. Il certificato è firmato da una CA locale: la prima volta il browser mostra un avviso da accettare. Per toglierlo, `make https-ca` crea `noises-ca.crt`, da installare come autorità attendibile sui dispositivi.
+
+**Prestazioni.** La separazione su Raspberry Pi è lenta: conta svariati minuti per brano con il modello veloce (molto di più con "alta qualità" o 6 tracce). Ascolto, tonalità e velocità girano nel browser, quindi restano fluidi. `DEMUCS_THREADS=4` in `.env` usa tutti i core del Pi.
 
 ## Guida all'uso
 
@@ -235,6 +267,8 @@ Tutte le API sotto `/api` (tranne `/api/auth/*` e `/api/health`) richiedono una 
 | Comando | Descrizione |
 |---|---|
 | `make up` | build e avvio in background |
+| `make up-https` | come `up`, con HTTPS davanti (server aperto da altri computer, es. Raspberry Pi) |
+| `make https-ca` | esporta il certificato della CA locale (`noises-ca.crt`) da installare sui dispositivi |
 | `make down` / `make stop` / `make restart` | ferma e rimuove, ferma, riavvia |
 | `make logs` | segue i log |
 | `make ps` | stato dei container |
