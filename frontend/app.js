@@ -1624,7 +1624,7 @@ function showChordsMissing(song) {
   const ph = $('#chord-lane .placeholder');
   const b = document.createElement('button');
   b.className = 'lane-action';
-  b.textContent = '🎵 Riconosci accordi';
+  b.innerHTML = '<span class="emo">🎵</span> Riconosci accordi';
   b.addEventListener('click', () => runChordAnalysis(song));
   ph.appendChild(b);
 }

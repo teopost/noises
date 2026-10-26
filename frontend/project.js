@@ -377,7 +377,7 @@ function updateSplitBadges() {
     const s = songById(t.song);
     const waiting = state.pendingSplits.has(t.name) && s && ['queued', 'processing'].includes(s.status);
     b.classList.toggle('hidden', !waiting);
-    if (waiting) b.textContent = s.status === 'queued' ? '⏳' : `⑂ ${Math.round(s.progress * 100)}%`;
+    if (waiting) b.innerHTML = s.status === 'queued' ? '<span class="emo">⏳</span>' : `⑂ ${Math.round(s.progress * 100)}%`;
   }
 }
 

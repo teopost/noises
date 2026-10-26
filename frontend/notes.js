@@ -95,7 +95,7 @@ function buildNotesRow(t) {
     <div class="track-head notes-head">
       <div class="track-title small"><span class="swatch" style="background:${t.color}"></span>Note · ${esc(LABELS[stem] || stem)} <span class="count"></span></div>
       <div class="track-btns">
-        <button class="syn" title="Ascolta le note trascritte con un suono sintetico">🔊 Synth</button>
+        <button class="syn" title="Ascolta le note trascritte con un suono sintetico"><span class="emo">🔊</span> Synth</button>
         ${isDrums(stem) ? '' : `<select class="syn-sound" title="Suono del synth">${SOUNDS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
         <select class="syn-oct" title="Ottava del synth (+1 rende più udibile il basso)">${OCTAVES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>`}
         <button class="rst hidden" title="Annulla le correzioni e ripristina la trascrizione automatica">↺</button>
@@ -950,7 +950,7 @@ function updateRhythmControls() {
   const btn = $('#analyze-notes');
   btn.classList.toggle('hidden', ok || !(state.notesMissing || state.notesBusy));
   btn.disabled = !!state.notesBusy;
-  btn.textContent = state.notesBusy ? '⏳ Analisi in corso (~1 min)…' : '🎼 Analizza ritmo e note';
+  btn.innerHTML = state.notesBusy ? '<span class="emo">⏳</span> Analisi in corso (~1 min)…' : '<span class="emo">🎼</span> Analizza ritmo e note';
   const fixed = ok && state.clickMode === 'fixed';
   $('#fixed-bpm-box').classList.toggle('hidden', !fixed);
   if (fixed) {

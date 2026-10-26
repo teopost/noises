@@ -784,3 +784,5 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .notes-head select { font-size: 11px; padding: 2px 4px; height: 24px; }
 .notes-head .syn-sound { max-width: 112px; }
 .notes-head .syn-oct { width: 64px; }
+/* icone emoji in scala di grigi, coerenti con il resto dell'interfaccia */
+.emo, .menu-item .mi { filter: grayscale(1) brightness(1.1); }
