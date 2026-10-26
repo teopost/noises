@@ -79,7 +79,7 @@ select {
 /* ---- main ---- */
 #main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: auto; }
 .empty { margin: auto; color: var(--muted); }
-#player { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+#player { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
 .song-head { display: flex; align-items: center; gap: 16px; }
 .song-head h1 { margin: 0; font-size: 22px; flex: 1; }
 
@@ -112,7 +112,9 @@ input[type=range] { accent-color: var(--accent); }
 /* ---- timeline ---- */
 .timeline {
   position: relative; background: var(--panel); border: 1px solid var(--border);
-  border-radius: 0 0 14px 14px; border-top: 0; overflow: auto; max-height: max(320px, calc(100vh - 340px));
+  border-radius: 0 0 14px 14px; border-top: 0; overflow: auto;
+  /* riempie lo spazio rimasto sotto i comandi (vedi #player e .tl-card) */
+  flex: 1 1 auto; min-height: 220px;
   scrollbar-width: none; /* niente barre: si naviga con panoramica, rotella e trackpad */
 }
 .timeline::-webkit-scrollbar { display: none; }
@@ -398,7 +400,7 @@ button.icon { padding: 0 8px; line-height: 22px; font-size: 14px; }
 .ov-head { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
 .ov-sel { position: absolute; top: 0; bottom: 0; background: #7c5cff40; pointer-events: none; }
 .ov-sel.loop { background: #2bd47d3a; }
-.tl-card { display: flex; flex-direction: column; min-width: 0; }
+.tl-card { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; min-height: 0; }
 
 /* ---- click / pre-conteggio ---- */
 .rhythm select { font-size: 12px; padding: 4px; }
@@ -833,3 +835,6 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 /* tonalità del brano accanto ai comandi della tonalità */
 .song-key { font-weight: 700; color: var(--accent-2); min-width: 0; }
 .song-key:empty { display: none; }
+
+/* icona SVG nei pulsanti di testo (es. metronomo del Click) */
+.ico { width: 15px; height: 15px; vertical-align: -3px; margin-right: 2px; }
