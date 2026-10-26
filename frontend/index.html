@@ -202,6 +202,7 @@
 
         <div class="knob">
           <span class="lbl">Tonalità</span>
+          <span id="chord-key" class="song-key" title="Tonalità del brano (stimata dagli accordi), già trasposta"></span>
           <button data-pitch="-1">−</button>
           <output id="pitch" title="Semitoni">0</output>
           <button data-pitch="1">+</button>
@@ -323,7 +324,7 @@
         </div>
         <div class="chord-row">
           <div class="track-head chord-head">
-            <div class="track-title">Accordi <span id="chord-key" class="count"></span><span id="chord-song" class="chord-song"></span></div>
+            <div class="track-title">Accordi <span id="chord-song" class="chord-song"></span></div>
             <div class="track-btns">
               <button id="chord-notation" class="notation-btn" title="Notazione: clic per passare a Do Re Mi">C</button>
               <button id="chord-restore" class="hidden" title="Annulla le correzioni e ripristina gli accordi rilevati">↺</button>
