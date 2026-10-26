@@ -55,6 +55,7 @@ function setReference(t, force) {
   state.notes = null;
   state.selNote = null;
   $('#chord-song').textContent = song.name ? `· ${song.name}` : '';
+  $('#chord-song').title = song.name ? `Accordi di "${song.name}"` : '';
   if (song.status === 'ready') {
     loadChords(song);
     loadNotes(song);

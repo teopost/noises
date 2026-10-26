@@ -619,7 +619,7 @@ button.wide { width: 100%; padding: 10px; }
 }
 .project-title:hover { border-color: var(--border); }
 .project-title:focus { outline: none; border-color: var(--accent); background: var(--panel); }
-.chord-song { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--muted); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.chord-song { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tracks-empty { padding: 40px 20px; text-align: center; color: var(--muted); border-bottom: 1px solid var(--border); }
 .track-btns .split { padding: 2px 6px; font-size: 12px; white-space: nowrap; }
 .track .tname {
@@ -824,3 +824,8 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .nudge-ctl button { padding: 2px 8px; font-size: 12px; }
 #nudge-val { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 #nudge-val.changed { color: #f5c542; }
+
+/* testata accordi: il nome del brano si accorcia, i pulsanti restano interi */
+.chord-head .track-title { display: flex; align-items: baseline; min-width: 0; flex: 1; white-space: nowrap; }
+.chord-head .track-btns { flex: none; }
+.chord-head .notation-btn { min-width: 30px; padding: 2px 6px; font-size: 11px; font-weight: 700; }

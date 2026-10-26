@@ -1820,9 +1820,17 @@ function openChordMenu(i, clickT, anchor) {
 
 function setupChords() {
   try { state.notation = localStorage.getItem('noises.notation') || 'en'; } catch { state.notation = 'en'; }
-  $('#chord-notation').value = state.notation;
-  $('#chord-notation').addEventListener('change', (e) => {
-    state.notation = e.target.value;
+  // pulsante compatto: mostra la notazione attuale, un clic passa all'altra
+  const showNotation = () => {
+    const it = state.notation === 'it';
+    $('#chord-notation').textContent = it ? 'Do' : 'C';
+    $('#chord-notation').title = it ? 'Notazione italiana (Do Re Mi): clic per passare a C D E'
+      : 'Notazione americana (C D E): clic per passare a Do Re Mi';
+  };
+  showNotation();
+  $('#chord-notation').addEventListener('click', () => {
+    state.notation = state.notation === 'it' ? 'en' : 'it';
+    showNotation();
     try { localStorage.setItem('noises.notation', state.notation); } catch {}
     renderChords();
     lastChordShown = null;
