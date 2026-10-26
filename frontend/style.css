@@ -812,3 +812,8 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .click-panel .fixed-bpm.hidden { display: none; }
 .mk-btns { display: inline-flex; gap: 3px; }
 .mk-btns button { min-width: 22px; }
+
+/* menu del metro: stato dello spostamento del primo tempo */
+.meter-row .shift-reset { flex: 0 0 32px; }
+.shift-info { margin: 4px 2px 2px; font-size: 12px; color: var(--muted); }
+.shift-info.changed { color: #f5c542; }

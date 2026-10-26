@@ -1015,6 +1015,15 @@ function renderMeterMenu() {
   const ts = r.time_signature.join('/');
   document.querySelectorAll('#meter-menu [data-ts]').forEach((b) => b.classList.toggle('on', b.dataset.ts === ts));
   document.querySelectorAll('#meter-menu [data-mult]').forEach((b) => b.classList.toggle('on', Number(b.dataset.mult) === r.multiplier));
+  // spostamento del primo tempo, mostrato come anticipo/posticipo più breve (es. 3 su 4 = anticipo di 1)
+  const bpb = gridBpb();
+  const off = ((r.offset % bpb) + bpb) % bpb;
+  const signed = off > bpb / 2 ? off - bpb : off;
+  const n = Math.abs(signed);
+  $('#shift-info').textContent = !signed ? 'Come rilevato'
+    : `${signed < 0 ? 'Anticipato' : 'Posticipato'} di ${n} ${n === 1 ? 'battito' : 'battiti'}`;
+  $('#shift-info').classList.toggle('changed', !!signed);
+  $('#shift-reset').disabled = !signed;
 }
 
 function setupMeter() {
@@ -1030,6 +1039,7 @@ function setupMeter() {
     setRhythm({ time_signature: b.dataset.ts.split('/').map(Number), offset: 0 })));
   menu.querySelectorAll('[data-shift]').forEach((b) => b.addEventListener('click', () =>
     setRhythm({ offset: (((currentRhythm().offset + Number(b.dataset.shift)) % gridBpb()) + gridBpb()) % gridBpb() })));
+  $('#shift-reset').addEventListener('click', () => setRhythm({ offset: 0 }));
   menu.querySelectorAll('[data-mult]').forEach((b) => b.addEventListener('click', () =>
     setRhythm({ multiplier: Number(b.dataset.mult), offset: 0, fixed_bpm: null })));
   document.addEventListener('pointerdown', (e) => {
