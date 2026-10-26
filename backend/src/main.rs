@@ -213,10 +213,13 @@ struct Rhythm {
     /// BPM del click regolare (None = tempo rilevato)
     #[serde(default)]
     fixed_bpm: Option<f32>,
+    /// regolazione fine del click a orecchio, in millisecondi (+ = più tardi)
+    #[serde(default)]
+    nudge_ms: i32,
 }
 
 /// Versione della griglia ritmica prodotta da analysis/transcribe.py (le precedenti vengono aggiornate).
-const GRID_VERSION: u64 = 3;
+const GRID_VERSION: u64 = 4;
 
 const METERS: &[[u8; 2]] = &[[2, 4], [3, 4], [4, 4], [5, 4], [6, 8], [12, 8]];
 
@@ -231,7 +234,7 @@ fn meter_info(ts: [u8; 2]) -> (u32, f64) {
 
 /// Griglia effettiva: battiti rilevati + correzioni dell'utente (doppio/metà, primo tempo, metro).
 fn effective_grid(raw: &serde_json::Value, rhythm: Option<Rhythm>) -> serde_json::Value {
-    let r = rhythm.unwrap_or(Rhythm { time_signature: [4, 4], offset: 0, multiplier: 1.0, fixed_bpm: None });
+    let r = rhythm.unwrap_or(Rhythm { time_signature: [4, 4], offset: 0, multiplier: 1.0, fixed_bpm: None, nudge_ms: 0 });
     let read = |k: &str| -> Vec<f64> {
         raw[k]
             .as_array()
@@ -959,6 +962,7 @@ async fn put_rhythm(
         || !(-16..=16).contains(&r.offset)
         || ![0.5f32, 1.0, 2.0].contains(&r.multiplier)
         || r.fixed_bpm.is_some_and(|b| !(20.0..=400.0).contains(&b))
+        || !(-150..=150).contains(&r.nudge_ms)
     {
         return Err(bad_request("impostazioni ritmiche non valide"));
     }

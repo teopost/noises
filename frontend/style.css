@@ -817,3 +817,10 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .meter-row .shift-reset { flex: 0 0 32px; }
 .shift-info { margin: 4px 2px 2px; font-size: 12px; color: var(--muted); }
 .shift-info.changed { color: #f5c542; }
+
+/* regolazione fine del click */
+.nudge-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); }
+.nudge-ctl { display: inline-flex; align-items: center; gap: 4px; }
+.nudge-ctl button { padding: 2px 8px; font-size: 12px; }
+#nudge-val { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
+#nudge-val.changed { color: #f5c542; }

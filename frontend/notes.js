@@ -698,7 +698,10 @@ function synthSchedule() {
     }
   }
   if (state.click) {
-    for (const b of clickTimes(from, to)) playClick(now + (b.t - pos), b.accent);
+    // regolazione fine a orecchio: la finestra si sposta con il click, così un anticipo non
+    // finisce nel passato
+    const n = clickNudge();
+    for (const b of clickTimes(from - n, to - n)) playClick(now + (b.t + n - pos), b.accent);
   }
   schedHorizon = to;
 }
@@ -760,6 +763,12 @@ function fixedBeats() {
   for (let j = 0; j < n; j++) beats[j] = a.t + (j - a.i) * P;
   fixedCache = { key, beats };
   return beats;
+}
+
+/** Spostamento del click impostato a orecchio, in secondi. */
+function clickNudge() {
+  const r = state.notes && state.notes.grid && state.notes.grid.rhythm;
+  return r && r.nudge_ms ? r.nudge_ms / 1000 : 0;
 }
 
 function clickTimes(from, to) {
@@ -922,6 +931,14 @@ function setupClick() {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#click-panel').classList.add('hidden'); });
   $('#click-panel').addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
+  // regolazione fine del click (per brano): passi di 5 ms
+  document.querySelectorAll('[data-nudge]').forEach((b) => b.addEventListener('click', () => {
+    if (!hasGrid()) return;
+    const cur = currentRhythm().nudge_ms || 0;
+    const v = Math.max(-150, Math.min(150, cur + Number(b.dataset.nudge)));
+    if (v !== cur) setRhythm({ nudge_ms: v });
+  }));
+  $('#nudge-reset').addEventListener('click', () => hasGrid() && setRhythm({ nudge_ms: 0 }));
   $('#click-mode').addEventListener('change', (e) => {
     state.clickMode = e.target.value;
     if (engine.tracks.length) setFixedAnchor(engine.position());
@@ -977,6 +994,10 @@ function updateRhythmControls() {
     // con il click regolare si mostra il BPM fisso (modificabile nel pannello ⚙)
     $('#bpm').textContent = `${Math.round((fixed ? fixedBpm() : g.bpm) * engine.tempo / 100)} BPM`;
     $('#bpm').title = fixed ? 'BPM del click regolare: si cambia da ⚙' : 'BPM rilevati nel brano';
+    const nudge = (g.rhythm && g.rhythm.nudge_ms) || 0;
+    $('#nudge-val').textContent = nudge ? `${nudge > 0 ? '+' : '−'}${Math.abs(nudge)} ms` : '0 ms';
+    $('#nudge-val').classList.toggle('changed', !!nudge);
+    $('#nudge-reset').disabled = !nudge;
     $('#meter-btn').textContent = `${(g.time_signature || [4, 4]).join('/')} ▾`;
   } else {
     $('#bpm').textContent = '';

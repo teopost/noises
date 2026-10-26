@@ -134,18 +134,37 @@ def transcribe_drums(path):
 # regressione lineare robusta su finestre di ±16 battiti, che segue i cambi di tempo graduali.
 
 REFINE_SR, REFINE_HOP = 44100, 64
-GRID_VERSION = 3
+# v4: battito sul punto in cui il colpo è "udibile" (metà salita), non sul primo segnale
+GRID_VERSION = 4
+RISE_MAX = 0.08  # durata massima della salita di un colpo (casse lunghe della dance)
 
 
 def attacks(y, lo, hi):
-    """Inizi degli attacchi (risalendo al minimo di energia) e loro forza, nella banda [lo, hi) Hz."""
+    """Attacchi nella banda [lo, hi) Hz e loro forza.
+
+    Il tempo di ogni attacco è il punto in cui l'ampiezza ha percorso metà della salita, dal
+    minimo che precede il colpo al suo massimo: è lì che l'orecchio colloca il colpo. Con le
+    casse lunghe (dance) il primo segnale arriva 30–40 ms prima del picco, e un click messo
+    all'inizio suona in anticipo."""
     S = np.abs(librosa.stft(y, n_fft=1024, hop_length=REFINE_HOP)) ** 2
     f = librosa.fft_frequencies(sr=REFINE_SR, n_fft=1024)
     band = S[(f >= lo) & (f < hi)]
     env = librosa.onset.onset_strength(S=librosa.power_to_db(band), sr=REFINE_SR, hop_length=REFINE_HOP)
     peaks = librosa.onset.onset_detect(onset_envelope=env, sr=REFINE_SR, hop_length=REFINE_HOP, delta=0.08, wait=40)
-    starts = librosa.onset.onset_backtrack(peaks, band.sum(axis=0))
-    t = librosa.frames_to_time(starts, sr=REFINE_SR, hop_length=REFINE_HOP)
+    energy = band.sum(axis=0)
+    starts = librosa.onset.onset_backtrack(peaks, energy)
+    amp = np.sqrt(energy)
+    span = max(2, int(RISE_MAX * REFINE_SR / REFINE_HOP))
+    mid = []
+    for s in starts:
+        seg = amp[s:s + span]
+        if len(seg) < 2:
+            mid.append(s)
+            continue
+        m = int(np.argmax(seg))
+        thr = seg[0] + 0.5 * (seg[m] - seg[0])
+        mid.append(s + int(np.argmax(seg[:m + 1] >= thr)))
+    t = librosa.frames_to_time(np.asarray(mid), sr=REFINE_SR, hop_length=REFINE_HOP)
     return t, env[peaks] / max(env.max(), 1e-9)
 
 

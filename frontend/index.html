@@ -238,6 +238,15 @@
               <input id="fixed-bpm" type="number" min="20" max="400" step="0.1" title="BPM del click regolare"> BPM
               <button id="fixed-bpm-reset" class="hidden" title="Torna al tempo rilevato">↺</button>
             </span>
+            <div class="nudge-row" title="Se il click non coincide con la cassa: − lo anticipa, + lo ritarda. Vale per questo brano.">
+              <span>Sposta il click</span>
+              <span class="nudge-ctl">
+                <button data-nudge="-5" title="Anticipa di 5 ms">−</button>
+                <output id="nudge-val">0 ms</output>
+                <button data-nudge="5" title="Ritarda di 5 ms">+</button>
+                <button id="nudge-reset" title="Nessuno spostamento">↺</button>
+              </span>
+            </div>
             <label>Pre-conteggio
               <select id="countin-sel" title="Pre-conteggio prima dell'avvio">
                 <option value="0">Nessuno</option>
