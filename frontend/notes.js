@@ -999,7 +999,7 @@ function updateRhythmControls() {
     const g = state.notes.grid;
     // con il click regolare si mostra il BPM fisso (modificabile nel pannello ⚙)
     $('#bpm').textContent = `${Math.round((fixed ? fixedBpm() : g.bpm) * engine.tempo / 100)} BPM`;
-    $('#bpm').title = fixed ? 'BPM del click regolare: si cambia da ⚙' : 'BPM rilevati nel brano';
+    $('#bpm').title = fixed ? 'BPM del metronomo: si cambia da ⚙' : 'BPM rilevati nel brano';
     const nudge = (g.rhythm && g.rhythm.nudge_ms) || 0;
     $('#nudge-val').textContent = nudge ? `${nudge > 0 ? '+' : '−'}${Math.abs(nudge)} ms` : '0 ms';
     $('#nudge-val').classList.toggle('changed', !!nudge);

@@ -229,14 +229,14 @@
           <div id="click-panel" class="menu click-panel hidden">
             <label>Volume <input id="click-vol" type="range" min="0" max="1.5" step="0.05" title="Volume del click"></label>
             <label>Modalità
-              <select id="click-mode" title="Aderente: ogni colpo segue il battito reale della registrazione. Fluido: stabile, segue solo i cambi di tempo graduali. Regolare: metronomo a BPM fisso, non segue i musicisti.">
-                <option value="tight">Click aderente</option>
-                <option value="smooth">Click fluido</option>
-                <option value="fixed">Click regolare</option>
+              <select id="click-mode" title="Quantizzato: ogni colpo segue il battito reale della registrazione. Tempo medio: segue il tempo della canzone livellando le irregolarità. Metronomo: BPM fisso, non segue i musicisti.">
+                <option value="tight">Quantizzato</option>
+                <option value="smooth">Tempo medio</option>
+                <option value="fixed">Metronomo</option>
               </select>
             </label>
             <span id="fixed-bpm-box" class="fixed-bpm hidden">
-              <input id="fixed-bpm" type="number" min="20" max="400" step="0.1" title="BPM del click regolare"> BPM
+              <input id="fixed-bpm" type="number" min="20" max="400" step="0.1" title="BPM del metronomo"> BPM
               <button id="fixed-bpm-reset" class="hidden" title="Torna al tempo rilevato">↺</button>
             </span>
             <div class="nudge-row" title="Se il click non coincide con la cassa: − lo anticipa, + lo ritarda. Vale per questo brano.">
