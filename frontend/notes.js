@@ -808,10 +808,13 @@ let countTimers = [];
 /** Dati del pre-conteggio per una partenza da `p` (tempo timeline): durata e colpi. */
 function countInPlan(p, bars) {
   const k = dispK(), cb = clickBeats(), a = anc();
-  const iNext = Math.ceil(beatPos(p / k - a, cb) - 1e-3); // primo battito della musica dopo p
+  const bpb = gridBpb(), db = state.notes.grid.downbeat;
+  // il conteggio porta sul primo "1" di battuta dopo p (tiene conto di anticipo/posticipo del
+  // primo tempo): le note prima di quel punto suonano mentre il conteggio prosegue
+  let iNext = Math.ceil(beatPos(p / k - a, cb) - 1e-3);
+  while ((((iNext - db) % bpb) + bpb) % bpb !== 0) iNext++;
   const bNext = (beatTime(iNext, cb) + a) * k;
   const period = (beatTime(iNext, cb) - beatTime(iNext - 1, cb)) * k;
-  const bpb = gridBpb();
   const n = bars * bpb;
   const lead = Math.max(0, bNext - p);                    // musica prima del primo battito
   const delay = Math.max(0, n * period - lead);           // attesa prima di far partire l'audio
@@ -834,8 +837,9 @@ function playWithCountIn() {
   const plan = countInPlan(engine.startOffset(), state.countIn);
   engine.play(plan.delay);
   const start = engine.t0 - plan.delay;
+  const nudge = clickNudge(); // stessa regolazione fine del click
   for (const b of plan.beats) {
-    const when = start + b.rel;
+    const when = start + b.rel + nudge;
     playClick(when, b.num === 1, Math.max(0.6, state.clickVol));
     countTimers.push(setTimeout(() => showCount(b.num), Math.max(0, (when - engine.ctx.currentTime) * 1000)));
   }
