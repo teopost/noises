@@ -2018,6 +2018,10 @@ async fn main() -> anyhow::Result<()> {
     }
     projects::migrate(&st);
     backup::clean_tmp(&st.0.data_dir);
+    {
+        let st2 = st.clone();
+        tokio::spawn(async move { st2.0.auth.check_mail().await });
+    }
     tokio::spawn(worker(st.clone(), rx));
 
     let app = Router::new()

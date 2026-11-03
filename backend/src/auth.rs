@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     path::Path,
     sync::Mutex,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context;
@@ -116,12 +116,23 @@ impl Mailer {
             "none" => AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host),
             _ => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)?,
         }
-        .port(port);
+        .port(port)
+        .timeout(Some(Duration::from_secs(30))); // un server che non risponde non blocca la richiesta
         if let (Some(u), Some(p)) = (env("SMTP_USER"), env("SMTP_PASSWORD")) {
             builder = builder.credentials(Credentials::new(u, p));
         }
         info!("email via SMTP {host}:{port}");
         Ok(Mailer { transport: Some(builder.build()), from })
+    }
+
+    /// All'avvio: prova la connessione al server SMTP e scrive l'esito nel log.
+    pub async fn check(&self) {
+        let Some(t) = &self.transport else { return };
+        match t.test_connection().await {
+            Ok(true) => info!("SMTP raggiungibile, email da {}", self.from),
+            Ok(false) => warn!("SMTP: il server non risponde correttamente: le email potrebbero non partire"),
+            Err(e) => warn!("SMTP non raggiungibile: {e:#} — le email non partiranno (controlla SMTP_HOST, SMTP_PORT, SMTP_TLS, SMTP_USER, SMTP_PASSWORD)"),
+        }
     }
 
     async fn send(&self, to: &str, subject: &str, text: &str, link: &str, en: bool) -> anyhow::Result<()> {
@@ -147,7 +158,7 @@ impl Mailer {
                     .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(format!("{text}\n\n{link}\n")))
                     .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html)),
             )?;
-        t.send(msg).await.context("invio email")?;
+        t.send(msg).await.context("invio email (controlla SMTP_HOST, SMTP_PORT, SMTP_TLS e le credenziali)")?;
         info!("email '{subject}' inviata a {to}");
         Ok(())
     }
@@ -189,6 +200,11 @@ fn row_user(r: &rusqlite::Row) -> rusqlite::Result<User> {
 }
 
 impl Auth {
+    /// Verifica in background che il server SMTP sia raggiungibile (esito nel log).
+    pub async fn check_mail(&self) {
+        self.mailer.check().await;
+    }
+
     pub fn open(data_dir: &Path) -> anyhow::Result<Self> {
         let conn = Connection::open(data_dir.join("noises.db"))?;
         conn.execute_batch(
@@ -532,8 +548,16 @@ pub async fn register(State(st): State<AppState>, headers: HeaderMap, Json(b): J
         .map(|n| n.trim().chars().take(80).collect::<String>())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| email.split('@').next().unwrap_or("utente").to_owned());
-    if auth.user_where("email", &email)?.is_some() {
+    if let Some(u) = auth.user_where("email", &email)? {
         // Messaggio neutro: non rivela se l'indirizzo è già registrato.
+        if u.email_verified {
+            info!("registrazione: {email} è già registrato e confermato, nessuna email inviata");
+        } else {
+            info!("registrazione: {email} è già registrato ma non confermato, rinvio il link");
+            if let Err(e) = auth.send_verification(&u, wants_en(&headers)).await {
+                warn!("invio verifica a {}: {e:#}", u.email);
+            }
+        }
         return Ok(msg("Se l'indirizzo è valido riceverai un'email per confermare l'account.").into_response());
     }
     let hash = hash_password(b.password).await?;
@@ -575,12 +599,15 @@ pub struct EmailBody {
 
 pub async fn resend(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<EmailBody>) -> Result<Json<Msg>, AppError> {
     let auth = &st.0.auth;
-    if let Some(u) = auth.user_where("email", b.email.trim())? {
-        if !u.email_verified {
+    let email = b.email.trim().to_lowercase();
+    match auth.user_where("email", &email)? {
+        Some(u) if !u.email_verified => {
             if let Err(e) = auth.send_verification(&u, wants_en(&headers)).await {
                 warn!("invio verifica a {}: {e:#}", u.email);
             }
         }
+        Some(_) => info!("nuovo link di verifica: {email} è già confermato, nessuna email inviata"),
+        None => info!("nuovo link di verifica: nessun account per {email}"),
     }
     Ok(msg("Se l'account esiste e non è ancora confermato, ti abbiamo inviato un nuovo link."))
 }
@@ -636,10 +663,14 @@ pub async fn logout(State(st): State<AppState>, headers: HeaderMap) -> Result<Re
 
 pub async fn forgot(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<EmailBody>) -> Result<Json<Msg>, AppError> {
     let auth = &st.0.auth;
-    if let Some(u) = auth.user_where("email", b.email.trim())? {
-        if let Err(e) = auth.send_reset(&u, wants_en(&headers)).await {
-            warn!("invio reset a {}: {e:#}", u.email);
+    let email = b.email.trim().to_lowercase();
+    match auth.user_where("email", &email)? {
+        Some(u) => {
+            if let Err(e) = auth.send_reset(&u, wants_en(&headers)).await {
+                warn!("invio reset a {}: {e:#}", u.email);
+            }
         }
+        None => info!("password dimenticata: nessun account per {email}"),
     }
     Ok(msg("Se l'indirizzo è registrato riceverai un'email con il link per reimpostare la password."))
 }
