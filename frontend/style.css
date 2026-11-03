@@ -973,3 +973,91 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .share-extra-list .check span { flex: none; }
 .share-extra-list .check small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-extra-list .check.off { opacity: .45; }
+
+/* ---- amministrazione ---- */
+.user-btn { position: relative; }
+.user-btn.has-update::after { /* nuova versione disponibile */
+  content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%;
+  background: #f5b942; border: 2px solid var(--bg);
+}
+.upd-badge {
+  margin-left: auto; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700;
+  background: #f5b942; color: #1a1300; letter-spacing: .3px;
+}
+#admin-open { display: flex; align-items: center; gap: 6px; }
+#admin-open.hidden { display: none; }
+.upd-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #f5b942; margin-left: 4px; vertical-align: 2px; }
+.upd-dot.hidden { display: none; }
+
+.admin-dlg { width: min(1180px, calc(100vw - 32px)); height: min(780px, calc(100vh - 48px)); }
+.admin-dlg[open] { display: flex; flex-direction: column; }
+.adm-head { display: flex; align-items: center; gap: 18px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.adm-head h2 { margin: 0; font-size: 18px; }
+.adm-tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.adm-tabs button { border: 0; background: transparent; color: var(--muted); padding: 6px 12px; border-radius: 8px; }
+.adm-tabs button:hover { color: var(--text); background: var(--panel-2); }
+.adm-tabs button.on { color: #fff; background: var(--accent); }
+.adm-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; overflow: auto; }
+.adm-loading, .adm-error { color: var(--muted); padding: 30px; text-align: center; }
+.adm-error { color: var(--danger); }
+.adm-bar { display: flex; align-items: center; gap: 10px; }
+.adm-bar select { max-width: 380px; }
+.adm-count { color: var(--muted); font-size: 13px; }
+.adm-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 10px; min-height: 0; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.adm-table th { position: sticky; top: 0; z-index: 1; background: var(--panel-2); color: var(--muted); font-weight: 600; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+.adm-table th, .adm-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.adm-table tbody tr:hover { background: #ffffff05; }
+.adm-table tr.dim td { opacity: .55; }
+.adm-table tr.bad td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+.adm-table small { color: var(--muted); }
+.adm-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.adm-table .empty-hint { text-align: center; color: var(--muted); padding: 24px; }
+.adm-events td:first-child { white-space: nowrap; }
+.adm-user { display: flex; align-items: center; gap: 10px; }
+.avatar.sm { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 1px solid var(--accent); font-size: 13px; }
+.adm-acts { white-space: nowrap; text-align: right; }
+.adm-acts button { padding: 3px 9px; font-size: 12px; }
+.adm-acts .danger { color: var(--danger); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pill.on { background: #2bd47d26; color: #5fe39c; }
+.pill.wait { background: #f5b94226; color: #f5c96a; }
+.pill.off { background: #ff5c7a26; color: #ff8fa3; }
+.tag { padding: 0 6px; border-radius: 6px; background: var(--panel-2); color: var(--muted); font-size: 11px; }
+.admin-dlg form.adm-invite { flex-direction: row; justify-content: flex-start; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 0; }
+.admin-dlg input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+.admin-dlg input:focus { outline: none; border-color: var(--accent); }
+.admin-dlg .adm-invite select { padding: 7px 8px; }
+.admin-dlg .adm-invite button { padding: 7px 14px; }
+.adm-invite label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.adm-invite input { width: 300px; max-width: 70vw; }
+.adm-note { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); }
+.adm-note p { margin: 4px 0; color: var(--text); }
+.adm-note.ok { border-color: #2bd47d55; }
+.adm-note.warn { border-color: #f5b94288; background: #f5b9420f; }
+.adm-note .share-url { display: flex; gap: 8px; margin-top: 6px; }
+.adm-note .share-url input { flex: 1; min-width: 0; }
+.adm-note .adm-copy { color: #fff; }
+.adm-note a { color: var(--accent-2); }
+.adm-note code, .adm-kv code { background: #0006; padding: 1px 6px; border-radius: 5px; }
+.adm-notes { max-height: 260px; overflow: auto; white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+.adm-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.adm-stats div { display: flex; flex-direction: column; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+.adm-stats b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.adm-stats span { color: var(--muted); font-size: 12px; }
+.adm-kv td:first-child { color: var(--muted); width: 55%; }
+.invite-hint { color: var(--accent-2); }
+
+/* ---- accesso e registrazione: caratteri più grandi ---- */
+.auth-card { width: min(450px, 100%); padding: 32px; gap: 16px; font-size: 16px; }
+.auth .brand.big { font-size: 34px; }
+.auth-sub { font-size: 15px; }
+.auth-form { gap: 14px; }
+.auth-form label { font-size: 14px; gap: 6px; }
+.auth-form input { font-size: 16px; padding: 11px 12px; } /* 16px: su iPhone niente zoom automatico */
+.auth-form .hint { font-size: 13.5px; line-height: 1.45; }
+.auth button.wide { font-size: 16px; padding: 12px; }
+.auth-links .link { font-size: 14.5px; }
+.auth-msg { font-size: 14.5px; }
+.auth .sep { font-size: 13.5px; }
+.auth .google-btn { font-size: 15.5px; padding: 12px; }

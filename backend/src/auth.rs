@@ -46,11 +46,11 @@ const RESET_TTL: u64 = 3600;
 const MAX_FAILURES: u32 = 8;
 const LOCKOUT_SECS: u64 = 15 * 60;
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
 }
 
-fn random_token() -> String {
+pub(crate) fn random_token() -> String {
     let mut b = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut b);
     hex(&b)
@@ -60,7 +60,7 @@ fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn sha256_hex(s: &str) -> String {
+pub(crate) fn sha256_hex(s: &str) -> String {
     hex(&Sha256::digest(s.as_bytes()))
 }
 
@@ -135,7 +135,11 @@ impl Mailer {
         }
     }
 
-    async fn send(&self, to: &str, subject: &str, text: &str, link: &str, en: bool) -> anyhow::Result<()> {
+    pub(crate) fn configured(&self) -> bool {
+        self.transport.is_some()
+    }
+
+    pub(crate) async fn send(&self, to: &str, subject: &str, text: &str, link: &str, en: bool) -> anyhow::Result<()> {
         let Some(t) = &self.transport else {
             warn!("[email non inviata — SMTP assente] a {to}: {subject} → {link}");
             return Ok(());
@@ -164,6 +168,29 @@ impl Mailer {
     }
 }
 
+/// Indirizzo della connessione diretta, aggiunto dal middleware (ogni valore dal client viene scartato).
+const PEER_HEADER: &str = "x-noises-peer";
+
+/// Da dove arriva una richiesta: indirizzo IP (anche dietro proxy o tunnel) e browser.
+#[derive(Clone, Debug, Default)]
+pub struct Client {
+    pub ip: String,
+    pub ua: String,
+}
+
+impl Client {
+    pub fn from_headers(h: &HeaderMap) -> Self {
+        let get = |k: &str| h.get(k).and_then(|v| v.to_str().ok()).map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+        let ip = get("cf-connecting-ip")
+            .or_else(|| get("x-forwarded-for").map(|v| v.split(',').next().unwrap_or("").trim().to_owned()))
+            .or_else(|| get("x-real-ip"))
+            .or_else(|| get(PEER_HEADER))
+            .unwrap_or_default();
+        let ua = get("user-agent").unwrap_or_default().chars().take(300).collect();
+        Client { ip: ip.chars().take(64).collect(), ua }
+    }
+}
+
 // --------------------------------------------------------------------- database
 
 #[derive(Clone, Debug, Serialize)]
@@ -178,10 +205,10 @@ pub struct User {
 }
 
 pub struct Auth {
-    db: Mutex<Connection>,
+    pub(crate) db: Mutex<Connection>,
     pub config: AuthConfig,
-    mailer: Mailer,
-    http: reqwest::Client,
+    pub(crate) mailer: Mailer,
+    pub(crate) http: reqwest::Client,
     failures: Mutex<HashMap<String, (u32, u64)>>,
 }
 
@@ -227,8 +254,44 @@ impl Auth {
                token_hash TEXT PRIMARY KEY,
                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                kind TEXT NOT NULL,
-               expires_at INTEGER NOT NULL);",
+               expires_at INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS events (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               at INTEGER NOT NULL,
+               user_id TEXT,
+               email TEXT NOT NULL DEFAULT '',
+               kind TEXT NOT NULL,
+               detail TEXT NOT NULL DEFAULT '',
+               path TEXT NOT NULL DEFAULT '',
+               status INTEGER NOT NULL DEFAULT 0,
+               count INTEGER NOT NULL DEFAULT 1,
+               ip TEXT NOT NULL DEFAULT '',
+               ua TEXT NOT NULL DEFAULT '');
+             CREATE INDEX IF NOT EXISTS events_at ON events(at);
+             CREATE INDEX IF NOT EXISTS events_user ON events(user_id, at);
+             CREATE TABLE IF NOT EXISTS invites (
+               id TEXT PRIMARY KEY,
+               token_hash TEXT NOT NULL UNIQUE,
+               email TEXT NOT NULL COLLATE NOCASE,
+               role TEXT NOT NULL,
+               invited_by TEXT,
+               created_at INTEGER NOT NULL,
+               expires_at INTEGER NOT NULL,
+               used_at INTEGER,
+               used_by TEXT);",
         )?;
+        // colonne aggiunte dopo la prima versione
+        let cols: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('users')")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for (c, def) in [("disabled", "INTEGER NOT NULL DEFAULT 0"), ("last_login", "INTEGER"), ("last_seen", "INTEGER")] {
+            if !cols.iter().any(|x| x == c) {
+                conn.execute(&format!("ALTER TABLE users ADD COLUMN {c} {def}"), [])?;
+            }
+        }
+        // registro: 180 giorni
+        conn.execute("DELETE FROM events WHERE at < ?1", params![now().saturating_sub(180 * 24 * 3600)])?;
         conn.execute("DELETE FROM sessions WHERE expires_at < ?1", params![now()])?;
         conn.execute("DELETE FROM tokens WHERE expires_at < ?1", params![now()])?;
         let config = AuthConfig::from_env();
@@ -264,13 +327,15 @@ impl Auth {
     }
 
     /// Crea un utente; il primo diventa amministratore. Restituisce (utente, è_il_primo).
-    fn create_user(
+    /// Gli altri utenti sono amministratori se `admin` (invito come amministratore).
+    pub(crate) fn create_user_as(
         &self,
         email: &str,
         name: &str,
         password_hash: Option<&str>,
         verified: bool,
         google_sub: Option<&str>,
+        admin: bool,
     ) -> anyhow::Result<(User, bool)> {
         let db = self.db.lock().unwrap();
         let first: i64 = db.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))?;
@@ -278,13 +343,101 @@ impl Auth {
         db.execute(
             "INSERT INTO users (id, email, name, password_hash, email_verified, google_sub, is_admin, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![id, email, name, password_hash, verified, google_sub, first == 0, now()],
+            params![id, email, name, password_hash, verified, google_sub, first == 0 || admin, now()],
         )?;
         let user = db.query_row(&format!("SELECT {USER_COLS} FROM users WHERE id = ?1"), params![id], row_user)?;
         Ok((user, first == 0))
     }
 
-    fn exec(&self, sql: &str, p: impl rusqlite::Params) -> anyhow::Result<usize> {
+    /// Annota un evento (accesso, registrazione, azione). Le azioni uguali e ravvicinate dello stesso
+    /// utente (es. il salvataggio automatico) si sommano in una riga sola.
+    pub(crate) fn log_event(&self, user_id: Option<&str>, email: &str, kind: &str, detail: &str, path: &str, status: u16, client: &Client) {
+        let db = self.db.lock().unwrap();
+        let t = now();
+        if kind == "action" {
+            let merged = db
+                .execute(
+                    "UPDATE events SET at = ?1, count = count + 1, status = ?2
+                     WHERE id = (SELECT id FROM events WHERE user_id IS ?3 ORDER BY id DESC LIMIT 1)
+                       AND kind = 'action' AND detail = ?4 AND path = ?5 AND at > ?6",
+                    params![t, status, user_id, detail, path, t.saturating_sub(600)],
+                )
+                .unwrap_or(0);
+            if merged > 0 {
+                return;
+            }
+        }
+        let r = db.execute(
+            "INSERT INTO events (at, user_id, email, kind, detail, path, status, ip, ua) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![t, user_id, email, kind, detail, path, status, client.ip, client.ua],
+        );
+        if let Err(e) = r {
+            warn!("registro eventi: {e}");
+        }
+    }
+
+    /// Ultima attività dell'utente (al massimo una scrittura al minuto).
+    pub(crate) fn touch(&self, user_id: &str) {
+        let t = now();
+        let _ = self.exec(
+            "UPDATE users SET last_seen = ?1 WHERE id = ?2 AND (last_seen IS NULL OR last_seen < ?3)",
+            params![t, user_id, t.saturating_sub(60)],
+        );
+    }
+
+    /// Nessun utente ancora: il primo può registrarsi anche se la registrazione è chiusa.
+    fn no_users(&self) -> bool {
+        self.db.lock().unwrap().query_row("SELECT COUNT(*) = 0 FROM users", [], |r| r.get::<_, bool>(0)).unwrap_or(false)
+    }
+
+    fn is_disabled(&self, user_id: &str) -> bool {
+        self.db
+            .lock()
+            .unwrap()
+            .query_row("SELECT disabled FROM users WHERE id = ?1", params![user_id], |r| r.get::<_, bool>(0))
+            .unwrap_or(false)
+    }
+
+    /// Invito valido (non usato, non scaduto) per un indirizzo: (id, ruolo).
+    pub(crate) fn invite_for_email(&self, email: &str) -> Option<(String, String)> {
+        self.db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT id, role FROM invites WHERE email = ?1 AND used_at IS NULL AND expires_at > ?2 ORDER BY created_at DESC LIMIT 1",
+                params![email, now()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    /// Invito dal token del link: (id, email, ruolo).
+    pub(crate) fn invite_by_token(&self, token: &str) -> Option<(String, String, String)> {
+        self.db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT id, email, role FROM invites WHERE token_hash = ?1 AND used_at IS NULL AND expires_at > ?2",
+                params![sha256_hex(token), now()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    fn use_invite(&self, id: &str, user_id: &str) {
+        let _ = self.exec("UPDATE invites SET used_at = ?1, used_by = ?2 WHERE id = ?3", params![now(), user_id, id]);
+    }
+
+    fn logged_in(&self, user: &User, how: &str, client: &Client) {
+        let _ = self.exec("UPDATE users SET last_login = ?1, last_seen = ?1 WHERE id = ?2", params![now(), user.id]);
+        self.log_event(Some(&user.id), &user.email, "login", how, "", 200, client);
+    }
+
+    pub(crate) fn exec(&self, sql: &str, p: impl rusqlite::Params) -> anyhow::Result<usize> {
         Ok(self.db.lock().unwrap().execute(sql, p)?)
     }
 
@@ -302,7 +455,7 @@ impl Auth {
         db.query_row(
             &format!(
                 "SELECT {} FROM sessions s JOIN users u ON u.id = s.user_id
-                 WHERE s.token_hash = ?1 AND s.expires_at > ?2",
+                 WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.disabled = 0",
                 USER_COLS.split(", ").map(|c| format!("u.{c}")).collect::<Vec<_>>().join(", ")
             ),
             params![sha256_hex(token), now()],
@@ -457,6 +610,14 @@ fn with_session(st: &AppState, user: &User, mut resp: Response) -> Result<Respon
 
 /// Protegge le API: richiede una sessione valida e verifica che le risorse appartengano all'utente.
 pub async fn require_user(State(st): State<AppState>, mut req: Request, next: Next) -> Response {
+    let peer = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|c| c.0.ip().to_string());
+    req.headers_mut().remove(PEER_HEADER);
+    if let Some(ip) = peer.and_then(|p| HeaderValue::from_str(&p).ok()) {
+        req.headers_mut().insert(PEER_HEADER, ip);
+    }
     let path = req.uri().path().to_owned();
     if !path.starts_with("/api/") || path.starts_with("/api/auth/") || path.starts_with("/api/public/") || path == "/api/health" {
         return next.run(req).await;
@@ -467,8 +628,18 @@ pub async fn require_user(State(st): State<AppState>, mut req: Request, next: Ne
     if !crate::owns_path(&st, &user, &path) {
         return AppError(StatusCode::NOT_FOUND, "non trovato".into()).into_response();
     }
-    req.extensions_mut().insert(user);
-    next.run(req).await
+    st.0.auth.touch(&user.id);
+    let method = req.method().clone();
+    // la descrizione si calcola prima: dopo un'eliminazione il nome non c'è più
+    let action = crate::admin::describe(&st, &method, &path);
+    let client = Client::from_headers(req.headers());
+    req.extensions_mut().insert(user.clone());
+    let resp = next.run(req).await;
+    if let Some(detail) = action {
+        let status = resp.status().as_u16();
+        st.0.auth.log_event(Some(&user.id), &user.email, "action", &detail, &format!("{method} {path}"), status, &client);
+    }
+    resp
 }
 
 // --------------------------------------------------------------------- handler
@@ -485,7 +656,7 @@ pub async fn config(State(st): State<AppState>) -> Json<AuthInfo> {
     Json(AuthInfo {
         google: c.google.is_some(),
         email_verification: c.email_verification,
-        allow_registration: c.allow_registration,
+        allow_registration: c.allow_registration || st.0.auth.no_users(),
     })
 }
 
@@ -531,14 +702,30 @@ pub struct RegisterBody {
     email: String,
     password: String,
     name: Option<String>,
+    /// token del link d'invito: registrazione permessa anche se chiusa, email già verificata
+    #[serde(default)]
+    invite: Option<String>,
 }
 
 pub async fn register(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<RegisterBody>) -> Result<Response, AppError> {
     let auth = &st.0.auth;
-    if !auth.config.allow_registration {
+    let client = Client::from_headers(&headers);
+    let email = b.email.trim().to_lowercase();
+    let invite = match b.invite.as_deref().filter(|t| !t.is_empty()) {
+        Some(t) => {
+            let Some(inv) = auth.invite_by_token(t) else {
+                return Err(bad_request("invito scaduto o già usato: chiedine uno nuovo"));
+            };
+            if !inv.1.eq_ignore_ascii_case(&email) {
+                return Err(bad_request(format!("l'invito è per {}", inv.1)));
+            }
+            Some(inv)
+        }
+        None => None,
+    };
+    if invite.is_none() && !auth.config.allow_registration && !auth.no_users() {
         return Err(AppError(StatusCode::FORBIDDEN, "la registrazione è disabilitata".into()));
     }
-    let email = b.email.trim().to_lowercase();
     if !valid_email(&email) {
         return Err(bad_request("indirizzo email non valido"));
     }
@@ -561,13 +748,20 @@ pub async fn register(State(st): State<AppState>, headers: HeaderMap, Json(b): J
         return Ok(msg("Se l'indirizzo è valido riceverai un'email per confermare l'account.").into_response());
     }
     let hash = hash_password(b.password).await?;
-    let verified = !auth.config.email_verification;
-    let (user, first) = auth.create_user(&email, &name, Some(&hash), verified, None)?;
-    info!("nuovo utente {} ({})", user.email, if first { "amministratore" } else { "utente" });
+    // con l'invito l'indirizzo è quello a cui l'amministratore l'ha mandato
+    let verified = !auth.config.email_verification || invite.is_some();
+    let admin = invite.as_ref().is_some_and(|i| i.2 == "admin");
+    let (user, first) = auth.create_user_as(&email, &name, Some(&hash), verified, None, admin)?;
+    info!("nuovo utente {} ({})", user.email, if user.is_admin { "amministratore" } else { "utente" });
+    if let Some(inv) = &invite {
+        auth.use_invite(&inv.0, &user.id);
+    }
+    auth.log_event(Some(&user.id), &user.email, "register", if invite.is_some() { "invito" } else { "" }, "", 200, &client);
     if first {
         crate::adopt_orphans(&st, &user.id);
     }
     if verified {
+        auth.logged_in(&user, "registrazione", &client);
         return with_session(&st, &user, Json(&user).into_response());
     }
     if let Err(e) = auth.send_verification(&user, wants_en(&headers)).await {
@@ -581,7 +775,22 @@ pub struct TokenQuery {
     token: String,
 }
 
-pub async fn verify(State(st): State<AppState>, Query(q): Query<TokenQuery>) -> Result<Response, AppError> {
+#[derive(Serialize)]
+pub struct InviteInfo {
+    email: String,
+}
+
+/// GET /api/auth/invite?token= — l'invito è valido? (per precompilare la registrazione)
+pub async fn invite_info(State(st): State<AppState>, Query(q): Query<TokenQuery>) -> Result<Json<InviteInfo>, AppError> {
+    let (_, email, _) = st
+        .0
+        .auth
+        .invite_by_token(&q.token)
+        .ok_or_else(|| bad_request("invito scaduto o già usato: chiedine uno nuovo"))?;
+    Ok(Json(InviteInfo { email }))
+}
+
+pub async fn verify(State(st): State<AppState>, headers: HeaderMap, Query(q): Query<TokenQuery>) -> Result<Response, AppError> {
     let auth = &st.0.auth;
     let Some(uid) = auth.take_token(&q.token, "verify")? else {
         return Ok(Redirect::to("/?auth_error=link_scaduto").into_response());
@@ -589,6 +798,9 @@ pub async fn verify(State(st): State<AppState>, Query(q): Query<TokenQuery>) -> 
     auth.exec("UPDATE users SET email_verified = 1 WHERE id = ?1", params![uid])?;
     let user = auth.user_where("id", &uid)?.ok_or_else(crate::not_found)?;
     info!("email verificata: {}", user.email);
+    let client = Client::from_headers(&headers);
+    auth.log_event(Some(&user.id), &user.email, "verify", "", "", 200, &client);
+    auth.logged_in(&user, "conferma email", &client);
     with_session(&st, &user, Redirect::to("/?verified=1").into_response())
 }
 
@@ -618,8 +830,9 @@ pub struct LoginBody {
     password: String,
 }
 
-pub async fn login(State(st): State<AppState>, Json(b): Json<LoginBody>) -> Result<Response, AppError> {
+pub async fn login(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<LoginBody>) -> Result<Response, AppError> {
     let auth = &st.0.auth;
+    let client = Client::from_headers(&headers);
     let key = b.email.trim().to_lowercase();
     if auth.locked(&key) {
         return Err(AppError(StatusCode::TOO_MANY_REQUESTS, "troppi tentativi: riprova tra qualche minuto".into()));
@@ -640,18 +853,28 @@ pub async fn login(State(st): State<AppState>, Json(b): Json<LoginBody>) -> Resu
     };
     if !ok {
         auth.record_failure(&key);
+        auth.log_event(user.as_ref().map(|u| u.id.as_str()), &key, "login_failed", "password errata", "", 401, &client);
         return Err(wrong());
     }
     let user = user.unwrap();
+    if auth.is_disabled(&user.id) {
+        auth.log_event(Some(&user.id), &user.email, "login_failed", "account disattivato", "", 423, &client);
+        return Err(AppError(StatusCode::LOCKED, "account disattivato: contatta l'amministratore".into()));
+    }
     if !user.email_verified {
+        auth.log_event(Some(&user.id), &user.email, "login_failed", "email non confermata", "", 403, &client);
         return Err(AppError(StatusCode::FORBIDDEN, "email non ancora confermata: controlla la posta".into()));
     }
     auth.clear_failures(&key);
     info!("accesso: {}", user.email);
+    auth.logged_in(&user, "password", &client);
     with_session(&st, &user, Json(&user).into_response())
 }
 
 pub async fn logout(State(st): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
+    if let Some(u) = current_user(&st, &headers) {
+        st.0.auth.log_event(Some(&u.id), &u.email, "logout", "", "", 200, &Client::from_headers(&headers));
+    }
     for t in cookies(&headers, SESSION_COOKIE) {
         st.0.auth.exec("DELETE FROM sessions WHERE token_hash = ?1", params![sha256_hex(&t)])?;
     }
@@ -681,7 +904,7 @@ pub struct ResetBody {
     password: String,
 }
 
-pub async fn reset(State(st): State<AppState>, Json(b): Json<ResetBody>) -> Result<Response, AppError> {
+pub async fn reset(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<ResetBody>) -> Result<Response, AppError> {
     check_password(&b.password)?;
     let auth = &st.0.auth;
     let Some(uid) = auth.take_token(&b.token, "reset")? else {
@@ -694,6 +917,12 @@ pub async fn reset(State(st): State<AppState>, Json(b): Json<ResetBody>) -> Resu
     let user = auth.user_where("id", &uid)?.ok_or_else(crate::not_found)?;
     auth.clear_failures(&user.email);
     info!("password reimpostata: {}", user.email);
+    let client = Client::from_headers(&headers);
+    auth.log_event(Some(&user.id), &user.email, "reset", "", "", 200, &client);
+    if auth.is_disabled(&user.id) {
+        return Err(AppError(StatusCode::LOCKED, "account disattivato: contatta l'amministratore".into()));
+    }
+    auth.logged_in(&user, "nuova password", &client);
     with_session(&st, &user, Json(&user).into_response())
 }
 
@@ -797,7 +1026,12 @@ pub async fn google_callback(
         return fail("google_stato_non_valido");
     }
     match google_finish(&st, &code, &verifier).await {
+        Ok(user) if st.0.auth.is_disabled(&user.id) => {
+            st.0.auth.log_event(Some(&user.id), &user.email, "login_failed", "account disattivato (Google)", "", 423, &Client::from_headers(&headers));
+            fail("account_disattivato")
+        }
         Ok(user) => {
+            st.0.auth.logged_in(&user, "Google", &Client::from_headers(&headers));
             let mut resp = match with_session(&st, &user, Redirect::to("/").into_response()) {
                 Ok(r) => r,
                 Err(_) => return fail("google_errore"),
@@ -859,11 +1093,17 @@ async fn google_finish(st: &AppState, code: &str, verifier: &str) -> anyhow::Res
         info!("account Google collegato a {}", u.email);
         return Ok(auth.user_where("id", &u.id)?.context("utente")?);
     }
-    if !auth.config.allow_registration {
+    let invite = auth.invite_for_email(&email);
+    if invite.is_none() && !auth.config.allow_registration && !auth.no_users() {
         anyhow::bail!("registrazione disabilitata");
     }
     let name = gu.name.unwrap_or_else(|| email.split('@').next().unwrap_or("utente").to_owned());
-    let (user, first) = auth.create_user(&email, &name, None, true, Some(&gu.sub))?;
+    let admin = invite.as_ref().is_some_and(|i| i.1 == "admin");
+    let (user, first) = auth.create_user_as(&email, &name, None, true, Some(&gu.sub), admin)?;
+    if let Some(inv) = &invite {
+        auth.use_invite(&inv.0, &user.id);
+    }
+    auth.log_event(Some(&user.id), &user.email, "register", if invite.is_some() { "invito, Google" } else { "Google" }, "", 200, &Client::default());
     info!("nuovo utente Google {}", user.email);
     if first {
         crate::adopt_orphans(st, &user.id);

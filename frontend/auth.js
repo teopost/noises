@@ -7,6 +7,7 @@ const AUTH_ERRORS = {
   google_errore: 'Accesso con Google non riuscito. Riprova.',
   google_sessione_scaduta: 'Sessione di accesso scaduta, riprova.',
   google_stato_non_valido: 'Richiesta di accesso non valida, riprova.',
+  account_disattivato: "Account disattivato: contatta l'amministratore.",
 };
 
 const authState = { user: null, config: null, pendingEmail: null };
@@ -14,7 +15,7 @@ const authState = { user: null, config: null, pendingEmail: null };
 function showAuthForm(name) {
   document.querySelectorAll('.auth-form').forEach((f) => f.classList.toggle('hidden', f.id !== `f-${name}`));
   $('#google-box').classList.toggle('hidden', !(authState.config && authState.config.google) || name === 'reset');
-  $('#to-register').classList.toggle('hidden', !(authState.config && authState.config.allow_registration));
+  $('#to-register').classList.toggle('hidden', !(authState.config && authState.config.allow_registration) && !authState.invite);
   const first = $(`#f-${name} input`);
   if (first) setTimeout(() => first.focus(), 30);
 }
@@ -89,7 +90,9 @@ function setupAuthForms() {
     try {
       const r = await postJSON('/api/auth/register', {
         name: $('#r-name').value.trim(), email: $('#r-email').value.trim(), password: $('#r-password').value,
+        invite: authState.invite || undefined,
       });
+      if (authState.invite) { authState.invite = null; history.replaceState(null, '', '/'); }
       if (r && r.id) { // verifica email disattivata: già dentro
         authState.user = r;
         enterApp();
@@ -202,6 +205,7 @@ function enterApp() {
   document.body.classList.remove('auth-open');
   authMessage('');
   renderUserBox();
+  adminInit();
   if (!appStarted) {
     appStarted = true;
     startApp();
@@ -211,6 +215,7 @@ function enterApp() {
 async function boot() {
   setupAuthForms();
   setupUserMenu();
+  setupAdmin();
   try {
     authState.config = await api('/api/auth/config');
   } catch {
@@ -221,6 +226,24 @@ async function boot() {
   if (reset) {
     $('#f-reset').dataset.token = reset;
     showAuth('reset');
+    return;
+  }
+  // link d'invito: registrazione con l'indirizzo già compilato
+  const invite = params.get('invite');
+  if (invite) {
+    try {
+      const info = await api(`/api/auth/invite?token=${encodeURIComponent(invite)}`);
+      authState.invite = invite;
+      showAuth('register');
+      $('#r-email').value = info.email;
+      $('#r-email').readOnly = true;
+      $('#r-invite').classList.remove('hidden');
+      setTimeout(() => $('#r-name').focus(), 50);
+    } catch (e) {
+      history.replaceState(null, '', '/');
+      showAuth('login');
+      authMessage(e.message, 'error');
+    }
     return;
   }
   const err = params.get('auth_error');

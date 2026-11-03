@@ -3,7 +3,7 @@
 const $ = (s) => document.querySelector(s);
 const COLORS = { vocals: '#ff6b9a', drums: '#ffb547', bass: '#4fd1c5', guitar: '#7cc4ff', piano: '#c49bff', other: '#9be36b' };
 const LABELS = { vocals: T('Voce'), drums: T('Batteria'), bass: T('Basso'), guitar: T('Chitarra'), piano: T('Piano'), other: T('Altro') };
-const MODEL_LABELS = { htdemucs: T('4 tracce'), htdemucs_ft: T('4 tracce HQ'), htdemucs_6s: T('6 tracce') };
+const MODEL_LABELS = { htdemucs: T('4 tracce'), htdemucs_ft: T('4 tracce HQ'), htdemucs_6s: T('6 tracce'), roformer: T('4 tracce RoFormer'), roformer_6s: T('6 tracce RoFormer') };
 
 const state = { zoom: 40, follow: true, notes: null, showNotes: new Set(), synth: new Set(), selNote: null,
   songs: [], playlists: [], view: 'all', query: '', current: null, pitch: 0, tempo: 100, loadSeq: 0, debounce: null, sel: null, loopOn: false,
@@ -298,7 +298,7 @@ function statusText(s) {
     case 'downloading': return `Download ${Math.round(s.progress * 100)}%`;
     case 'new': return 'Non separato';
     case 'queued': return 'In coda…';
-    case 'processing': return `Separazione ${Math.round(s.progress * 100)}%`;
+    case 'processing': return `Separazione ${Math.round(s.progress * 100)}%${s.phase ? ` · ${T(s.phase)}` : ''}`;
     case 'ready': return `Separato${s.phase ? ` · ${s.phase}…` : ''}`;
     default: return `Errore: ${s.error || 'sconosciuto'}`;
   }
@@ -537,7 +537,13 @@ function openProcess(songs, done) {
       if (p) { $('#proc-model').value = p.model; $('#proc-chords').checked = p.chords; $('#proc-notes').checked = p.notes; }
     } catch {}
   }
+  syncProcHint();
   $('#process-dlg').showModal();
+}
+
+/** Con RoFormer: spiegazione e tempi (molto più lento di Demucs). */
+function syncProcHint() {
+  $('#proc-rf-hint').classList.toggle('hidden', !$('#proc-model').value.startsWith('roformer'));
 }
 
 async function startProcess() {
@@ -557,6 +563,7 @@ async function startProcess() {
 }
 
 function setupProcess() {
+  $('#proc-model').addEventListener('change', syncProcHint);
   $('#process-dlg').addEventListener('close', async () => {
     const ok = $('#process-dlg').returnValue === 'ok';
     const done = processDone;

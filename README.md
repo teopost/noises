@@ -8,7 +8,7 @@ Web app self-hosted in stile Moises: separazione delle tracce con l'AI, mixer mu
 cambio di tonalità e velocità indipendenti, accordi, trascrizione delle note, spartito, tablatura,
 click intelligente ed esportazione di basi.
 
-![Versione](https://img.shields.io/badge/versione-1.2.1-7c5cff)
+![Versione](https://img.shields.io/badge/versione-1.3.0-7c5cff)
 ![Licenza](https://img.shields.io/badge/licenza-MIT-2bd47d)
 ![Rust](https://img.shields.io/badge/backend-Rust%20%2B%20axum-orange)
 ![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
@@ -47,6 +47,7 @@ click intelligente ed esportazione di basi.
 
 ### Separazione e mixer
 - **Separazione delle tracce** con [Demucs v4](https://github.com/facebookresearch/demucs): 4 tracce (voce, batteria, basso, altro), 4 tracce in alta qualità, oppure 6 tracce (+ chitarra e piano). Si avvia dal menu ⋯ della traccia, quando vuoi tu.
+- **Voce di massima qualità** con [Mel-Band RoFormer](https://huggingface.co/KimberleyJSN/melbandroformer) (4 o 6 tracce): la voce la separa RoFormer, più pulita di Demucs, e Demucs divide il resto. Sulla CPU è molto più lento (circa 8–10 minuti per minuto di brano su un portatile); il modello (900 MB) si scarica al primo uso in `/data/models`. Con una GPU (`DEMUCS_DEVICE=cuda`) la usa anche RoFormer.
 - **Mixer** con muto, solo e volume per traccia e per gruppo, volume master.
 - **Tonalità** (±12 semitoni) e **velocità** (50–150%) indipendenti, applicate **in tempo reale** nel browser; nei file esportati con [Rubber Band](https://breakfastquay.com/rubberband/). La tonalità del brano, già trasposta, compare accanto ai comandi.
 
@@ -62,7 +63,7 @@ click intelligente ed esportazione di basi.
 - **Regolazione fine del loop**: i bordi si trascinano con il mouse (con `Ctrl` si agganciano al click), oppure si spostano di 0,1 s (`Shift`: 0,01 s, tenendo premuto scorrono) o al **click precedente o successivo**, anche mentre suona.
 - **Linee delle battute** nella timeline, che seguono il tempo del click (casella **Battute**).
 - **Salvataggi**: fotografie con un nome dello stato del progetto (tonalità, velocità, volumi, muto/solo di tracce e cartelle, master, selezione e loop), per esempio *Assolo in loop* o *Solo voce*. Si richiamano dal pulsante **💾 ▾**; quello in uso raccoglie da solo le modifiche successive.
-- **Link pubblici**: un salvataggio diventa una pagina da condividere sui social, senza accesso, che riproduce il mix con il suo loop, la sua tonalità e la sua velocità. Nella stessa pagina si possono includere altri salvataggi tra cui scegliere; i link seguono le modifiche ai salvataggi e si disattivano quando vuoi.
+- **Link pubblici**: un salvataggio diventa una pagina da condividere sui social, senza accesso, che riproduce il mix con il suo loop, la sua tonalità e la sua velocità. L'anteprima sui social mostra titolo, salvataggio, loop e forma d'onda del mix. Nella stessa pagina si possono includere altri salvataggi tra cui scegliere; i link seguono le modifiche ai salvataggi e si disattivano quando vuoi.
 - **Registrazione di una traccia** dal microfono o dalla scheda audio mentre il progetto suona: traccia vuota da **＋ Aggiungi traccia → ⏺ Registra**, scelta dell'ingresso e dei canali (1, 2 o stereo), **VU meter**, **forma d'onda dal vivo** e compensazione automatica della latenza. Le nuove riprese sulla stessa traccia sostituiscono solo il tratto rifatto.
 
 ### Analisi musicale
@@ -85,6 +86,12 @@ click intelligente ed esportazione di basi.
 - **Registrazione con verifica dell'email**, accesso, password dimenticata con reset via email, cambio password.
 - **Accesso con Google** (OAuth 2.0 / OpenID Connect con PKCE).
 - **Più utenti**: ognuno vede solo i propri brani, progetti, scalette e playlist.
+- **Amministrazione** (menu dell'account → 🛡 *Amministrazione*, solo per gli amministratori; il primo utente registrato è amministratore):
+  - **Utenti**: ruolo (amministratore o utente), stato, ultimo accesso e ultima attività, brani, progetti, link e spazio occupato; un utente si può **disattivare** (esce subito e non può più accedere, i suoi dati restano).
+  - **Inviti** via email, validi 7 giorni, anche con la registrazione chiusa; senza SMTP il link si copia e si manda a mano.
+  - **Accessi**: accessi riusciti e falliti, uscite, registrazioni, con indirizzo IP e browser.
+  - **Attività**: cosa fanno gli utenti (brani caricati, progetti creati o modificati, esportazioni, backup, link pubblici…), filtrabile per utente. Il registro si conserva 180 giorni.
+  - **Sistema**: versione, statistiche, configurazione e **avviso di aggiornamento** quando su GitHub esce una nuova versione (pallino sull'avatar e sulla voce del menu).
 
 ## Avvio rapido
 
@@ -234,7 +241,9 @@ Tutte le variabili si possono impostare in `.env` (vedi [`.env.example`](.env.ex
 | `NOISES_PORT` | `8080` | porta esposta |
 | `PUBLIC_URL` | `http://localhost:8080` | URL pubblico, usato nei link delle email, nel redirect di Google e nelle anteprime dei link pubblici |
 | `EMAIL_VERIFICATION` | `true` | richiede la conferma dell'email alla registrazione |
-| `ALLOW_REGISTRATION` | `true` | consente nuove registrazioni |
+| `ALLOW_REGISTRATION` | `true` | consente nuove registrazioni (il primo utente e chi ha un invito possono sempre registrarsi) |
+| `UPDATE_CHECK` | `true` | controlla ogni 6 ore se su GitHub c'è una versione più recente (`false` per disattivare) |
+| `UPDATE_REPO` | `teopost/noises` | repository GitHub da cui leggere le versioni |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | attivano l'accesso con Google |
 | `SMTP_*` | — | invio delle email (senza SMTP i link vanno nei log) |
 | `DEMUCS_DEVICE` | `cpu` | `cuda` richiede un'immagine PyTorch con GPU |
@@ -264,7 +273,7 @@ flowchart LR
 | Livello | Tecnologia | Percorso |
 |---|---|---|
 | Server HTTP, coda, autenticazione, streaming | Rust · axum · tokio · rusqlite · argon2 · lettre · reqwest | `backend/` |
-| Separazione | Demucs v4 (PyTorch, CPU) | — |
+| Separazione | Demucs v4 e Mel-Band RoFormer (PyTorch, CPU) | — |
 | Tonalità e velocità | AudioWorklet nel browser (ascolto) · Rubber Band (export) | `frontend/stretch-worklet.js` |
 | Accordi | BTC, vocabolario da 170 classi | `analysis/chords.py` |
 | Note e battiti | Basic Pitch (ONNX, senza TensorFlow), librosa | `analysis/transcribe.py` |
@@ -281,12 +290,13 @@ Tutto sta nel volume Docker `noises-data` (`/data`):
 
 ```
 /data
-├── noises.db                 # utenti, sessioni, token (SQLite)
+├── noises.db                 # utenti, sessioni, token, inviti, registro di accessi e attività (SQLite)
 ├── playlists.json
 ├── setlists.json             # scalette
 ├── shares.json               # link pubblici
 ├── shares/*.mp3              # mix preparati per i link pubblici
 ├── tmp/                      # file temporanei di backup e ripristino
+├── models/                   # modelli scaricati al primo uso (Mel-Band RoFormer)
 ├── projects/<id>.json        # progetti: tracce, clip, gruppi, segnalibri, impostazioni
 └── songs/<id>/
     ├── meta.json             # stato, proprietario, metro, regolazione del click
@@ -327,6 +337,11 @@ Tutte le API sotto `/api` (tranne `/api/auth/*`, `/api/public/*` e `/api/health`
 | `GET` | `/api/auth/me` | utente corrente |
 | `GET` | `/api/auth/google/login` · `/callback` | accesso con Google |
 | `POST` | `/api/account/password` | cambio password |
+| `GET` | `/api/auth/invite?token=` | verifica di un invito (per la registrazione) |
+| `GET` | `/api/admin/users` · `PATCH /api/admin/users/:id` | **amministratori**: utenti, ruolo (`role`) e disattivazione (`disabled`) |
+| `GET` `POST` | `/api/admin/invites` · `DELETE …/:id` | **amministratori**: inviti |
+| `GET` | `/api/admin/events?kind=access\|action&user=&before=` | **amministratori**: registro di accessi e attività |
+| `GET` | `/api/admin/system` · `/api/admin/update` | **amministratori**: stato del sistema, ultima versione disponibile |
 | `GET` `POST` | `/api/songs` | elenco, caricamento (multipart) |
 | `POST` | `/api/import` | import da URL |
 | `GET` `DELETE` | `/api/songs/:id` | dettagli, eliminazione |
@@ -344,7 +359,7 @@ Tutte le API sotto `/api` (tranne `/api/auth/*`, `/api/public/*` e `/api/health`
 | `GET` | `/api/projects/:id/backup` | backup completo del progetto e dei suoi brani (zip con `manifest.json`) |
 | `POST` | `/api/backup/restore` | ripristino da uno zip di backup (multipart, campo `file`, fino a 8 GB) |
 | `GET` `POST` | `/api/projects/:id/shares` | link pubblici del progetto: elenco, creazione o aggiornamento (`DELETE …/:token`) |
-| `GET` | `/api/public/:token` · `/api/public/:token/audio?mix=` | **senza accesso**: dati e audio di un link pubblico |
+| `GET` | `/api/public/:token` · `/api/public/:token/audio?mix=` · `/api/public/:token/og.jpg` | **senza accesso**: dati, audio e immagine di anteprima di un link pubblico |
 | `GET` | `/s/:token` | **senza accesso**: pagina condivisa, con le anteprime per i social |
 | `GET` `POST` | `/api/setlists` | scalette (`PUT`/`DELETE /:id`) |
 | `GET` `POST` | `/api/playlists` | playlist (`PATCH`/`DELETE /:id`, `PUT`/`DELETE /:id/songs/:song`) |
@@ -382,6 +397,7 @@ Tutte le API sotto `/api` (tranne `/api/auth/*`, `/api/public/*` e `/api/health`
 | Componente | Licenza |
 |---|---|
 | [Demucs](https://github.com/facebookresearch/demucs) | MIT |
+| [Mel-Band RoFormer](https://github.com/ZFTurbo/Music-Source-Separation-Training) (codice, in `analysis/msst`) e [pesi per la voce di Kimberley Jensen](https://huggingface.co/KimberleyJSN/melbandroformer) | MIT |
 | [BTC-ISMIR19](https://github.com/jayg996/BTC-ISMIR19) | MIT |
 | [Basic Pitch](https://github.com/spotify/basic-pitch) | Apache-2.0 |
 | [Rubber Band](https://breakfastquay.com/rubberband/) | GPL-2.0 (usato come programma esterno) |

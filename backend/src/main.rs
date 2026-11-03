@@ -5,6 +5,7 @@
 //!   * Demucs (PyTorch, kernel C++) per la separazione delle tracce
 //!   * Rubber Band (C++) per pitch-shift e time-stretch di alta qualità
 
+mod admin;
 mod auth;
 mod backup;
 mod projects;
@@ -41,7 +42,7 @@ use tower_http::{
 };
 use tracing::{error, info, warn};
 
-const MODELS: &[&str] = &["htdemucs", "htdemucs_ft", "htdemucs_6s"];
+const MODELS: &[&str] = &["htdemucs", "htdemucs_ft", "htdemucs_6s", "roformer", "roformer_6s"];
 const STEM_ORDER: &[&str] = &["vocals", "drums", "bass", "guitar", "piano", "other"];
 const CHORD_QUALITIES: &[&str] = &[
     "min", "maj", "dim", "aug", "min6", "maj6", "min7", "minmaj7", "maj7", "7", "dim7", "hdim7",
@@ -1782,13 +1783,59 @@ async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
     let sep_dir = dir.join("sep");
     let _ = tokio::fs::remove_dir_all(&sep_dir).await;
 
-    info!("avvio demucs {} su {}", song.model, input.display());
+    let stems = if let Some(demucs_model) = roformer_pair(&song.model) {
+        separate_roformer(st, id, &song.model, demucs_model, &input, &sep_dir, &dir).await?
+    } else {
+        let out_dir = run_demucs(st, id, &song.model, &input, &sep_dir, (0.0, 0.99)).await?;
+        let stems_dir = dir.join("stems");
+        tokio::fs::create_dir_all(&stems_dir).await?;
+        let mut stems = vec![];
+        let mut rd = tokio::fs::read_dir(&out_dir).await.context("output demucs mancante")?;
+        while let Some(e) = rd.next_entry().await? {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("flac") {
+                let name = p.file_stem().unwrap().to_string_lossy().into_owned();
+                tokio::fs::rename(&p, stems_dir.join(format!("{name}.flac"))).await?;
+                stems.push(name);
+            }
+        }
+        stems
+    };
+    let _ = tokio::fs::remove_dir_all(&sep_dir).await;
+    if stems.is_empty() {
+        bail!("la separazione non ha prodotto tracce");
+    }
+    let mut stems = stems;
+    stems.sort_by_key(|s| STEM_ORDER.iter().position(|o| o == s).unwrap_or(usize::MAX));
+    Ok(stems)
+}
+
+/// Modelli "massima qualità": la voce con Mel-Band RoFormer, il resto diviso da Demucs.
+fn roformer_pair(model: &str) -> Option<&'static str> {
+    match model {
+        "roformer" => Some("htdemucs"),
+        "roformer_6s" => Some("htdemucs_6s"),
+        _ => None,
+    }
+}
+
+/// Esegue Demucs su `input` e restituisce la cartella con le tracce; l'avanzamento va da
+/// `range.0` a `range.1`.
+async fn run_demucs(
+    st: &AppState,
+    id: &str,
+    model: &str,
+    input: &Path,
+    sep_dir: &Path,
+    range: (f32, f32),
+) -> anyhow::Result<PathBuf> {
+    info!("avvio demucs {model} su {}", input.display());
     let mut child = Command::new("python3")
-        .args(["-m", "demucs", "-n", &song.model, "-d", &st.0.device, "--flac"])
+        .args(["-m", "demucs", "-n", model, "-d", &st.0.device, "--flac"])
         .arg("-o")
-        .arg(&sep_dir)
+        .arg(sep_dir)
         .args(["--filename", "{stem}.{ext}"])
-        .arg(&input)
+        .arg(input)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -1798,7 +1845,7 @@ async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
 
     // Demucs scrive l'avanzamento (tqdm) su stderr: lo usiamo per la barra di progresso.
     // I modelli "bag" (htdemucs_ft) eseguono 4 passate, ognuna da 0 a 100%.
-    let passes = if song.model == "htdemucs_ft" { 4.0 } else { 1.0 };
+    let passes = if model == "htdemucs_ft" { 4.0 } else { 1.0 };
     let mut tail: VecDeque<String> = VecDeque::new();
     let (mut pass, mut last_pct) = (0.0f32, 0.0f32);
     for_each_line(child.stderr.take().unwrap(), |s| {
@@ -1807,8 +1854,8 @@ async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
                 pass += 1.0;
             }
             last_pct = pct;
-            let p = ((pass + pct / 100.0) / passes).min(0.99);
-            st.update(id, false, |s| s.progress = p);
+            let p = ((pass + pct / 100.0) / passes).min(1.0);
+            st.update(id, false, |s| s.progress = range.0 + (range.1 - range.0) * p);
         } else {
             tail.push_back(s);
             if tail.len() > 12 {
@@ -1827,25 +1874,108 @@ async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
             tail.into_iter().collect::<Vec<_>>().join(" | ")
         );
     }
+    Ok(sep_dir.join(model))
+}
 
-    let out_dir = sep_dir.join(&song.model);
+/// Voce con Mel-Band RoFormer (pesi scaricati al primo uso in /data/models), poi Demucs divide la
+/// base in batteria, basso e resto (e chitarra e piano con 6 tracce). Quel poco di voce che Demucs
+/// trova ancora nella base finisce in "other", così la somma delle tracce resta il brano.
+async fn separate_roformer(
+    st: &AppState,
+    id: &str,
+    model: &str,
+    demucs_model: &str,
+    input: &Path,
+    sep_dir: &Path,
+    dir: &Path,
+) -> anyhow::Result<Vec<String>> {
+    let rf_dir = sep_dir.join("roformer");
+    let weights = st.0.data_dir.join("models").join("MelBandRoformer.ckpt");
+    info!("avvio RoFormer ({model}) su {}", input.display());
+    let mut child = Command::new("python3")
+        .arg(st.0.analysis_dir.join("roformer.py"))
+        .arg(input)
+        .arg(&rf_dir)
+        .arg(&weights)
+        .env("ROFORMER_DEVICE", &st.0.device)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .context("avvio RoFormer")?;
+    // la voce pesa circa i due terzi del tempo totale
+    const VOICE: f32 = 0.7;
+    let mut tail: VecDeque<String> = VecDeque::new();
+    let mut downloading = false;
+    for_each_line(child.stderr.take().unwrap(), |s| {
+        if let Some(rest) = s.strip_prefix("download ") {
+            if !downloading {
+                downloading = true;
+                st.update(id, false, |x| x.phase = Some("Download del modello RoFormer (900 MB, una volta sola)".into()));
+            }
+            if let Some(p) = parse_percent(rest) {
+                st.update(id, false, |x| x.progress = p / 100.0 * 0.99);
+            }
+        } else if let Some(p) = parse_percent(&s).filter(|_| s.trim_end().ends_with('%') && s.len() < 8) {
+            if downloading {
+                downloading = false;
+            }
+            st.update(id, false, |x| {
+                x.phase = Some("Voce (RoFormer)".into());
+                x.progress = p / 100.0 * VOICE;
+            });
+        } else if !s.contains("Warning") && !s.contains("autocast") {
+            tail.push_back(s);
+            if tail.len() > 12 {
+                tail.pop_front();
+            }
+        }
+    })
+    .await?;
+    let status = child.wait().await?;
+    if st.get(id).is_none() {
+        bail!("canzone eliminata durante l'elaborazione");
+    }
+    if !status.success() {
+        bail!("RoFormer fallito ({status}): {}", tail.into_iter().collect::<Vec<_>>().join(" | "));
+    }
+    st.update(id, false, |x| x.phase = Some("Strumenti (Demucs)".into()));
+    let out_dir = run_demucs(st, id, demucs_model, &rf_dir.join("instrumental.wav"), sep_dir, (VOICE, 0.99)).await?;
+
     let stems_dir = dir.join("stems");
     tokio::fs::create_dir_all(&stems_dir).await?;
-    let mut stems = vec![];
+    let mut stems = vec!["vocals".to_owned()];
+    tokio::fs::rename(rf_dir.join("vocals.flac"), stems_dir.join("vocals.flac")).await?;
+    let residual = out_dir.join("vocals.flac");
     let mut rd = tokio::fs::read_dir(&out_dir).await.context("output demucs mancante")?;
     while let Some(e) = rd.next_entry().await? {
         let p = e.path();
-        if p.extension().and_then(|x| x.to_str()) == Some("flac") {
-            let name = p.file_stem().unwrap().to_string_lossy().into_owned();
-            tokio::fs::rename(&p, stems_dir.join(format!("{name}.flac"))).await?;
-            stems.push(name);
+        let name = p.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        if p.extension().and_then(|x| x.to_str()) != Some("flac") || name == "vocals" {
+            continue;
         }
+        let dest = stems_dir.join(format!("{name}.flac"));
+        if name == "other" && residual.exists() {
+            // other + residuo di voce, senza riscalare i volumi
+            let out = Command::new("ffmpeg")
+                .args(["-v", "error", "-y", "-i"])
+                .arg(&p)
+                .arg("-i")
+                .arg(&residual)
+                .args(["-filter_complex", "amix=inputs=2:duration=longest:normalize=0", "-c:a", "flac"])
+                .arg(&dest)
+                .output()
+                .await?;
+            if !out.status.success() {
+                bail!("unione delle tracce: {}", String::from_utf8_lossy(&out.stderr).trim());
+            }
+        } else {
+            tokio::fs::rename(&p, &dest).await?;
+        }
+        stems.push(name);
     }
-    let _ = tokio::fs::remove_dir_all(&sep_dir).await;
-    if stems.is_empty() {
-        bail!("demucs non ha prodotto tracce");
-    }
-    stems.sort_by_key(|s| STEM_ORDER.iter().position(|o| o == s).unwrap_or(usize::MAX));
+    st.update(id, false, |x| x.phase = None);
     Ok(stems)
 }
 
@@ -2018,6 +2148,7 @@ async fn main() -> anyhow::Result<()> {
     }
     projects::migrate(&st);
     backup::clean_tmp(&st.0.data_dir);
+    admin::spawn_update_check(&st);
     {
         let st2 = st.clone();
         tokio::spawn(async move { st2.0.auth.check_mail().await });
@@ -2067,6 +2198,7 @@ async fn main() -> anyhow::Result<()> {
         // link pubblici: senza accesso
         .route("/api/public/:token", get(shares::public_info))
         .route("/api/public/:token/audio", get(shares::public_audio))
+        .route("/api/public/:token/og.jpg", get(shares::public_og))
         .route("/s/:token", get(shares::page))
         .route("/api/songs/:id/chords", get(get_chords).put(put_chords))
         .route("/api/songs/:id/chords/analyze", axum::routing::post(analyze_chords_now))
@@ -2086,6 +2218,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/health", get(|| async { "ok" }))
         // autenticazione (pubbliche, tranne il cambio password)
         .route("/api/auth/config", get(auth::config))
+        .route("/api/auth/invite", get(auth::invite_info))
+        .route("/api/admin/users", get(admin::users))
+        .route("/api/admin/users/:id", axum::routing::patch(admin::update_user))
+        .route("/api/admin/invites", get(admin::invites).post(admin::create_invite))
+        .route("/api/admin/invites/:id", axum::routing::delete(admin::delete_invite))
+        .route("/api/admin/events", get(admin::events))
+        .route("/api/admin/system", get(admin::system))
+        .route("/api/admin/update", get(admin::update))
         .route("/api/auth/me", get(auth::me))
         .route("/api/auth/register", post(auth::register))
         .route("/api/auth/verify", get(auth::verify))
@@ -2114,7 +2254,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("in ascolto su http://{addr} (render paralleli: {render_jobs})");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())

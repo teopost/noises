@@ -16,6 +16,7 @@ use axum::{
 use base64::Engine;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use tokio::process::Command;
 use tower::ServiceExt;
 use tracing::{info, warn};
 
@@ -220,6 +221,170 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
     Ok(out)
 }
 
+// ------------------------------------------------------------- immagine di anteprima
+
+/// Impronta breve del testo dell'immagine: cambia se si rinomina il progetto o il salvataggio.
+fn og_key(sh: &Share) -> String {
+    use sha2::Digest;
+    let h = sha2::Sha256::digest(format!("{}\n{}\n{}", sh.title, sh.subtitle, sh.extra.len()).as_bytes());
+    h.iter().take(4).map(|b| format!("{b:02x}")).collect()
+}
+
+fn og_path(st: &AppState, sh: &Share) -> PathBuf {
+    audio_dir(st).join(format!("{}-{}-og-{}.jpg", sh.token, sh.updated_at, og_key(sh)))
+}
+
+fn mmss(t: f64) -> String {
+    let t = t.max(0.0).round() as u64;
+    format!("{}:{:02}", t / 60, t % 60)
+}
+
+/// Testo su una riga: al massimo `max` caratteri, con i puntini se è più lungo.
+fn clip_text(s: &str, max: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() <= max {
+        s.to_owned()
+    } else {
+        format!("{}…", s.chars().take(max - 1).collect::<String>().trim_end())
+    }
+}
+
+/// Immagine per l'anteprima sui social (1200×630): titolo, salvataggio, dettagli e forma d'onda del
+/// mix con il loop evidenziato, nello stile della pagina condivisa. Si prepara una volta sola.
+async fn ensure_og(st: &AppState, sh: &Share) -> Result<PathBuf, AppError> {
+    let out = og_path(st, sh);
+    let lock = st.render_lock(&out);
+    let _guard = lock.lock().await;
+    if out.exists() {
+        return Ok(out);
+    }
+    let audio = ensure_audio(st, sh, 0).await?;
+    let probe = Command::new("ffprobe")
+        .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
+        .arg(&audio)
+        .output()
+        .await?;
+    let dur: f64 = String::from_utf8_lossy(&probe.stdout).trim().parse().unwrap_or(0.0);
+
+    let m = &sh.mix;
+    let k = 100.0 / m.tempo.clamp(25, 200) as f64; // secondi originali → secondi del mix
+    let mut facts = vec![];
+    if let (Some(sel), true) = (m.selection, m.loop_on) {
+        facts.push(format!("Loop {} – {}", mmss(sel.start * k), mmss(sel.end * k)));
+    }
+    if m.tempo != 100 {
+        facts.push(format!("tempo {}%", m.tempo));
+    }
+    if m.pitch != 0 {
+        facts.push(format!("{}{} st", if m.pitch > 0 { "+" } else { "−" }, m.pitch.abs()));
+    }
+    if !sh.extra.is_empty() {
+        facts.push(format!("{} mix", sh.extra.len() + 1));
+    }
+    let title = clip_text(&sh.title, 40);
+    // titolo lungo: carattere più piccolo, per restare dentro il riquadro
+    let n = title.chars().count().max(1);
+    let title_size = if n <= 26 { 62 } else { (62 * 26 / n).max(38) as u32 };
+
+    let tmp = audio_dir(st).join("tmp").join(format!("og-{}", uuid::Uuid::new_v4()));
+    tokio::fs::create_dir_all(&tmp).await?;
+    let write = |name: &str, text: String| {
+        let p = tmp.join(name);
+        std::fs::write(&p, text).map(|_| p)
+    };
+    let t_title = write("title.txt", title)?;
+    let t_sub = write("sub.txt", clip_text(&sh.subtitle, 50))?;
+    let t_facts = write("facts.txt", facts.join("  ·  "))?;
+    let t_brand = write("brand.txt", "◉ Noises".into())?;
+    let t_cta = write("cta.txt", "▶  Play".into())?;
+
+    const FONTS: &str = "/usr/share/fonts/truetype/dejavu";
+    const WX: u32 = 110;
+    const WY: u32 = 380;
+    const WW: u32 = 980;
+    const WH: u32 = 150;
+    let text = |file: &Path, font: &str, size: u32, color: &str, x: &str, y: u32, extra: &str| {
+        format!(
+            "drawtext=fontfile={FONTS}/{font}:textfile={}:expansion=none:fontsize={size}:fontcolor={color}:x={x}:y={y}{extra}",
+            file.display()
+        )
+    };
+    let bg = "drawbox=x=60:y=50:w=1080:h=530:color=0x14151c@0.70:t=fill";
+    // il loop si disegna sopra la forma d'onda (sotto sarebbe coperto)
+    let mut lp: Vec<String> = vec![];
+    if let (Some(sel), true, true) = (m.selection, m.loop_on, dur > 0.0) {
+        let x0 = WX + ((sel.start * k / dur).clamp(0.0, 1.0) * WW as f64) as u32;
+        let x1 = WX + ((sel.end * k / dur).clamp(0.0, 1.0) * WW as f64) as u32;
+        if x1 > x0 + 4 {
+            lp.push(format!("drawbox=x={x0}:y={}:w={}:h={}:color=0x2bd47d@0.45:t=fill", WY - 8, x1 - x0, WH + 16));
+            lp.push(format!("drawbox=x={x0}:y={}:w=3:h={}:color=0x2bd47d:t=fill", WY - 8, WH + 16));
+            lp.push(format!("drawbox=x={}:y={}:w=3:h={}:color=0x2bd47d:t=fill", x1 - 3, WY - 8, WH + 16));
+        }
+    }
+    let fg = [
+        text(&t_brand, "DejaVuSans-Bold.ttf", 26, "0xb6a4ff", &WX.to_string(), 88, ""),
+        text(&t_title, "DejaVuSans-Bold.ttf", title_size, "white", &WX.to_string(), 150, ""),
+        text(&t_sub, "DejaVuSans.ttf", 34, "0xb6a4ff", &WX.to_string(), 236, ""),
+        text(&t_facts, "DejaVuSans.ttf", 24, "0x9a9cb4", &WX.to_string(), 296, ""),
+        text(&t_cta, "DejaVuSans-Bold.ttf", 26, "white", "w-126-tw", 88, ":box=1:boxcolor=0x7c5cff:boxborderw=16"),
+    ];
+    let graph = format!(
+        "[1:a]aformat=channel_layouts=mono,showwavespic=s={WW}x{WH}:colors=0xb6a4ff:draw=full:filter=peak:scale=sqrt[w];\
+         [0:v]{bg}[bg];[bg][w]overlay={WX}:{WY},{}{}",
+        lp.iter().map(|x| format!("{x},")).collect::<String>(),
+        fg.join(",")
+    );
+    let part = tmp.join("og.jpg");
+    let res = Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i"])
+        .arg("gradients=s=1200x630:c0=0x2a1d6b:c1=0x0b0c10:c2=0x0b2f2c:nb_colors=3:x0=0:y0=0:x1=1200:y1=630:speed=0.00001:d=1")
+        .arg("-i")
+        .arg(&audio)
+        .args(["-filter_complex", &graph, "-frames:v", "1", "-q:v", "3"])
+        .arg(&part)
+        .kill_on_drop(true)
+        .output()
+        .await;
+    let done = match res {
+        Ok(o) if o.status.success() => tokio::fs::rename(&part, &out).await.map_err(AppError::from),
+        Ok(o) => Err(AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("ffmpeg: {}", String::from_utf8_lossy(&o.stderr).trim()))),
+        Err(e) => Err(e.into()),
+    };
+    let _ = tokio::fs::remove_dir_all(&tmp).await;
+    done?;
+    // le immagini con un testo precedente della stessa versione non servono più
+    if let Ok(rd) = std::fs::read_dir(audio_dir(st)) {
+        let prefix = format!("{}-{}-og-", sh.token, sh.updated_at);
+        for e in rd.filter_map(Result::ok) {
+            if e.file_name().to_string_lossy().starts_with(&prefix) && e.path() != out {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// GET /api/public/:token/og.jpg — anteprima per i social; se non si può preparare, quella generica.
+pub async fn public_og(State(st): State<AppState>, UrlPath(token): UrlPath<String>, req: Request) -> Response {
+    let path = match find(&st, &token) {
+        Some(sh) => match ensure_og(&st, &sh).await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("anteprima del link {token}: {}", e.1);
+                st.0.static_dir.join("share-og.jpg")
+            }
+        },
+        None => st.0.static_dir.join("share-og.jpg"),
+    };
+    let mut res = match tower_http::services::ServeFile::new(path).oneshot(req).await {
+        Ok(r) => r.into_response(),
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, header::HeaderValue::from_static("public, max-age=3600"));
+    res
+}
+
 // ------------------------------------------------------------- handler (proprietario)
 
 #[derive(Serialize)]
@@ -401,6 +566,11 @@ pub async fn create(
             if let Err(e) = ensure_audio(&st2, &sh2, i).await {
                 warn!("preparazione del link {} (#{i}) non riuscita: {}", sh2.token, e.1);
             }
+            if i == 0 {
+                if let Err(e) = ensure_og(&st2, &sh2).await {
+                    warn!("anteprima del link {}: {}", sh2.token, e.1);
+                }
+            }
         }
     });
     Ok(Json(ShareSummary::from(&sh)))
@@ -514,7 +684,14 @@ pub async fn page(State(st): State<AppState>, UrlPath(token): UrlPath<String>) -
         .replace("{{TITLE}}", &esc(&title))
         .replace("{{DESC}}", &esc(&desc))
         .replace("{{URL}}", &esc(&format!("{base}/s/{token}")))
-        .replace("{{IMAGE}}", &esc(&format!("{base}/share-og.jpg")));
+        .replace(
+            "{{IMAGE}}",
+            &esc(&match &sh {
+                // la versione nell'indirizzo fa riscaricare l'immagine quando il link cambia
+                Some(s) => format!("{base}/api/public/{token}/og.jpg?v={}-{}", s.updated_at, og_key(s)),
+                None => format!("{base}/share-og.jpg"),
+            }),
+        );
     let status = if sh.is_some() { StatusCode::OK } else { StatusCode::NOT_FOUND };
     (status, [(header::CACHE_CONTROL, "no-cache")], Html(html)).into_response()
 }

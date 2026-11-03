@@ -25,6 +25,7 @@
 
       <form id="f-register" class="auth-form hidden">
         <label>Nome<input id="r-name" type="text" autocomplete="name" maxlength="80"></label>
+        <p id="r-invite" class="hint invite-hint hidden">Sei stato invitato: crea il tuo account.</p>
         <label>Email<input id="r-email" type="email" autocomplete="email" required></label>
         <label>Password<input id="r-password" type="password" autocomplete="new-password" minlength="8" required></label>
         <label>Ripeti la password<input id="r-password2" type="password" autocomplete="new-password" minlength="8" required></label>
@@ -72,6 +73,7 @@
       <span id="user-email"></span>
       <span id="user-badges" class="count"></span>
     </div>
+    <button id="admin-open" class="menu-item hidden"><span class="emo">🛡</span> Amministrazione <span id="admin-badge" class="upd-badge hidden">Aggiornamento</span></button>
     <button id="change-pw" class="menu-item"><span class="emo">🔑</span> Password…</button>
     <button id="logout" class="menu-item">⎋ Esci</button>
   </div>
@@ -410,8 +412,11 @@
           <option value="htdemucs">4 tracce — veloce</option>
           <option value="htdemucs_ft">4 tracce — alta qualità (4× più lento)</option>
           <option value="htdemucs_6s">6 tracce (+ chitarra, piano)</option>
+          <option value="roformer">4 tracce — voce massima qualità, RoFormer (molto lento)</option>
+          <option value="roformer_6s">6 tracce — voce massima qualità, RoFormer (molto lento)</option>
         </select>
       </label>
+      <p id="proc-rf-hint" class="hint hidden">La voce si separa con Mel-Band RoFormer, più pulita di Demucs (meno strumenti nella voce e meno voce nella base); gli strumenti con Demucs. Sulla CPU richiede circa 8–10 minuti per ogni minuto di brano; la prima volta scarica il modello (900 MB).</p>
       <div class="field">Analisi dopo la separazione
         <label class="check"><input id="proc-chords" type="checkbox" checked> Riconoscimento accordi (pochi secondi)</label>
         <label class="check"><input id="proc-notes" type="checkbox" checked> Ritmo e trascrizione note (~1 minuto): click, pre-conteggio, spartito, MIDI</label>
@@ -568,6 +573,21 @@
     </form>
   </dialog>
 
+  <dialog id="admin-dlg" class="admin-dlg">
+    <header class="adm-head">
+      <h2><span class="emo">🛡</span> Amministrazione</h2>
+      <nav class="adm-tabs">
+        <button data-tab="users" class="on">Utenti</button>
+        <button data-tab="invites">Inviti</button>
+        <button data-tab="access">Accessi</button>
+        <button data-tab="activity">Attività</button>
+        <button data-tab="system">Sistema <span id="adm-sys-dot" class="upd-dot hidden"></span></button>
+      </nav>
+      <button class="ghost adm-close" title="Chiudi (Esc)">✕</button>
+    </header>
+    <div id="adm-body" class="adm-body"></div>
+  </dialog>
+
   <dialog id="pw-dlg">
     <form id="cp-form" method="dialog">
       <h2 id="cp-title">Cambia password</h2>
@@ -586,6 +606,7 @@
   <script src="i18n.js"></script>
   <script src="dialogs.js"></script>
   <script src="auth.js"></script>
+  <script src="admin.js"></script>
   <script src="notes.js"></script>
   <script src="score.js"></script>
   <script src="markers.js"></script>

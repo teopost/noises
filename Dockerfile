@@ -43,6 +43,10 @@ COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 ARG YTDLP_CACHEBUST=0
 RUN pip install -U "yt-dlp[default]"
 
+# Separazione "massima qualità": Mel-Band RoFormer per la voce (codice in analysis/msst, MIT;
+# i pesi, ~900 MB, si scaricano al primo uso in /data/models). Dipendenze leggere, versioni fissate.
+RUN pip install --no-deps beartype==0.23.1 rotary-embedding-torch==0.6.5
+
 # Riconoscimento accordi: modello BTC (MIT, Park et al. ISMIR 2019), commit fissato.
 RUN pip install "librosa==0.10.2.post1"
 # I file esterni si scaricano con docker/fetch.py (impronta SHA-256 e tentativi ripetuti), non con
