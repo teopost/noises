@@ -500,7 +500,10 @@ async fn upload(
     let dir = st.song_dir(&id);
     tokio::fs::create_dir_all(&dir).await?;
 
-    let result = receive_upload(&dir, &mut mp).await;
+    let result = match receive_upload(&dir, &mut mp).await {
+        Ok(v) => keep_audio_only(&dir).await.map(|()| v),
+        Err(e) => Err(e),
+    };
     let (name, model) = match result {
         Ok(v) => v,
         Err(e) => {
@@ -582,6 +585,45 @@ async fn receive_upload(dir: &Path, mp: &mut Multipart) -> Result<(String, Strin
     Ok((name, model))
 }
 
+/// Se il file caricato è un video (per esempio ripreso col telefono), ne tiene solo l'audio
+/// in `input.flac` e cancella il video: separazione e analisi lavorano su un file audio
+/// e il video non occupa spazio. Le copertine dei file audio (mp3, m4a…) non contano come video.
+async fn keep_audio_only(dir: &Path) -> Result<(), AppError> {
+    let input = find_input(dir).map_err(|_| bad_request("nessun file inviato"))?;
+    let probe = Command::new("ffprobe")
+        .args(["-v", "error", "-show_entries", "stream=codec_type:stream_disposition=attached_pic", "-of", "csv=p=0"])
+        .arg(&input)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .context("avvio ffprobe")?;
+    let streams = String::from_utf8_lossy(&probe.stdout).into_owned();
+    let has = |kind: &str| streams.lines().any(|l| l.trim() == format!("{kind},0"));
+    if !has("video") {
+        return Ok(());
+    }
+    if !has("audio") {
+        return Err(bad_request("il video non contiene audio"));
+    }
+    let tmp = dir.join("audio.tmp.flac");
+    let conv = Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
+        .arg(&input)
+        .args(["-map", "0:a:0", "-vn", "-sn", "-dn", "-c:a", "flac"])
+        .arg(&tmp)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .context("avvio ffmpeg")?;
+    if !conv.status.success() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(bad_request("impossibile estrarre l'audio dal video"));
+    }
+    tokio::fs::remove_file(&input).await?;
+    tokio::fs::rename(&tmp, dir.join("input.flac")).await?;
+    info!("video {}: tenuto solo l'audio", input.display());
+    Ok(())
+}
 
 // ------------------------------------------------------------ tracce utente
 

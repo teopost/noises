@@ -142,9 +142,9 @@
         <button class="drawer-close ghost" title="Chiudi (Esc)">✕</button>
       </div>
       <form id="upload" class="dropzone">
-        <input type="file" id="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus" multiple hidden>
+        <input type="file" id="file" accept="audio/*,video/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.mp4,.mov,.m4v,.mkv,.webm,.3gp" multiple hidden>
         <div class="dz-text">
-          <strong>Trascina qui i file audio</strong>
+          <strong>Trascina qui file audio o video</strong>
           <span>oppure <button type="button" id="pick" class="link">sfoglia</button></span>
         </div>
         <div id="upload-progress" class="bar hidden"><div></div></div>
@@ -324,7 +324,7 @@
         <button id="group-btn" class="icon-only" disabled title="Raggruppa le tracce selezionate (Ctrl+G): si spostano e si modificano insieme" aria-label="Raggruppa"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4H3.5v16H6"/><rect x="8" y="5.5" width="13" height="5" rx="1.5" fill="currentColor" fill-opacity=".25"/><rect x="8" y="13.5" width="13" height="5" rx="1.5" fill="currentColor" fill-opacity=".25"/></svg></button>
         <button id="ungroup-btn" class="icon-only" disabled title="Sciogli il gruppo delle tracce selezionate (Ctrl+Shift+G)" aria-label="Sciogli gruppo"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4H3.5v5M3.5 15v5H6"/><rect x="7" y="5.5" width="11" height="5" rx="1.5" fill="currentColor" fill-opacity=".25"/><rect x="11" y="13.5" width="11" height="5" rx="1.5" fill="currentColor" fill-opacity=".25"/></svg></button>
         <span id="sel-tracks" class="sel-info"></span>
-        <input id="add-track-file" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.aif,.aiff,.wma" multiple hidden>
+        <input id="add-track-file" type="file" accept="audio/*,video/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.aif,.aiff,.wma,.mp4,.mov,.m4v,.mkv,.webm,.3gp" multiple hidden>
         <span class="grow"></span>
         <div class="zoombar" title="Unità della timeline (Ctrl + rotella sulla timeline)">
           <span class="lbl">Zoom</span>
@@ -568,7 +568,7 @@
       </div>
       <div class="at-pane hidden" data-pane="pc">
         <div id="at-drop" class="dropzone at-drop">
-          <div class="dz-text"><strong>Trascina qui i file audio</strong>
+          <div class="dz-text"><strong>Trascina qui file audio o video</strong>
             <span>oppure <button type="button" id="at-pick" class="link">scegli dal computer</button></span></div>
         </div>
         <p class="hint">Il file viene salvato nella libreria e aggiunto al progetto dalla posizione della testina.</p>

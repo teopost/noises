@@ -11,13 +11,14 @@ async function decodeToArrays(arrayBuffer) {
   return { l, r, peaks: computePeaks(l, r) };
 }
 
-const AUDIO_RE = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus|aiff?|wma|webm|mp4|caf)$/i;
+// Anche i video: il server ne tiene solo l'audio.
+const AUDIO_RE = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus|aiff?|wma|webm|mp4|m4v|mov|mkv|3gp|caf)$/i;
 
 /** File audio dal disco: nella libreria, poi nella timeline da `startDisplay` (null = testina). */
 async function addAudioFiles(files, startDisplay) {
-  const audio = files.filter((f) => f.type.startsWith('audio/') || AUDIO_RE.test(f.name));
+  const audio = files.filter((f) => f.type.startsWith('audio/') || f.type.startsWith('video/') || AUDIO_RE.test(f.name));
   const rejected = files.filter((f) => !audio.includes(f));
-  if (rejected.length) uiAlert(`Non sono file audio: ${rejected.map((f) => f.name).join(', ')}`);
+  if (rejected.length) uiAlert(`Non sono file audio o video: ${rejected.map((f) => f.name).join(', ')}`);
   let at = startDisplay;
   for (const f of audio) {
     try {

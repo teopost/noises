@@ -132,11 +132,13 @@ const EN = {
   'Importa da YouTube': 'Import from YouTube',
   'Link YouTube…': 'YouTube link…',
   '▶ Importa': '▶ Import',
-  'Trascina qui i file audio': 'Drop audio files here',
+  'Trascina qui file audio o video': 'Drop audio or video files here',
   'sfoglia': 'browse',
   'Caricamento di "{…}" fallito: {…}': 'Upload of "{…}" failed: {…}',
   'Caricamento di "{…}" nella libreria…': 'Uploading "{…}" to the library…',
-  'Non sono file audio: {…}': 'Not audio files: {…}',
+  'Non sono file audio o video: {…}': 'Not audio or video files: {…}',
+  'il video non contiene audio': 'the video has no audio',
+  "impossibile estrarre l'audio dal video": 'could not extract the audio from the video',
 
   // ---------------------------------------------------------------- separazione (dialogo)
   'Separazione delle tracce': 'Track separation',
