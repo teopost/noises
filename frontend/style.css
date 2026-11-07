@@ -325,8 +325,12 @@ button.icon { padding: 0 8px; line-height: 22px; font-size: 14px; }
 }
 .cn-cur { font-size: 26px; font-weight: 800; min-width: 64px; text-align: center; color: #fff; }
 .cn-next { color: var(--muted); font-size: 15px; }
-.controls .chord-now { padding: 2px 12px; background: var(--bg); border-radius: 10px; } /* nella barra, prima del master */
-.controls .cn-cur { font-size: 20px; min-width: 52px; line-height: 1.3; }
+.controls .chord-now { /* nella barra, prima del master: alto come i pulsanti */
+  box-sizing: border-box; height: calc(1lh + 14px); /* come un pulsante: riga di testo + padding 6+6 + bordo 1+1 */
+  padding: 0 12px; align-items: center;
+  background: var(--bg); border-radius: 10px;
+}
+.controls .cn-cur { font-size: 20px; min-width: 52px; line-height: 1; }
 .controls .cn-next { font-size: 13px; }
 .chord-row {
   display: flex; height: 40px; border-bottom: 1px solid var(--border); background: #13161c;
