@@ -1108,3 +1108,6 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 /* niente flex: la riga di testo del pulsante dà la stessa altezza degli altri pulsanti della barra */
 .split-btn > button.icon-toggle { padding-left: 8px; padding-right: 8px; }
 .split-btn > button.icon-toggle .ico { width: 17px; height: 17px; margin: 0; vertical-align: -4px; }
+/* raggruppa / sciogli gruppo: solo icona (nome nel suggerimento) */
+.selbar button.icon-only { padding-left: 8px; padding-right: 8px; }
+.selbar button.icon-only .ico { width: 17px; height: 17px; margin: 0; vertical-align: -4px; }
