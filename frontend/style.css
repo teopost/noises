@@ -519,6 +519,9 @@ button.wide { width: 100%; padding: 10px; }
 .user-menu { position: absolute; left: 180px; top: 56px; min-width: 240px; }
 .user-info { display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .user-info span { color: var(--muted); font-size: 12px; word-break: break-all; }
+/* versione in fondo al menu account: discreta */
+.app-version { margin-top: 4px; padding: 6px 8px 2px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; opacity: .7; text-align: right; font-variant-numeric: tabular-nums; }
+.app-version:empty { display: none; }
 #cp-msg:empty { display: none; }
 
 /* icone dei comandi di trasporto: disegnate, stesso colore del testo (niente emoji colorate) */

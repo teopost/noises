@@ -2217,6 +2217,8 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::delete(reset_chords),
         )
         .route("/api/health", get(|| async { "ok" }))
+        // versione del programma: solo per utenti autenticati (la rotta è protetta da require_user)
+        .route("/api/version", get(|| async { axum::Json(serde_json::json!({ "version": env!("CARGO_PKG_VERSION") })) }))
         // autenticazione (pubbliche, tranne il cambio password)
         .route("/api/auth/config", get(auth::config))
         .route("/api/auth/invite", get(auth::invite_info))

@@ -153,6 +153,9 @@ function renderUserBox() {
   $('#user-email').textContent = u.email;
   $('#user-badges').textContent = [u.is_admin ? 'amministratore' : '', u.google ? 'Google' : '', u.has_password ? 'password' : '']
     .filter(Boolean).join(' · ');
+  if (!$('#app-version').textContent) {
+    api('/api/version').then((v) => { $('#app-version').textContent = `Noises ${v.version}`; }).catch(() => {});
+  }
 }
 
 function setupUserMenu() {
