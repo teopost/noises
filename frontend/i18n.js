@@ -305,6 +305,9 @@ const EN = {
   '÷2 metà': '÷2 half',
   '×2 doppio': '×2 double',
   'Ascolta col': 'Listen with the',
+  'Ascolta il brano': 'Listen to the song',
+  'Pausa': 'Pause',
+  'Impossibile ascoltare il brano: il file audio non è ancora pronto o non è valido.': 'Cannot play the song: the audio file is not ready yet or is not valid.',
   "Click: l'accento deve cadere sul primo tempo di ogni battuta.": 'Click: the accent must fall on the first beat of every bar.',
 
   // ---------------------------------------------------------------- selezione, loop, sezioni

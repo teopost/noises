@@ -1111,3 +1111,13 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 /* raggruppa / sciogli gruppo: solo icona (nome nel suggerimento) */
 .selbar button.icon-only { padding-left: 8px; padding-right: 8px; }
 .selbar button.icon-only .ico { width: 17px; height: 17px; margin: 0; vertical-align: -4px; }
+
+/* Ascolto veloce dalla libreria */
+#songs .preview {
+  flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+}
+#songs .preview svg { width: 12px; height: 12px; }
+#songs .preview:hover, #songs .preview.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+#songs li.previewing { border-color: #7c5cff88; background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat; background-position: left bottom; background-size: var(--pv, 0%) 2px; }

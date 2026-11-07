@@ -195,6 +195,7 @@ const engine = {
 
   play(delay = 0) {
     if (!this.tracks.length || this.playing || !this.node) return;
+    previewStop();
     this.ctx.resume();
     this.offset = this.startOffset();
     this.t0 = this.ctx.currentTime + 0.05 + delay;
@@ -345,6 +346,7 @@ function renderSongs() {
     const inPl = state.playlists.filter((p) => p.songs.includes(s.id)).length;
     li.innerHTML = `
       <div class="song-row">
+        ${s.status === 'downloading' ? '' : `<button class="preview" data-preview="${s.id}">${PREVIEW_ICON.play}</button>`}
         <span class="song-name" title="${esc(s.name)}">${esc(s.name)}</span>
         ${s.status === 'new' ? '<button class="go ghost-go" title="Separa le tracce in anticipo (si può fare anche dalla timeline)">⑂</button>' : ''}
         ${s.status === 'error' ? '<button class="go" title="Riprova la separazione">↻ Riprova</button>' : ''}
@@ -354,6 +356,12 @@ function renderSongs() {
       <span class="song-status ${s.status === 'error' ? 'error' : s.status === 'new' ? 'new' : ''}">${esc(statusText(s))}${s.status === 'new' ? '' : ` · ${MODEL_LABELS[s.model] || s.model}`}${inPl ? ` · ♫ ${inPl}` : ''}</span>
       ${['downloading', 'queued', 'processing'].includes(s.status) ? `<div class="bar"><div style="width:${s.progress * 100}%"></div></div>` : ''}`;
     li.addEventListener('dblclick', () => addSongToProject(s.id, null));
+    const pv = li.querySelector('.preview');
+    if (pv) {
+      pv.addEventListener('click', (ev) => { ev.stopPropagation(); previewToggle(s); });
+      pv.addEventListener('dblclick', (ev) => ev.stopPropagation());
+      pv.draggable = false;
+    }
     const go = li.querySelector('.go');
     if (go) go.addEventListener('click', (ev) => { ev.stopPropagation(); openProcess([s]); });
     li.addEventListener('dragstart', (e) => {
@@ -367,6 +375,7 @@ function renderSongs() {
     li.querySelector('.del').addEventListener('click', async (ev) => {
       ev.stopPropagation();
       if (!(await uiConfirm(`Eliminare definitivamente "${s.name}" dalla libreria?${inPl ? '\nVerrà rimosso anche dalle playlist.' : ''}\nLe sue tracce verranno tolte dai progetti che lo usano.`, { title: 'Elimina brano', ok: 'Elimina', danger: true }))) return;
+      if (preview.id === s.id) previewStop();
       const usedHere = state.current && engine.tracks.some((t) => t.song === s.id);
       await api(`/api/songs/${s.id}`, { method: 'DELETE' }).catch((e) => uiAlert(e.message));
       await refreshPlaylists();
@@ -376,6 +385,69 @@ function renderSongs() {
     });
     ul.appendChild(li);
   }
+  previewSync();
+}
+
+// ============================================================ ascolto dalla libreria
+
+const PREVIEW_ICON = {
+  play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/></svg>',
+};
+
+/** Un solo lettore per l'ascolto veloce dei brani della libreria (audio originale). */
+const preview = { audio: null, id: null };
+
+function previewToggle(s) {
+  if (preview.id === s.id && preview.audio) {
+    if (preview.audio.paused) preview.audio.play().catch(() => {});
+    else preview.audio.pause();
+    previewSync();
+    return;
+  }
+  previewStop();
+  if (engine.playing) engine.pause();
+  const a = new Audio(`/api/songs/${s.id}/original`);
+  a.preload = 'auto';
+  preview.audio = a;
+  preview.id = s.id;
+  a.addEventListener('ended', previewStop);
+  a.addEventListener('pause', previewSync);
+  a.addEventListener('playing', previewSync);
+  a.addEventListener('timeupdate', previewSync);
+  a.addEventListener('error', () => {
+    if (preview.audio !== a) return;
+    previewStop();
+    uiAlert(T('Impossibile ascoltare il brano: il file audio non è ancora pronto o non è valido.'));
+  });
+  a.play().catch(() => {});
+  previewSync();
+}
+
+function previewStop() {
+  const a = preview.audio;
+  preview.audio = null;
+  preview.id = null;
+  if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
+  previewSync();
+}
+
+/** Aggiorna icona, stato e barra di avanzamento dei pulsanti di ascolto nella lista. */
+function previewSync() {
+  const a = preview.audio;
+  document.querySelectorAll('#songs .preview').forEach((b) => {
+    const on = !!a && b.dataset.preview === preview.id;
+    const playing = on && !a.paused;
+    b.innerHTML = playing ? PREVIEW_ICON.pause : PREVIEW_ICON.play;
+    const label = T(playing ? 'Pausa' : 'Ascolta il brano');
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.classList.toggle('on', on);
+    const li = b.closest('li');
+    li.classList.toggle('previewing', on);
+    const frac = on && a.duration ? a.currentTime / a.duration : 0;
+    li.style.setProperty('--pv', `${(frac * 100).toFixed(2)}%`);
+  });
 }
 
 // ====================================================================== playlist
