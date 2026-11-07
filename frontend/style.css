@@ -1132,3 +1132,6 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 @media (pointer: coarse) { #songs .more { visibility: visible; } }
 #pl-menu .menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
 #pl-menu .menu-item.danger:hover, #pl-menu .menu-item.danger:hover .mi { color: var(--danger); }
+
+/* Pezzi fissati: pulsante attivo */
+#fix-btn.on { color: #fff; background: var(--accent); border-color: var(--accent); }

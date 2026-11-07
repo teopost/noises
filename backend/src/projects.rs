@@ -425,7 +425,7 @@ pub fn migrate(st: &AppState) {
         let mut tracks: Vec<PTrack> = vec![];
         for stem in &song.stems {
             let clips = layout.stem_clips.get(stem).cloned().unwrap_or_else(|| {
-                vec![Clip { id: format!("{stem}-0"), start: 0.0, offset: 0.0, duration }]
+                vec![Clip { id: format!("{stem}-0"), start: 0.0, offset: 0.0, duration, link: None }]
             });
             tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false });
         }

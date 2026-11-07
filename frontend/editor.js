@@ -204,6 +204,15 @@ function updateEditUI() {
   const oneGroup = groups.size === 1 && [...groups][0].tracks.every((n) => state.selTracks.has(n)) && sel.every((n) => groupOf(n));
   $('#group-btn').disabled = sel.length < 2 || oneGroup;
   $('#ungroup-btn').disabled = !groups.size;
+  $('#cut-btn').disabled = !sel.length;
+  $('#dup-btn').disabled = !selectedClipItems();
+  const fx = fixTargets();
+  const fixed = fx.length > 0 && isFixed(fx);
+  $('#fix-btn').disabled = fx.flatMap((t) => t.clips).length < 2;
+  $('#fix-btn').classList.toggle('on', fixed);
+  const fixLabel = T(fixed ? 'Sblocca i pezzi delle tracce selezionate' : 'Fissa i pezzi delle tracce selezionate: trascinandone uno si spostano tutti');
+  $('#fix-btn').title = fixLabel;
+  $('#fix-btn').setAttribute('aria-label', fixLabel);
   $('#sel-tracks').textContent = sel.length ? `${sel.length} ${sel.length === 1 ? 'traccia selezionata' : 'tracce selezionate'}` : '';
 }
 
@@ -355,7 +364,7 @@ function clipsChanged(tracks) {
 
 function splitClip(t, c, at) {
   if (at <= c.start + 0.02 || at >= c.start + c.duration - 0.02) return false;
-  t.clips.push({ id: newClipId(), start: at, offset: c.offset + (at - c.start), duration: c.start + c.duration - at });
+  t.clips.push({ ...c, id: newClipId(), start: at, offset: c.offset + (at - c.start), duration: c.start + c.duration - at });
   c.duration = at - c.start;
   return true;
 }
@@ -385,7 +394,90 @@ function deleteSelectedClip() {
   for (const v of victims) v.t.clips = v.t.clips.filter((x) => x !== v.c);
   state.selClip = null;
   clipsChanged(victims.map((v) => v.t));
+  updateEditUI();
   return true;
+}
+
+// ------------------------------------------------------------ duplica e fissa
+
+const newLinkId = () => `l${Math.random().toString(36).slice(2, 10)}`;
+
+/** La clip selezionata e quelle corrispondenti nelle altre tracce del gruppo (o della cartella). */
+function selectedClipItems() {
+  const sel = state.selClip;
+  const t = sel && trackByName(sel.name);
+  const c = t && t.clips.find((x) => x.id === sel.cid);
+  if (!c) return null;
+  const g = sel.folder && state.groups.find((x) => x.id === sel.folder);
+  return [{ t, c }, ...alignedClips(t, c, g ? folderKids(g) : null)];
+}
+
+/** Libera il tratto [s, e) della traccia: i pezzi che ci cadono sopra vengono accorciati, divisi o tolti
+ *  (la copia "copre" quello che c'era, come nei programmi audio: niente sovrapposizioni). */
+function carve(t, s, e) {
+  const out = [];
+  for (const x of t.clips) {
+    const xs = x.start, xe = x.start + x.duration;
+    if (xe <= s + 0.002 || xs >= e - 0.002) { out.push(x); continue; }
+    const keepLeft = xs < s - 0.02, keepRight = xe > e + 0.02;
+    if (keepLeft) out.push({ ...x, duration: +(s - xs).toFixed(3) });
+    if (keepRight) out.push({ ...x, id: keepLeft ? newClipId() : x.id, start: +e.toFixed(3), offset: +(x.offset + (e - xs)).toFixed(3), duration: +(xe - e).toFixed(3) });
+  }
+  t.clips = out;
+}
+
+/** Ctrl+D: copia il pezzo selezionato subito dopo di sé (in tutte le tracce del gruppo) e seleziona la copia,
+ *  così premendo ancora si aggiungono altre ripetizioni in fila. */
+function duplicateSelectedClip() {
+  const items = selectedClipItems();
+  if (!items) { toast('Seleziona il pezzo da duplicare (clic sul pezzo nella timeline)'); return; }
+  pushUndo('Duplica pezzo');
+  const len = items[0].c.duration;
+  let mainCopy = null;
+  for (const { t, c } of items) {
+    const copy = { ...c, id: newClipId(), start: +(c.start + len).toFixed(3) };
+    carve(t, copy.start, copy.start + copy.duration);
+    t.clips.push(copy);
+    if (!mainCopy) mainCopy = copy;
+  }
+  state.selClip = { ...state.selClip, cid: mainCopy.id };
+  clipsChanged(items.map((v) => v.t));
+  updateEditUI();
+  toast('Pezzo duplicato — Ctrl+D per un\'altra ripetizione');
+}
+
+/** Tracce su cui agisce "Fissa i pezzi": quelle selezionate, con i loro gruppi. */
+function fixTargets() {
+  const names = new Set();
+  for (const n of state.selTracks) { const t = trackByName(n); if (t) peersOf(t).forEach((p) => names.add(p.name)); }
+  return [...names].map(trackByName).filter(Boolean);
+}
+
+/** I pezzi delle tracce sono tutti fissati insieme? */
+function isFixed(tracks) {
+  const clips = tracks.flatMap((t) => t.clips);
+  return clips.length > 1 && !!clips[0].link && clips.every((c) => c.link === clips[0].link);
+}
+
+/** Fissa (o sblocca) i pezzi delle tracce: fissati, trascinandone uno si spostano tutti insieme. */
+function toggleFixed(tracks) {
+  tracks = tracks.filter((t) => t.clips.length);
+  if (!tracks.length || tracks.flatMap((t) => t.clips).length < 2) { toast('Servono almeno due pezzi da fissare insieme'); return; }
+  const fixed = isFixed(tracks);
+  pushUndo(fixed ? 'Sblocca i pezzi' : 'Fissa i pezzi');
+  const link = newLinkId();
+  for (const t of tracks) for (const c of t.clips) { if (fixed) delete c.link; else c.link = link; }
+  clipsChanged(tracks);
+  updateEditUI();
+  toast(fixed ? 'Pezzi sbloccati: ora si spostano uno alla volta' : 'Pezzi fissati: trascinandone uno si spostano tutti');
+}
+
+/** Pezzi fissati insieme a `c` (in tutte le tracce), esclusa `c`. */
+function linkedClips(c) {
+  if (!c.link) return [];
+  const out = [];
+  for (const t of engine.tracks) for (const x of t.clips) if (x !== c && x.link === c.link) out.push({ t, c: x });
+  return out;
 }
 
 function deleteTrack(t) {
@@ -438,9 +530,17 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
     if (folder) selectFolder(folder, additive);
     else if (!additive || !state.selTracks.has(t.name)) selectTrack(t, additive);
     state.selClip = { name: t.name, cid: hit.c.id, folder: folder ? folder.id : null };
-    const linked = hit.mode === 'move' ? alignedClips(t, hit.c, peers) : alignedClips(t, hit.c, peers).filter((v) =>
+    let linked = hit.mode === 'move' ? alignedClips(t, hit.c, peers) : alignedClips(t, hit.c, peers).filter((v) =>
       Math.abs(v.c.start - hit.c.start) < 0.002 && Math.abs(v.c.duration - hit.c.duration) < 0.002);
+    if (hit.mode === 'move') {
+      // pezzi fissati: si spostano tutti, ognuno con i corrispondenti del suo gruppo
+      const fixedItems = linkedClips(hit.c);
+      for (const f of fixedItems) linked.push(f, ...alignedClips(f.t, f.c, peers));
+      const seen = new Set([hit.c]);
+      linked = linked.filter((v) => !seen.has(v.c) && seen.add(v.c));
+    }
     drag = { mode: hit.mode, t0: hit.time, items: [{ t, c: hit.c }, ...linked].map((v) => ({ ...v, orig: { ...v.c } })), moved: false, undone: false };
+    updateEditUI();
     canvas.setPointerCapture(e.pointerId);
     requestRedraw();
   });
@@ -527,6 +627,23 @@ function drawClipTrack(t) {
     ctx.fillRect(x0, mid - 8 * dpr, 3 * dpr, 16 * dpr);
     ctx.fillRect(x1 - 3 * dpr, mid - 8 * dpr, 3 * dpr, 16 * dpr);
   }
+  drawLinkStrip(ctx, t.clips, w, dpr);
+}
+
+/** Pezzi fissati: una linea viola in alto che li unisce, dal primo all'ultimo. */
+function drawLinkStrip(ctx, clips, w, dpr) {
+  const sl = tlEl().scrollLeft, z = state.zoom, k = ek();
+  const spans = new Map();
+  for (const c of clips) {
+    if (!c.link) continue;
+    const s = spans.get(c.link) || [Infinity, -Infinity];
+    spans.set(c.link, [Math.min(s[0], c.start), Math.max(s[1], c.start + c.duration)]);
+  }
+  ctx.fillStyle = '#a48bff';
+  for (const [s, e] of spans.values()) {
+    const x0 = Math.max(0, (s * k * z - sl) * dpr), x1 = Math.min(w, (e * k * z - sl) * dpr);
+    if (x1 > x0) ctx.fillRect(x0, 0, x1 - x0, 3 * dpr);
+  }
 }
 
 function drawTrack(t) {
@@ -571,12 +688,16 @@ function setupEditor() {
   $('#redo').addEventListener('click', redo);
   $('#group-btn').addEventListener('click', groupSelected);
   $('#ungroup-btn').addEventListener('click', ungroupSelected);
+  $('#cut-btn').addEventListener('click', splitSelected);
+  $('#dup-btn').addEventListener('click', duplicateSelectedClip);
+  $('#fix-btn').addEventListener('click', () => toggleFixed(fixTargets()));
   document.addEventListener('keydown', (e) => {
     if (!state.current || e.target.matches('input:not([type=range]):not([type=checkbox]), select, textarea')) return;
     if (e.target.matches('canvas.roll')) return; // il piano roll gestisce i propri tasti
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if (mod && e.code === 'KeyY') { e.preventDefault(); redo(); }
+    else if (mod && e.code === 'KeyD') { e.preventDefault(); duplicateSelectedClip(); }
     else if (mod && e.code === 'KeyG') { e.preventDefault(); if (e.shiftKey) ungroupSelected(); else groupSelected(); }
     else if (e.altKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) { e.preventDefault(); moveSelectedTracks(e.code === 'ArrowUp' ? -1 : 1); }
     else if (e.code === 'KeyX' && !mod) { e.preventDefault(); splitSelected(); }
@@ -618,7 +739,11 @@ function openTrackMenu(t, anchor, isRefStem, song) {
     items.push({ icon: '⏺', label: t.rec ? 'Non usare per registrare' : 'Usa per registrare', disabled: rec.active || rec.busy, run: () => setRecTrack(t, !t.rec) });
   }
   items.push({ icon: '✎', label: 'Rinomina', run: () => { const n = t.row.querySelector('.tname'); n.focus(); n.select(); } });
-  items.push({ icon: '⧉', label: 'Duplica', run: () => duplicateTrack(t) });
+  items.push({ icon: '⧉', label: 'Duplica traccia', run: () => duplicateTrack(t) });
+  const sel = state.selClip && state.selClip.name === t.name && !state.selClip.folder;
+  items.push({ icon: '⧉', label: 'Duplica pezzo selezionato (Ctrl+D)', disabled: !sel, run: duplicateSelectedClip });
+  const peers = peersOf(t);
+  items.push({ icon: '🔗', label: isFixed(peers) ? 'Sblocca i pezzi' : 'Fissa i pezzi', disabled: peers.flatMap((x) => x.clips).length < 2, run: () => toggleFixed(peers) });
   items.push({ icon: '⤓', label: 'Esporta', run: () => openExport(t) });
   items.push({ sep: true });
   items.push({ icon: '🗑', label: 'Elimina', danger: true, run: () => deleteTrack(t) });
@@ -724,6 +849,7 @@ function drawFolder(g) {
     ctx.lineWidth = (sel ? 2 : 1) * dpr;
     ctx.strokeRect(x0 + 0.5 * dpr, 2 * dpr, x1 - x0 - dpr, h - 4 * dpr);
   }
+  drawLinkStrip(ctx, rep.clips, w, dpr);
   ctx.fillStyle = USER_COLOR;
   for (let x = 0; x < w; x++) {
     const t0 = (sl + x / dpr) / z / k, t1 = (sl + (x + 1) / dpr) / z / k;
@@ -757,6 +883,7 @@ function openFolderMenu(g, anchor) {
     }),
     { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
     { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },
+    { icon: '🔗', label: isFixed(kids) ? 'Sblocca i pezzi' : 'Fissa i pezzi', run: () => toggleFixed(kids) },
     { icon: '⑂', label: 'Sciogli gruppo', run: () => {
       pushUndo('Sciogli gruppo');
       state.groups = state.groups.filter((x) => x !== g);

@@ -137,6 +137,9 @@ struct Clip {
     /// punto del file da cui parte la clip
     offset: f64,
     duration: f64,
+    /// pezzi "fissati" insieme (stesso valore): trascinandone uno si spostano tutti
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    link: Option<String>,
 }
 
 /// Gruppo di tracce che si spostano e si modificano insieme.
@@ -668,6 +671,7 @@ fn valid_clips(clips: &[Clip], max_len: f64) -> bool {
                 && c.offset + c.duration <= max_len + 0.05
                 && !c.id.is_empty()
                 && c.id.len() <= 64
+                && c.link.as_ref().map_or(true, |l| !l.is_empty() && l.len() <= 64)
         })
 }
 
