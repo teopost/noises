@@ -348,9 +348,7 @@ function renderSongs() {
       <div class="song-row">
         ${s.status === 'downloading' ? '' : `<button class="preview" data-preview="${s.id}">${PREVIEW_ICON.play}</button>`}
         <span class="song-name" title="${esc(s.name)}">${esc(s.name)}</span>
-        ${s.status === 'new' ? '<button class="go ghost-go" title="Separa le tracce in anticipo (si può fare anche dalla timeline)">⑂</button>' : ''}
-        ${s.status === 'error' ? '<button class="go" title="Riprova la separazione">↻ Riprova</button>' : ''}
-        <button class="more" title="Playlist…">⋯</button>
+        <button class="more" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button>
         <button class="del" title="${pl ? 'Elimina dalla libreria' : 'Elimina'}">✕</button>
       </div>
       <span class="song-status ${s.status === 'error' ? 'error' : s.status === 'new' ? 'new' : ''}">${esc(statusText(s))}${s.status === 'new' ? '' : ` · ${MODEL_LABELS[s.model] || s.model}`}${inPl ? ` · ♫ ${inPl}` : ''}</span>
@@ -362,15 +360,13 @@ function renderSongs() {
       pv.addEventListener('dblclick', (ev) => ev.stopPropagation());
       pv.draggable = false;
     }
-    const go = li.querySelector('.go');
-    if (go) go.addEventListener('click', (ev) => { ev.stopPropagation(); openProcess([s]); });
     li.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('application/x-noises-song', s.id);
       e.dataTransfer.effectAllowed = 'copy';
     });
     li.querySelector('.more').addEventListener('click', (ev) => {
       ev.stopPropagation();
-      openPlaylistMenu(s, ev.currentTarget);
+      openSongMenu(s, ev.currentTarget);
     });
     li.querySelector('.del').addEventListener('click', async (ev) => {
       ev.stopPropagation();
@@ -551,23 +547,36 @@ function addToCurrentPlaylist(song) {
   return pl && song ? setMembership(pl.id, song.id, true) : null;
 }
 
-function openPlaylistMenu(song, anchor) {
+/** Menu ⋯ di un brano della libreria: separazione delle tracce e playlist (sottomenu). */
+function openSongMenu(song, anchor) {
   const menu = $('#pl-menu');
-  const build = () => {
-    menu.innerHTML = `<div class="menu-title">Aggiungi a playlist</div>
+  const close = () => menu.classList.add('hidden');
+  const main = () => {
+    const items = [];
+    if (song.status === 'new') items.push({ icon: '⑂', label: T('Separa le tracce…'), act: () => { close(); openProcess([song]); } });
+    if (song.status === 'error') items.push({ icon: '↻', label: T('Riprova la separazione…'), act: () => { close(); openProcess([song]); } });
+    const n = state.playlists.filter((p) => p.songs.includes(song.id)).length;
+    items.push({ icon: '♫', label: T('Aggiungi a playlist'), extra: `${n ? `<span class="mi-count">${n}</span>` : ''}<span class="mi-sub">›</span>`, act: playlists });
+    menu.innerHTML = items.map((it, i) =>
+      `<button class="menu-item" data-i="${i}"><span class="mi">${it.icon}</span><span class="mi-label">${esc(it.label)}</span>${it.extra || ''}</button>`).join('');
+    menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => items[b.dataset.i].act()));
+  };
+  const playlists = () => {
+    menu.innerHTML = `<button class="menu-item menu-back"><span class="mi">‹</span><span>${esc(T('Aggiungi a playlist'))}</span></button>
       ${state.playlists.map((p) => `
         <label class="menu-item"><input type="checkbox" data-pl="${p.id}" ${p.songs.includes(song.id) ? 'checked' : ''}>
         <span>${esc(p.name)}</span></label>`).join('') || '<div class="menu-empty">Nessuna playlist</div>'}
       <button class="menu-item new">＋ Nuova playlist…</button>`;
+    menu.querySelector('.menu-back').addEventListener('click', main);
     menu.querySelectorAll('[data-pl]').forEach((cb) =>
-      cb.addEventListener('change', async () => { await setMembership(cb.dataset.pl, song.id, cb.checked); build(); }));
+      cb.addEventListener('change', async () => { await setMembership(cb.dataset.pl, song.id, cb.checked); playlists(); }));
     menu.querySelector('.new').addEventListener('click', async () => {
       const pl = await createPlaylist();
       if (pl) await setMembership(pl.id, song.id, true);
-      build();
+      playlists();
     });
   };
-  build();
+  main();
   menu.classList.remove('hidden');
   placeMenu(menu, anchor.getBoundingClientRect());
 }

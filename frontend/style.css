@@ -472,8 +472,6 @@ dialog .check input { accent-color: var(--accent); }
 
 /* ---- elaborazione manuale / metro ---- */
 .dz-hint { color: var(--muted); font-size: 11px; text-align: center; }
-.song-row .go { padding: 2px 8px; font-size: 12px; background: var(--accent); border-color: var(--accent); white-space: nowrap; }
-.song-status.new { color: #f5c542; }
 #process-all { font-size: 11px; line-height: 20px; }
 .meter-menu { min-width: 260px; gap: 6px; }
 .ce-grid.meters { grid-template-columns: repeat(3, 1fr); }
@@ -666,7 +664,6 @@ button.wide { width: 100%; padding: 10px; }
 #songs li.song-item { cursor: grab; }
 #songs li.song-item:active { cursor: grabbing; }
 #songs li.used { border-color: #7c5cff55; }
-#songs .ghost-go { background: var(--panel); border-color: var(--border); }
 .project-title {
   flex: 0 1 auto; min-width: 60px; max-width: 100%; margin-right: auto; /* larga quanto il testo */ font: 600 22px system-ui, sans-serif; color: var(--text);
   background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 2px 6px;
@@ -1125,3 +1122,11 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 #songs .preview svg { width: 12px; height: 12px; }
 #songs .preview:hover, #songs .preview.on { color: #fff; background: var(--accent); border-color: var(--accent); }
 #songs li.previewing { border-color: #7c5cff88; background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat; background-position: left bottom; background-size: var(--pv, 0%) 2px; }
+
+/* Menu ⋯ dei brani della libreria */
+#pl-menu .mi { width: 16px; text-align: center; color: var(--muted); flex: none; }
+#pl-menu .mi-label { flex: 1; }
+#pl-menu .mi-count { font-size: 11px; color: var(--muted); background: var(--panel); border-radius: 8px; padding: 0 6px; }
+#pl-menu .mi-sub { color: var(--muted); }
+#pl-menu .menu-back { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 4px; }
+@media (pointer: coarse) { #songs .more { visibility: visible; } }
