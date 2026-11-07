@@ -63,6 +63,22 @@ CREATE TABLE IF NOT EXISTS invites (
   expires_at BIGINT NOT NULL,
   used_at BIGINT,
   used_by TEXT);
+CREATE TABLE IF NOT EXISTS invite_requests (
+  id TEXT PRIMARY KEY,
+  email CITEXT NOT NULL,
+  name TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  lang TEXT NOT NULL DEFAULT 'it',
+  ip TEXT NOT NULL DEFAULT '',
+  ua TEXT NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  decided_by TEXT,
+  decided_at BIGINT,
+  invite_id TEXT);
+-- una sola richiesta in attesa per indirizzo
+CREATE UNIQUE INDEX IF NOT EXISTS invite_requests_pending ON invite_requests(email) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS invite_requests_created ON invite_requests(created_at);
 ";
 
 /// Crea il pool, aspetta che il database risponda (al primo avvio il container può essere ancora

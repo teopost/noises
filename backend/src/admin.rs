@@ -324,12 +324,18 @@ pub async fn create_invite(
     Json(b): Json<InviteBody>,
 ) -> Result<Json<InviteCreated>, AppError> {
     require_admin(&me)?;
+    let role = b.role.as_deref().unwrap_or("user").to_owned();
+    Ok(Json(make_invite(&st, &me, &b.email, &role, b.en, &Client::from_headers(&headers)).await?))
+}
+
+/// Crea un invito e lo spedisce via email (se c'è l'SMTP); usato anche per approvare una richiesta.
+async fn make_invite(st: &AppState, me: &User, email: &str, role: &str, en: bool, client: &Client) -> Result<InviteCreated, AppError> {
     let auth = &st.0.auth;
-    let email = b.email.trim().to_lowercase();
+    let email = email.trim().to_lowercase();
     if !email.contains('@') || email.len() > 254 || email.contains(char::is_whitespace) {
         return Err(bad_request("indirizzo email non valido"));
     }
-    let role = match b.role.as_deref().unwrap_or("user") {
+    let role = match role {
         r @ ("admin" | "user") => r.to_owned(),
         _ => return Err(bad_request("ruolo non valido")),
     };
@@ -347,13 +353,13 @@ pub async fn create_invite(
     )
     .await?;
     let link = format!("{}/?invite={token}", auth.config.public_url);
-    let (subject, text) = if b.en {
+    let (subject, text) = if en {
         ("You're invited to Noises", format!("Hi,\n{} invited you to Noises: split tracks, practise with loops and play your songs.\nCreate your account with this link (valid for 7 days).", me.name))
     } else {
         ("Invito a Noises", format!("Ciao,\n{} ti ha invitato su Noises: separa le tracce, studia con i loop e suona i tuoi brani.\nCrea il tuo account con questo link (vale 7 giorni).", me.name))
     };
     let (emailed, email_error) = if auth.mailer.configured() {
-        match auth.mailer.send(&email, subject, &text, &link, b.en).await {
+        match auth.mailer.send(&email, subject, &text, &link, en).await {
             Ok(()) => (true, None),
             Err(e) => {
                 warn!("invito a {email}: {e:#}");
@@ -363,9 +369,121 @@ pub async fn create_invite(
     } else {
         (false, None)
     };
-    auth.log_event(Some(&me.id), &me.email, "admin", &format!("Invitato {email} ({role})"), "", 200, &Client::from_headers(&headers)).await;
+    auth.log_event(Some(&me.id), &me.email, "admin", &format!("Invitato {email} ({role})"), "", 200, client).await;
     info!("invito per {email} ({role}) da {}", me.email);
-    Ok(Json(InviteCreated { id, link, emailed, email_error }))
+    Ok(InviteCreated { id, link, emailed, email_error })
+}
+
+// ------------------------------------------------------------------ richieste d'invito
+
+#[derive(Serialize)]
+pub struct InviteRequest {
+    id: String,
+    email: String,
+    name: String,
+    message: String,
+    lang: String,
+    ip: String,
+    created_at: u64,
+    status: String,
+    decided_by: Option<String>,
+    decided_at: Option<u64>,
+}
+
+/// GET /api/admin/requests — prima quelle in attesa, poi le ultime decise.
+pub async fn requests(State(st): State<AppState>, Extension(me): Extension<User>) -> Result<Json<Vec<InviteRequest>>, AppError> {
+    require_admin(&me)?;
+    let rows = st
+        .0
+        .auth
+        .query(
+            "SELECT r.id, r.email::text, r.name, r.message, r.lang, r.ip, r.created_at, r.status, a.email::text, r.decided_at
+             FROM invite_requests r LEFT JOIN users a ON a.id = r.decided_by
+             ORDER BY (r.status = 'pending') DESC, r.created_at DESC LIMIT 200",
+            &[],
+        )
+        .await?;
+    Ok(Json(
+        rows.iter()
+            .map(|r| InviteRequest {
+                id: r.get(0),
+                email: r.get(1),
+                name: r.get(2),
+                message: r.get(3),
+                lang: r.get(4),
+                ip: r.get(5),
+                created_at: u(r.get(6)),
+                status: r.get(7),
+                decided_by: r.get(8),
+                decided_at: r.get::<_, Option<i64>>(9).map(u),
+            })
+            .collect(),
+    ))
+}
+
+/// Segna una richiesta in attesa come decisa; restituisce (email, nome, lingua) o 404 se non è più in attesa.
+async fn decide(st: &AppState, me: &User, id: &str, status: &str) -> Result<(String, String, String), AppError> {
+    let row = st
+        .0
+        .auth
+        .query_opt(
+            "UPDATE invite_requests SET status = $1, decided_by = $2, decided_at = $3
+             WHERE id = $4 AND status = 'pending' RETURNING email::text, name, lang",
+            &[&status, &me.id, &ts(now()), &id],
+        )
+        .await?
+        .ok_or_else(|| AppError(StatusCode::NOT_FOUND, "richiesta non trovata o già gestita".into()))?;
+    Ok((row.get(0), row.get(1), row.get(2)))
+}
+
+#[derive(Deserialize, Default)]
+pub struct ApproveBody {
+    #[serde(default)]
+    role: Option<String>,
+}
+
+/// POST /api/admin/requests/:id/approve — crea l'invito e lo manda a chi l'ha chiesto, nella sua lingua.
+pub async fn approve_request(
+    State(st): State<AppState>,
+    Extension(me): Extension<User>,
+    UrlPath(id): UrlPath<String>,
+    headers: axum::http::HeaderMap,
+    body: Option<Json<ApproveBody>>,
+) -> Result<Json<InviteCreated>, AppError> {
+    require_admin(&me)?;
+    let role = body.and_then(|b| b.0.role).unwrap_or_else(|| "user".into());
+    let (email, name, lang) = decide(&st, &me, &id, "approved").await?;
+    let client = Client::from_headers(&headers);
+    match make_invite(&st, &me, &email, &role, lang == "en", &client).await {
+        Ok(inv) => {
+            st.0.auth.exec("UPDATE invite_requests SET invite_id = $1 WHERE id = $2", &[&inv.id, &id]).await?;
+            st.0.auth
+                .log_event(Some(&me.id), &me.email, "admin", &format!("Richiesta d'invito approvata: {name} <{email}>"), "", 200, &client)
+                .await;
+            Ok(Json(inv))
+        }
+        Err(e) => {
+            // invito non creato (es. l'utente si è registrato nel frattempo): la richiesta torna in attesa
+            let _ = st.0.auth.exec("UPDATE invite_requests SET status = 'pending', decided_by = NULL, decided_at = NULL WHERE id = $1", &[&id]).await;
+            Err(e)
+        }
+    }
+}
+
+/// POST /api/admin/requests/:id/reject — nessuna email a chi l'ha chiesta.
+pub async fn reject_request(
+    State(st): State<AppState>,
+    Extension(me): Extension<User>,
+    UrlPath(id): UrlPath<String>,
+    headers: axum::http::HeaderMap,
+) -> Result<StatusCode, AppError> {
+    require_admin(&me)?;
+    let (email, name, _) = decide(&st, &me, &id, "rejected").await?;
+    st.0.auth
+        .log_event(Some(&me.id), &me.email, "admin", &format!("Richiesta d'invito rifiutata: {name} <{email}>"), "", 200, &Client::from_headers(&headers))
+        .await;
+    info!("richiesta d'invito di {email} rifiutata da {}", me.email);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_invite(
@@ -418,7 +536,7 @@ pub async fn events(
 ) -> Result<Json<Vec<Event>>, AppError> {
     require_admin(&me)?;
     let kinds: &[&str] = match q.kind.as_deref() {
-        Some("access") => &["login", "login_failed", "logout", "register", "verify", "reset"],
+        Some("access") => &["login", "login_failed", "logout", "register", "verify", "reset", "invite_request"],
         Some("action") => &["action", "admin"],
         Some("admin") => &["admin"],
         _ => &[],
@@ -562,8 +680,10 @@ pub struct System {
     smtp: bool,
     google: bool,
     allow_registration: bool,
+    invite_requests: bool,
     email_verification: bool,
     public_url: String,
+    pending_requests: i64,
 }
 
 /// GET /api/admin/update — solo la parte leggera (per il badge del menu).
@@ -572,13 +692,20 @@ pub struct UpdateInfo {
     version: &'static str,
     latest: Option<Release>,
     update_available: bool,
+    /// richieste d'invito in attesa (badge nel menu)
+    pending_requests: i64,
 }
 
-pub async fn update(Extension(me): Extension<User>) -> Result<Json<UpdateInfo>, AppError> {
+pub async fn update(State(st): State<AppState>, Extension(me): Extension<User>) -> Result<Json<UpdateInfo>, AppError> {
     require_admin(&me)?;
     let l = latest().read().unwrap().clone();
     let update_available = l.as_ref().is_some_and(|r| is_newer(&r.version, env!("CARGO_PKG_VERSION")));
-    Ok(Json(UpdateInfo { version: env!("CARGO_PKG_VERSION"), latest: l, update_available }))
+    let pending_requests = pending_requests(&st).await?;
+    Ok(Json(UpdateInfo { version: env!("CARGO_PKG_VERSION"), latest: l, update_available, pending_requests }))
+}
+
+async fn pending_requests(st: &AppState) -> anyhow::Result<i64> {
+    Ok(st.0.auth.query_one("SELECT COUNT(*) FROM invite_requests WHERE status = 'pending'", &[]).await?.get(0))
 }
 
 fn disk_free(p: &Path) -> Option<u64> {
@@ -593,6 +720,7 @@ pub async fn system(State(st): State<AppState>, Extension(me): Extension<User>) 
     let update_available = l.as_ref().is_some_and(|r| is_newer(&r.version, env!("CARGO_PKG_VERSION")));
     let r = st.0.auth.query_one("SELECT COUNT(*), COUNT(*) FILTER (WHERE is_admin) FROM users", &[]).await?;
     let (users, admins) = (r.get::<_, i64>(0) as usize, r.get::<_, i64>(1) as usize);
+    let pending_requests = pending_requests(&st).await?;
     let data = st.0.data_dir.clone();
     let (data_bytes, free) = tokio::task::spawn_blocking(move || (dir_size(&data), disk_free(&data))).await?;
     let c = &st.0.auth.config;
@@ -610,8 +738,10 @@ pub async fn system(State(st): State<AppState>, Extension(me): Extension<User>) 
         smtp: st.0.auth.mailer.configured(),
         google: c.google.is_some(),
         allow_registration: c.allow_registration,
+        invite_requests: c.invite_requests,
         email_verification: c.email_verification,
         public_url: c.public_url.clone(),
+        pending_requests,
     }))
 }
 

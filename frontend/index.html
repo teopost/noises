@@ -24,7 +24,17 @@
         <div class="auth-links">
           <button type="button" id="to-forgot" class="link">Password dimenticata?</button>
           <button type="button" id="to-register" class="link">Crea un account</button>
+          <button type="button" id="to-request" class="link hidden">Richiedi un invito</button>
         </div>
+      </form>
+
+      <form id="f-request" class="auth-form hidden">
+        <p class="hint">La registrazione è su invito. Lascia i tuoi dati: gli amministratori riceveranno la richiesta e, se la approvano, ti arriverà un'email con il link per creare l'account.</p>
+        <label>Nome<input id="rq-name" type="text" autocomplete="name" maxlength="80" required></label>
+        <label>Email<input id="rq-email" type="email" autocomplete="email" required></label>
+        <label>Messaggio (facoltativo)<textarea id="rq-message" rows="3" maxlength="1000" placeholder="Chi sei e perché vuoi usare Noises"></textarea></label>
+        <button class="primary wide" type="submit">Invia la richiesta</button>
+        <div class="auth-links"><button type="button" class="link to-login">Torna all'accesso</button></div>
       </form>
 
       <form id="f-register" class="auth-form hidden">
@@ -77,7 +87,7 @@
       <span id="user-email"></span>
       <span id="user-badges" class="count"></span>
     </div>
-    <button id="admin-open" class="menu-item hidden"><span class="emo">🛡</span> Amministrazione <span id="admin-badge" class="upd-badge hidden">Aggiornamento</span></button>
+    <button id="admin-open" class="menu-item hidden"><span class="emo">🛡</span> Amministrazione <span id="admin-badge" class="upd-badge hidden">Aggiornamento</span><span id="admin-req-badge" class="upd-badge req-badge hidden"></span></button>
     <button id="change-pw" class="menu-item"><span class="emo">🔑</span> Password…</button>
     <button id="logout" class="menu-item">⎋ Esci</button>
     <div id="app-version" class="app-version"></div>
@@ -584,6 +594,7 @@
       <nav class="adm-tabs">
         <button data-tab="users" class="on">Utenti</button>
         <button data-tab="invites">Inviti</button>
+        <button data-tab="requests" id="adm-req-tab" class="hidden">Richieste <span id="adm-req-count" class="adm-req-count hidden"></span></button>
         <button data-tab="access">Accessi</button>
         <button data-tab="activity">Attività</button>
         <button data-tab="system">Sistema <span id="adm-sys-dot" class="upd-dot hidden"></span></button>

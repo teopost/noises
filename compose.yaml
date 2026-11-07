@@ -30,6 +30,9 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       EMAIL_VERIFICATION: ${EMAIL_VERIFICATION:-true}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      # Con la registrazione chiusa: link "Richiedi un invito" nella pagina di accesso. La richiesta arriva
+      # via email agli amministratori, che la approvano o rifiutano in Amministrazione → Richieste.
+      ALLOW_INVITE_REQUESTS: ${ALLOW_INVITE_REQUESTS:-false}
       # Google SSO (opzionale): credenziali OAuth "Applicazione web" da Google Cloud Console
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}

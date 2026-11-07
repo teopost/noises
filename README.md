@@ -242,6 +242,7 @@ Tutte le variabili si possono impostare in `.env` (vedi [`.env.example`](.env.ex
 | `PUBLIC_URL` | `http://localhost:8080` | URL pubblico, usato nei link delle email, nel redirect di Google e nelle anteprime dei link pubblici |
 | `EMAIL_VERIFICATION` | `true` | richiede la conferma dell'email alla registrazione |
 | `ALLOW_REGISTRATION` | `true` | consente nuove registrazioni (il primo utente e chi ha un invito possono sempre registrarsi) |
+| `ALLOW_INVITE_REQUESTS` | `false` | con la registrazione chiusa mostra **Richiedi un invito** nella pagina di accesso: nome, email e messaggio arrivano via email agli amministratori, che approvano o rifiutano in **Amministrazione → Richieste**; approvando parte l'invito |
 | `UPDATE_CHECK` | `true` | controlla ogni 6 ore se su GitHub c'è una versione più recente (`false` per disattivare) |
 | `UPDATE_REPO` | `teopost/noises` | repository GitHub da cui leggere le versioni |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | attivano l'accesso con Google |

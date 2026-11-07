@@ -76,6 +76,8 @@ pub struct AuthConfig {
     pub google: Option<(String, String)>,
     pub email_verification: bool,
     pub allow_registration: bool,
+    /// Link "Richiedi un invito" nella pagina di accesso (ALLOW_INVITE_REQUESTS)
+    pub invite_requests: bool,
     secure_cookie: bool,
 }
 
@@ -92,6 +94,7 @@ impl AuthConfig {
             google: env("GOOGLE_CLIENT_ID").zip(env("GOOGLE_CLIENT_SECRET")),
             email_verification: flag("EMAIL_VERIFICATION", true),
             allow_registration: flag("ALLOW_REGISTRATION", true),
+            invite_requests: flag("ALLOW_INVITE_REQUESTS", false),
             public_url,
         }
     }
@@ -155,7 +158,7 @@ impl Mailer {
              <p><a href=\"{link}\" style=\"display:inline-block;padding:10px 18px;background:#7c5cff;\
              color:#fff;border-radius:8px;text-decoration:none\">{subject}</a></p>\
              <p style=\"color:#888;font-size:12px\">{}<br>{link}</p></div>",
-            text.replace('\n', "<br>"),
+            html_escape(text).replace('\n', "<br>"),
             if en { "If the button doesn't work, copy this address:" } else { "Se il pulsante non funziona copia questo indirizzo:" }
         );
         let msg = Message::builder()
@@ -171,6 +174,11 @@ impl Mailer {
         info!("email '{subject}' inviata a {to}");
         Ok(())
     }
+}
+
+/// Testo semplice dentro l'HTML delle email: nomi e messaggi arrivano dagli utenti.
+pub(crate) fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
 
 /// Indirizzo della connessione diretta, aggiunto dal middleware (ogni valore dal client viene scartato).
@@ -215,6 +223,8 @@ pub struct Auth {
     pub(crate) mailer: Mailer,
     pub(crate) http: reqwest::Client,
     failures: Mutex<HashMap<String, (u32, u64)>>,
+    /// richieste d'invito per IP (e in totale, chiave "*"): (numero, inizio della finestra)
+    requests: Mutex<HashMap<String, (u32, u64)>>,
 }
 
 const USER_COLS: &str = "id, email::text, name, email_verified, is_admin, password_hash IS NOT NULL, google_sub IS NOT NULL";
@@ -245,6 +255,7 @@ impl Auth {
             mailer: Mailer::from_env()?,
             http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build()?,
             failures: Mutex::default(),
+            requests: Mutex::default(),
         };
         // registro: 180 giorni
         auth.exec("DELETE FROM events WHERE at < $1", &[&ts(now().saturating_sub(180 * 24 * 3600))]).await?;
@@ -252,11 +263,12 @@ impl Auth {
         auth.exec("DELETE FROM tokens WHERE expires_at < $1", &[&ts(now())]).await?;
         let config = &auth.config;
         info!(
-            "autenticazione: url pubblico {}, Google SSO {}, verifica email {}, registrazione {}",
+            "autenticazione: url pubblico {}, Google SSO {}, verifica email {}, registrazione {}, richieste d'invito {}",
             config.public_url,
             if config.google.is_some() { "attivo" } else { "non configurato" },
             config.email_verification,
-            config.allow_registration
+            config.allow_registration,
+            config.invite_requests
         );
         Ok(auth)
     }
@@ -625,6 +637,7 @@ pub struct AuthInfo {
     google: bool,
     email_verification: bool,
     allow_registration: bool,
+    invite_requests: bool,
 }
 
 pub async fn config(State(st): State<AppState>) -> Json<AuthInfo> {
@@ -633,6 +646,7 @@ pub async fn config(State(st): State<AppState>) -> Json<AuthInfo> {
         google: c.google.is_some(),
         email_verification: c.email_verification,
         allow_registration: c.allow_registration || st.0.auth.no_users().await,
+        invite_requests: c.invite_requests,
     })
 }
 
@@ -926,6 +940,131 @@ pub async fn change_password(
     let hash = hash_password(b.password).await?;
     auth.exec("UPDATE users SET password_hash = $1 WHERE id = $2", &[&hash, &user.id]).await?;
     Ok(msg("Password aggiornata."))
+}
+
+// ------------------------------------------------------------- richieste d'invito
+
+/// Richieste d'invito accettate per IP e in totale in un'ora (protegge la casella degli amministratori).
+const REQUESTS_PER_IP: u32 = 3;
+const REQUESTS_TOTAL: u32 = 20;
+const REQUESTS_WINDOW: u64 = 3600;
+/// Dopo un rifiuto, per 30 giorni le nuove richieste dallo stesso indirizzo vengono ignorate.
+const REJECTED_COOLDOWN: u64 = 30 * 24 * 3600;
+
+impl Auth {
+    /// true se la richiesta rientra nei limiti (e la conta).
+    fn allow_request(&self, ip: &str) -> bool {
+        let mut m = self.requests.lock().unwrap();
+        let t = now();
+        for (key, max) in [(format!("ip:{ip}"), REQUESTS_PER_IP), ("*".to_owned(), REQUESTS_TOTAL)] {
+            let e = m.entry(key).or_insert((0, t));
+            if t - e.1 >= REQUESTS_WINDOW {
+                *e = (0, t);
+            }
+            if e.0 >= max {
+                return false;
+            }
+        }
+        for key in [format!("ip:{ip}"), "*".to_owned()] {
+            if let Some(e) = m.get_mut(&key) {
+                e.0 += 1;
+            }
+        }
+        m.retain(|_, (_, since)| t - *since < REQUESTS_WINDOW);
+        true
+    }
+
+    /// Email a tutti gli amministratori attivi: c'è una nuova richiesta d'invito da valutare.
+    async fn notify_admins(&self, name: &str, email: &str, message: &str, en: bool) {
+        let admins = match self.query("SELECT email::text FROM users WHERE is_admin AND NOT disabled", &[]).await {
+            Ok(r) => r.iter().map(|r| r.get::<_, String>(0)).collect::<Vec<_>>(),
+            Err(e) => {
+                warn!("richiesta d'invito: elenco amministratori: {e:#}");
+                return;
+            }
+        };
+        let link = format!("{}/?admin=requests", self.config.public_url);
+        let note = if message.is_empty() { String::new() } else { format!("\n\n“{message}”") };
+        let (subject, text) = if en {
+            ("Review the invite request", format!("{name} <{email}> asked for an invite to Noises.{note}\n\nOpen the administration to approve or reject the request (you need to be signed in)."))
+        } else {
+            ("Valuta la richiesta d'invito", format!("{name} <{email}> ha chiesto un invito a Noises.{note}\n\nApri l'amministrazione per approvare o rifiutare la richiesta (serve l'accesso)."))
+        };
+        for a in admins {
+            if let Err(e) = self.mailer.send(&a, subject, &text, &link, en).await {
+                warn!("richiesta d'invito: email a {a}: {e:#}");
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct InviteRequestBody {
+    email: String,
+    name: String,
+    #[serde(default)]
+    message: String,
+}
+
+/// POST /api/auth/request-invite — chi non ha un account chiede di essere invitato (ALLOW_INVITE_REQUESTS).
+/// La risposta è sempre la stessa: non rivela se l'indirizzo è già registrato o ha già una richiesta.
+pub async fn request_invite(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<InviteRequestBody>) -> Result<Json<Msg>, AppError> {
+    let auth = &st.0.auth;
+    if !auth.config.invite_requests {
+        return Err(AppError(StatusCode::NOT_FOUND, "richieste d'invito non attive".into()));
+    }
+    let email = b.email.trim().to_lowercase();
+    if !valid_email(&email) {
+        return Err(bad_request("indirizzo email non valido"));
+    }
+    let name: String = b.name.trim().chars().take(80).collect();
+    if name.is_empty() {
+        return Err(bad_request("inserisci il tuo nome"));
+    }
+    let message: String = b.message.trim().chars().take(1000).collect();
+    let client = Client::from_headers(&headers);
+    if !auth.allow_request(&client.ip) {
+        return Err(AppError(StatusCode::TOO_MANY_REQUESTS, "troppe richieste: riprova più tardi".into()));
+    }
+    let done = || Ok(msg("Richiesta inviata. Se verrà approvata riceverai un'email con il link per creare l'account."));
+    if auth.user_where("email", &email).await?.is_some() {
+        info!("richiesta d'invito: {email} ha già un account, nessuna email");
+        return done();
+    }
+    // rifiutata di recente: niente nuova richiesta né email agli amministratori (risposta identica)
+    let rejected = auth
+        .query_opt(
+            "SELECT 1 FROM invite_requests WHERE email = $1 AND status = 'rejected' AND decided_at > $2 LIMIT 1",
+            &[&email, &ts(now().saturating_sub(REJECTED_COOLDOWN))],
+        )
+        .await?
+        .is_some();
+    if rejected {
+        info!("richiesta d'invito: {email} è stata rifiutata da meno di 30 giorni, ignorata");
+        return done();
+    }
+    let en = wants_en(&headers);
+    let id = uuid::Uuid::new_v4().to_string();
+    let lang = if en { "en" } else { "it" };
+    // ON CONFLICT: se c'è già una richiesta in attesa per l'indirizzo non se ne crea un'altra (né altre email)
+    let inserted = auth
+        .exec(
+            "INSERT INTO invite_requests (id, email, name, message, lang, ip, ua, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (email) WHERE status = 'pending' DO NOTHING",
+            &[&id, &email, &name, &message, &lang, &client.ip, &client.ua, &ts(now())],
+        )
+        .await?;
+    if inserted == 0 {
+        info!("richiesta d'invito: {email} ne ha già una in attesa");
+        return done();
+    }
+    info!("richiesta d'invito da {name} <{email}>");
+    auth.log_event(None, &email, "invite_request", &name, "", 200, &client).await;
+    // in background: la risposta non deve aspettare l'SMTP (né far capire dai tempi se l'indirizzo esiste)
+    let st2 = st.clone();
+    tokio::spawn(async move { st2.0.auth.notify_admins(&name, &email, &message, en).await });
+    done()
 }
 
 // ------------------------------------------------------------------- Google SSO

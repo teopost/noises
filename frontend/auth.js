@@ -16,6 +16,9 @@ function showAuthForm(name) {
   document.querySelectorAll('.auth-form').forEach((f) => f.classList.toggle('hidden', f.id !== `f-${name}`));
   $('#google-box').classList.toggle('hidden', !(authState.config && authState.config.google) || name === 'reset');
   $('#to-register').classList.toggle('hidden', !(authState.config && authState.config.allow_registration) && !authState.invite);
+  // richiesta d'invito: solo se attiva e la registrazione è chiusa
+  const c = authState.config || {};
+  $('#to-request').classList.toggle('hidden', !(c.invite_requests && !c.allow_registration) || !!authState.invite);
   const first = $(`#f-${name} input`);
   if (first) setTimeout(() => first.focus(), 30);
 }
@@ -46,13 +49,14 @@ async function postJSON(url, body) {
 }
 
 function busy(form, on) {
-  form.querySelectorAll('button, input').forEach((el) => { el.disabled = on; });
+  form.querySelectorAll('button, input, textarea').forEach((el) => { el.disabled = on; });
 }
 
 function setupAuthForms() {
   const go = (name) => (e) => { e.preventDefault(); authMessage(''); showAuthForm(name); };
   $('#to-register').addEventListener('click', go('register'));
   $('#to-forgot').addEventListener('click', go('forgot'));
+  $('#to-request').addEventListener('click', go('request'));
   document.querySelectorAll('.to-login').forEach((b) => b.addEventListener('click', go('login')));
 
   $('#f-login').addEventListener('submit', async (e) => {
@@ -101,6 +105,24 @@ function setupAuthForms() {
       f.reset();
       showAuthForm('login');
       authMessage(`${r.message} Poi torna qui per accedere.`, 'ok');
+    } catch (err) {
+      authMessage(err.message, 'error');
+    } finally {
+      busy(f, false);
+    }
+  });
+
+  $('#f-request').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.currentTarget;
+    busy(f, true);
+    try {
+      const r = await postJSON('/api/auth/request-invite', {
+        name: $('#rq-name').value.trim(), email: $('#rq-email').value.trim(), message: $('#rq-message').value.trim(),
+      });
+      f.reset();
+      showAuthForm('login');
+      authMessage(r.message, 'ok');
     } catch (err) {
       authMessage(err.message, 'error');
     } finally {
@@ -208,7 +230,10 @@ function enterApp() {
   document.body.classList.remove('auth-open');
   authMessage('');
   renderUserBox();
-  adminInit();
+  adminInit().then(() => {
+    if (authState.adminTab && authState.user && authState.user.is_admin) openAdmin(authState.adminTab);
+    authState.adminTab = null;
+  });
   if (!appStarted) {
     appStarted = true;
     startApp();
@@ -225,6 +250,11 @@ async function boot() {
     authState.config = { google: false, allow_registration: true };
   }
   const params = new URLSearchParams(location.search);
+  // link dalle email agli amministratori (es. ?admin=requests): la scheda si apre dopo l'accesso
+  if (params.get('admin')) {
+    authState.adminTab = params.get('admin');
+    history.replaceState(null, '', '/');
+  }
   const reset = params.get('reset');
   if (reset) {
     $('#f-reset').dataset.token = reset;

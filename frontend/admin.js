@@ -2,7 +2,7 @@
 // Amministrazione (solo per gli amministratori): utenti e ruoli, inviti, accessi, attività,
 // stato del sistema e avviso quando su GitHub c'è una versione più recente.
 
-const adm = { tab: 'users', users: [], update: null, filter: '' };
+const adm = { tab: 'users', users: [], update: null, filter: '', pending: 0 };
 
 const admDate = (t) => (t ? new Date(t * 1000).toLocaleString(LANG, { dateStyle: 'short', timeStyle: 'short' }) : '–');
 
@@ -46,14 +46,26 @@ async function adminInit() {
     adm.update = await api('/api/admin/update');
   } catch { adm.update = null; }
   const upd = !!(adm.update && adm.update.update_available);
+  admRequestsBadge(adm.update ? adm.update.pending_requests || 0 : 0);
   $('#admin-badge').classList.toggle('hidden', !upd);
-  $('#user-btn').classList.toggle('has-update', upd);
+  $('#user-btn').classList.toggle('has-update', upd || adm.pending > 0);
   $('#adm-sys-dot').classList.toggle('hidden', !upd);
   if (upd) {
     const v = adm.update.latest.version;
     $('#admin-badge').title = `${T('Disponibile la versione')} ${v}`;
     $('#user-btn').title = `${T('Account')} · ${T('Disponibile la versione')} ${v}`;
   }
+}
+
+/** Richieste d'invito in attesa: numero sulla scheda e nel menu account. */
+function admRequestsBadge(n) {
+  adm.pending = n;
+  const on = !!(authState.config && authState.config.invite_requests) || n > 0;
+  $('#adm-req-tab').classList.toggle('hidden', !on);
+  $('#adm-req-count').textContent = n;
+  $('#adm-req-count').classList.toggle('hidden', !n);
+  $('#admin-req-badge').textContent = `${n} ${T(n === 1 ? 'richiesta' : 'richieste')}`;
+  $('#admin-req-badge').classList.toggle('hidden', !n);
 }
 
 // ---------------------------------------------------------------------------- finestra
@@ -69,7 +81,7 @@ function admTab(tab) {
   document.querySelectorAll('#admin-dlg .adm-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   const body = $('#adm-body');
   body.innerHTML = `<div class="adm-loading">${esc(T('Caricamento…'))}</div>`;
-  ({ users: admUsers, invites: admInvites, access: () => admEvents('access'), activity: () => admEvents('action'), system: admSystem })[tab]()
+  ({ users: admUsers, invites: admInvites, requests: admRequests, access: () => admEvents('access'), activity: () => admEvents('action'), system: admSystem })[tab]()
     .catch((e) => { body.innerHTML = `<p class="adm-error">${esc(e.message)}</p>`; });
 }
 
@@ -199,11 +211,72 @@ async function admInvites() {
   }));
 }
 
+// ------------------------------------------------------------------ richieste d'invito
+
+async function admRequests() {
+  const list = await api('/api/admin/requests');
+  admRequestsBadge(list.filter((r) => r.status === 'pending').length);
+  const enabled = !!(authState.config && authState.config.invite_requests);
+  const rows = list.map((r) => {
+    const st = r.status === 'pending' ? `<span class="pill wait">${esc(T('In attesa'))}</span>`
+      : `<span class="pill ${r.status === 'approved' ? 'on' : 'off'}">${esc(T(r.status === 'approved' ? 'Approvata' : 'Rifiutata'))}</span>
+         <br><small>${esc(r.decided_by || '')} · ${esc(admDate(r.decided_at))}</small>`;
+    const acts = r.status === 'pending'
+      ? `<button class="primary adm-approve">${esc(T('Approva'))}</button> <button class="ghost danger adm-reject">${esc(T('Rifiuta'))}</button>` : '';
+    return `<tr data-id="${r.id}" class="${r.status === 'rejected' ? 'dim' : ''}">
+      <td title="${esc(admDate(r.created_at))}">${esc(admAgo(r.created_at))}</td>
+      <td><b>${esc(r.name)}</b><br><small>${esc(r.email)}</small></td>
+      <td class="adm-req-msg">${r.message ? esc(r.message) : '<small>–</small>'}</td>
+      <td class="num"><small>${esc(r.ip || '–')}</small></td>
+      <td>${st}</td><td class="adm-acts">${acts}</td></tr>`;
+  }).join('');
+  $('#adm-body').innerHTML = `
+    ${enabled ? '' : `<div class="adm-note warn"><p>${esc(T("Le richieste d'invito sono disattivate (ALLOW_INVITE_REQUESTS): il link non compare nella pagina di accesso."))}</p></div>`}
+    <p class="hint">${esc(T("Approvando, chi ha fatto la richiesta riceve un invito via email (vale 7 giorni) e crea il suo account. Rifiutando non riceve nessuna email."))}</p>
+    <div id="adm-req-result"></div>
+    <div class="adm-scroll"><table class="adm-table">
+      <thead><tr><th>${esc(T('Quando'))}</th><th>${esc(T('Chi'))}</th><th>${esc(T('Messaggio'))}</th><th>${esc(T('Indirizzo IP'))}</th><th>${esc(T('Stato'))}</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="empty-hint">${esc(T('Nessuna richiesta'))}</td></tr>`}</tbody></table></div>`;
+  $('#adm-body').querySelectorAll('tr[data-id]').forEach((tr) => {
+    const r = list.find((x) => x.id === tr.dataset.id);
+    const ap = tr.querySelector('.adm-approve');
+    if (ap) ap.addEventListener('click', async () => {
+      if (!(await uiConfirm(`${T('Approvare la richiesta di')} ${r.name} (${r.email})? ${T("Riceverà un invito via email per creare l'account.")}`,
+        { title: T('Approva richiesta'), ok: T('Approva') }))) return;
+      ap.disabled = true;
+      try {
+        const inv = await api(`/api/admin/requests/${r.id}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        await admRequests();
+        const msg = inv.emailed ? `${T('Invito inviato a')} ${r.email}.`
+          : inv.email_error ? `${T("L'email non è partita")} (${inv.email_error}). ${T('Copia il link e mandalo tu:')}`
+          : `${T('SMTP non configurato: copia il link e mandalo tu.')}`;
+        $('#adm-req-result').innerHTML = `<div class="adm-note ${inv.emailed ? 'ok' : 'warn'}"><p>${esc(msg)}</p>
+          ${inv.emailed ? '' : `<div class="share-url"><input readonly value="${esc(inv.link)}"><button class="primary adm-copy">${esc(T('Copia'))}</button></div>`}</div>`;
+        const cp = $('#adm-req-result .adm-copy');
+        if (cp) cp.addEventListener('click', async () => {
+          const inp = $('#adm-req-result input');
+          try { await navigator.clipboard.writeText(inp.value); } catch { inp.select(); document.execCommand('copy'); }
+          toast(T('Link copiato'));
+        });
+      } catch (e) {
+        uiAlert(e.message);
+        ap.disabled = false;
+      }
+    });
+    const rj = tr.querySelector('.adm-reject');
+    if (rj) rj.addEventListener('click', async () => {
+      if (!(await uiConfirm(`${T('Rifiutare la richiesta di')} ${r.name} (${r.email})?`, { title: T('Rifiuta richiesta'), ok: T('Rifiuta'), danger: true }))) return;
+      await api(`/api/admin/requests/${r.id}/reject`, { method: 'POST' }).catch((e) => uiAlert(e.message));
+      admRequests();
+    });
+  });
+}
+
 // ------------------------------------------------------------------- accessi e attività
 
 const ACCESS_TEXT = {
   login: 'Accesso', login_failed: 'Accesso non riuscito', logout: 'Uscita', register: 'Registrazione',
-  verify: 'Email confermata', reset: 'Password reimpostata',
+  verify: 'Email confermata', reset: 'Password reimpostata', invite_request: "Richiesta d'invito",
 };
 
 async function admEvents(kind) {
@@ -270,6 +343,7 @@ async function admSystem() {
     <table class="adm-table adm-kv">
       <tr><td>${esc(T('Indirizzo pubblico'))} (PUBLIC_URL)</td><td><code>${esc(s.public_url)}</code></td></tr>
       <tr><td>${esc(T('Registrazione aperta'))} (ALLOW_REGISTRATION)</td><td>${yes(s.allow_registration)}</td></tr>
+      <tr><td>${esc(T("Richieste d'invito"))} (ALLOW_INVITE_REQUESTS)</td><td>${yes(s.invite_requests)}${s.pending_requests ? ` <small>${s.pending_requests} ${esc(T('in attesa'))}</small>` : ''}</td></tr>
       <tr><td>${esc(T('Conferma via email'))} (EMAIL_VERIFICATION)</td><td>${yes(s.email_verification)}</td></tr>
       <tr><td>${esc(T('Invio email'))} (SMTP)</td><td>${yes(s.smtp)}</td></tr>
       <tr><td>${esc(T('Accesso con Google'))}</td><td>${yes(s.google)}</td></tr>
