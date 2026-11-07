@@ -4,15 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Noises — separa le tracce, studia e suona</title>
-<meta name="description" content="Noises è una web app open source e self-hosted per musicisti: separazione delle tracce con l'AI, tonalità e velocità in tempo reale, accordi, spartito, tablatura, click adattivo, loop per esercitarsi, registrazione e basi. Licenza MIT.">
+<meta name="description" content="Isola voce, batteria e basso da qualsiasi brano, rallentalo, mettilo in loop e suonaci sopra. Gratis e open source, sul tuo computer.">
 <link rel="alternate" hreflang="it" href="https://teopost.github.io/noises/">
 <link rel="alternate" hreflang="en" href="https://teopost.github.io/noises/en/">
 <link rel="alternate" hreflang="x-default" href="https://teopost.github.io/noises/en/">
+<script>
+// Lingua: la scelta fatta con il pulsante IT/EN, altrimenti la prima tra italiano e inglese
+// nelle lingue preferite del browser (nessuna delle due: inglese). I motori di ricerca restano qui.
+(function () {
+  if (/bot|crawl|spider|slurp|facebookexternalhit|telegram|whatsapp|preview/i.test(navigator.userAgent)) return;
+  var saved = null;
+  try { saved = localStorage.getItem('noises.site.lang'); } catch (e) {}
+  if (saved === 'it') return;
+  if (saved === 'en') { location.replace('en/' + location.hash); return; }
+  var list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''];
+  for (var i = 0; i < list.length; i++) {
+    if (/^it\b/i.test(list[i])) return;
+    if (/^en\b/i.test(list[i])) break;
+  }
+  location.replace('en/' + location.hash);
+})();
+</script>
 <meta property="og:type" content="website">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:title" content="Noises — separa le tracce, studia e suona">
-<meta property="og:description" content="Separazione AI, accordi, spartito, click adattivo e basi. Self-hosted, open source (MIT), gira anche su Raspberry Pi.">
+<meta property="og:description" content="Isola gli strumenti, rallenta, metti in loop e suona sopra. Gratis e open source.">
 <meta property="og:image" content="https://teopost.github.io/noises/assets/og.jpg">
 <meta property="og:url" content="https://teopost.github.io/noises/">
 <meta name="twitter:card" content="summary_large_image">
@@ -29,15 +46,11 @@
   <div class="wrap">
     <a class="brand" href="#"><span class="logo"></span>Noises</a>
     <div class="nav-links">
-      <a href="#funzionalita">Funzionalità</a>
-      <a href="#click">Click</a>
-      <a href="#pratica">Pratica</a>
-      <a href="#registra">Registrazione</a>
-      <a href="#condividi">Condividi</a>
+      <a href="#funzionalita">Cosa fa</a>
       <a href="#come-funziona">Come funziona</a>
       <a href="#installa">Installa</a>
     </div>
-    <a class="lang" href="en/" hreflang="en" lang="en" title="English version">EN</a>
+    <a class="lang" href="en/" hreflang="en" lang="en" title="English version" onclick="try{localStorage.setItem('noises.site.lang','en')}catch(e){}">EN</a>
     <a class="btn small" href="https://github.com/teopost/noises">
       <svg viewBox="0 0 24 24"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
       GitHub
@@ -48,227 +61,58 @@
 <header class="hero">
   <div class="wrap">
     <div class="bars" aria-hidden="true"></div>
-    <span class="pill">Open source · <b>Licenza MIT</b> · Self-hosted</span>
+    <span class="pill">Gratis · <b>Open source</b></span>
     <h1>Separa le tracce.<br><span class="grad">Studia. Suona.</span></h1>
-    <p class="lead">Noises è lo studio di pratica per musicisti che gira sul tuo server: isola voce, batteria e basso con l'AI, cambia tonalità e velocità in tempo reale, legge accordi e spartiti, ti dà un click che segue davvero la band, mette in loop i passaggi da studiare e registra la tua parte sopra il brano.</p>
+    <p class="lead">Togli il tuo strumento da qualsiasi brano, rallentalo, mettilo in loop e suonaci sopra.</p>
     <div class="cta">
-      <a class="btn primary" href="#installa">Installa in pochi minuti →</a>
-      <a class="btn" href="https://github.com/teopost/noises">Guarda il codice</a>
+      <a class="btn primary" href="#installa">Inizia →</a>
+      <a class="btn" href="#funzionalita">Scopri cosa fa</a>
     </div>
-    <div class="meta"><span>Docker Compose</span><span>x86-64 e ARM64</span><span>Raspberry Pi 4/5</span><span>Funziona offline</span><span>Italiano e inglese</span></div>
   </div>
   <div class="shot">
     <div class="frame" id="hero-frame">
-      <div class="frame-bar"><i></i><i></i><i></i><span>noises.local — Horny</span></div>
-      <img src="assets/hero.webp" width="2400" height="1590" alt="Editor di Noises con il brano Horny separato in sei tracce: voce, batteria, basso con piano roll delle note, chitarra, piano; corsia degli accordi, segnalibri, loop sul ritornello e click attivo.">
+      <div class="frame-bar"><i></i><i></i><i></i><span>Noises</span></div>
+      <img src="assets/hero.webp" width="2400" height="1590" alt="Noises: un brano diviso in voce, batteria, basso, chitarra e piano, con accordi e un loop sul ritornello.">
     </div>
-    <p class="caption">"Horny" separato in 6 tracce, con accordi, segnalibri, piano roll del basso e loop sul ritornello.</p>
   </div>
 </header>
 
 <section id="funzionalita">
   <div class="wrap">
     <div class="center reveal">
-      <div class="kicker">Funzionalità</div>
-      <h2>Tutto quello che serve per imparare un brano</h2>
-      <p class="sub">Dall'ascolto alla base per il concerto, nello stesso posto. Senza abbonamenti e senza caricare la tua musica sul cloud di qualcun altro.</p>
+      <h2>Tutto per imparare un brano</h2>
     </div>
     <div class="grid">
       <article class="card reveal" style="--glow:#7c5cff">
         <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/><circle cx="18" cy="12" r="2"/></svg></div>
-        <h3>Separazione con l'AI</h3>
-        <p>Demucs v4 divide il brano in voce, batteria, basso e altro, oppure in 6 tracce con chitarra e piano. Per la voce più pulita c'è Mel-Band RoFormer. Muto, solo e volume per traccia.</p>
+        <h3>Separa gli strumenti</h3>
+        <p>Voce, batteria, basso, chitarra e piano, ognuno sulla sua traccia.</p>
       </article>
       <article class="card reveal" style="--glow:#ff6b9a">
         <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg></div>
-        <h3>Tonalità e velocità live</h3>
-        <p>±12 semitoni e 50–150% di velocità, indipendenti e applicati in tempo reale nel browser. La tonalità del brano si aggiorna mentre trasponi.</p>
-      </article>
-      <article class="card reveal" style="--glow:#f5b942">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9v6M11 9v6M15 9v6"/></svg></div>
-        <h3>Accordi</h3>
-        <p>170 accordi riconosciuti con BTC, anche sul brano non separato. Accordo corrente e successivo, notazione C D E o Do Re Mi, correzione a mano.</p>
-      </article>
-      <article class="card reveal" style="--glow:#3dd6c4">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 18h4v-5H3zM10 18h4V8h-4zM17 18h4V4h-4z"/></svg></div>
-        <h3>Note e piano roll</h3>
-        <p>Trascrizione automatica di ogni traccia, piano roll modificabile e synth con otto suoni per ascoltare le note, anche un'ottava sopra.</p>
-      </article>
-      <article class="card reveal" style="--glow:#a48bff">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/><circle cx="9" cy="16" r="2.2" fill="currentColor"/></svg></div>
-        <h3>Spartito e tablatura</h3>
-        <p>MusicXML per pianoforte, batteria, chitarra e basso a 4 o 5 corde, con il cursore che segue la musica. Stampa, PDF ed export.</p>
+        <h3>Rallenta e trasponi</h3>
+        <p>Cambia velocità senza cambiare tonalità, o cambia tonalità per la tua voce.</p>
       </article>
       <article class="card reveal" style="--glow:#2bd47d">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5z"/><path d="M12 15l5-8"/></svg></div>
-        <h3>Click adattivo</h3>
-        <p>Il metronomo che segue i colpi reali della batteria, oppure il tempo medio o un BPM fisso. Pre-conteggio che porta sempre sull'"1".</p>
-      </article>
-      <article class="card reveal" style="--glow:#ff6b9a">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="11" height="5" rx="1.5"/><path d="M17 13.5h4M19 11.5v4"/></svg></div>
-        <h3>Editor multitraccia</h3>
-        <p>Progetti con più brani, clip da tagliare e spostare, gruppi, segnalibri, annulla e ripeti. Trascini i file dal computer o importi da YouTube.</p>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></div>
+        <h3>Ripeti il passaggio</h3>
+        <p>Metti in loop l'assolo difficile finché non ti viene.</p>
       </article>
       <article class="card reveal" style="--glow:#f5b942">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
-        <h3>Scalette per il palco</h3>
-        <p>Metti in fila i progetti della serata: alla fine di un brano parte il successivo dopo la pausa che scegli, oppure aspetta il tuo Play.</p>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/><circle cx="9" cy="16" r="2.2" fill="currentColor"/></svg></div>
+        <h3>Accordi e spartito</h3>
+        <p>Accordi, note e tablatura scritti in automatico.</p>
       </article>
       <article class="card reveal" style="--glow:#3dd6c4">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></div>
-        <h3>Basi pronte</h3>
-        <p>Esporta in MP3, WAV, FLAC o MIDI solo le tracce attive, per esempio tutto tranne il tuo strumento, con click e pre-conteggio inclusi.</p>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5z"/><path d="M12 15l5-8"/></svg></div>
+        <h3>Un click a tempo con la band</h3>
+        <p>Il metronomo che segue il batterista vero.</p>
       </article>
-    </div>
-  </div>
-</section>
-
-<section id="click" style="padding-top: 24px">
-  <div class="wrap split">
-    <div class="reveal">
-      <div class="kicker">Ritmo</div>
-      <h2>Un click che va a tempo con la band</h2>
-      <p class="sub">I batteristi veri non suonano come un metronomo. Noises rileva ogni colpo di cassa e aggancia il click al momento in cui il colpo si sente davvero.</p>
-      <div class="click-modes" id="click-demo" aria-hidden="true">
-        <div class="mode"><strong>Adattivo<small>segue ogni colpo</small></strong><div class="ticks-row" data-mode="adapt"></div></div>
-        <div class="mode"><strong>Tempo medio<small>stabile, segue le derive</small></strong><div class="ticks-row" data-mode="smooth"></div></div>
-        <div class="mode"><strong>Metronomo<small>BPM fisso, per studiare</small></strong><div class="ticks-row" data-mode="fixed"></div></div>
-      </div>
-      <p class="note">● cassa registrata &nbsp; ▍ click &nbsp; <span style="color:var(--amber)">▍</span> primo tempo della battuta</p>
-    </div>
-    <div class="reveal">
-      <ul class="ticks">
-        <li><span><b>Metro e primo tempo</b> regolabili: 2/4, 3/4, 4/4, 6/8, 12/8, battito doppio o dimezzato.</span></li>
-        <li><span><b>Spostamento fine a orecchio</b>, 5 ms alla volta, salvato per ogni brano.</span></li>
-        <li><span><b>Sei suoni</b>: beep, legnetto, claves, campanaccio, charleston, bordo del rullante.</span></li>
-        <li><span><b>Pre-conteggio</b> di una o due battute che porta sempre sul primo tempo, anche partendo a metà battuta.</span></li>
-        <li><span><b>Nelle basi esportate</b> il click è identico a quello che senti.</span></li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<section id="pratica" style="padding-top: 24px">
-  <div class="wrap split rev">
-    <div class="reveal">
-      <div class="kicker">Pratica</div>
-      <h2>Il tuo assolo in loop, finché non viene</h2>
-      <p class="sub">Seleziona il passaggio da studiare, dagli un nome e richiamalo con un clic. Il loop è già attivo e la testina all'inizio: premi Play e suona sopra, anche rallentato.</p>
-      <ul class="ticks">
-        <li><span><b>Sezioni salvate</b> nel progetto: "Assolo 1", "Bridge", "Riff finale". Il pulsante mostra la sezione in uso, la freccetta ▾ apre l'elenco.</span></li>
-        <li><span><b>Loop al volo</b>: mentre suona premi <b>I</b> all'inizio del passaggio e <b>O</b> alla fine, e il loop parte subito.</span></li>
-        <li><span><b>Regolazione fine</b> di inizio e fine: trascini i bordi (con Ctrl si agganciano al click), 0,1 s o 0,01 s per clic, oppure al click precedente o successivo. Anche mentre suona, senza interrompere.</span></li>
-        <li><span><b>Linee delle battute</b> nella timeline, a tempo con il click.</span></li>
-        <li><span><b>Restano al loro posto</b> a ogni velocità: studi l'assolo al 70% e poi lo porti a tempo.</span></li>
-        <li><span><b>Pre-click</b> a ogni ripartenza, per entrare a tempo sull'"1".</span></li>
-      </ul>
-    </div>
-    <div class="media reveal" aria-hidden="true">
-      <div class="frame flat">
-        <div class="frame-bar"><i></i><i></i><i></i><span>Loop — Assolo 1</span></div>
-        <div class="mock">
-          <div class="mock-bar">
-            <span class="b on">⟳ Loop</span><span class="t">1:52.4 – 2:14.0</span>
-            <span class="lbl">Inizio</span><span class="b sm acc">«</span><span class="b sm">‹</span><span class="b sm">›</span><span class="b sm acc">»</span>
-            <span class="lbl">Fine</span><span class="b sm acc">«</span><span class="b sm">‹</span><span class="b sm">›</span><span class="b sm acc">»</span>
-            <span class="b named">Assolo 1</span><span class="b sm">▾</span>
-          </div>
-          <div class="lanes">
-            <div class="lane-mock"><span class="name" style="--c:#ffb547">Batteria</span><div class="wave-mock" style="--c:#ffb547" data-seed="11"></div></div>
-            <div class="lane-mock"><span class="name" style="--c:#4fd1c5">Basso</span><div class="wave-mock" style="--c:#4fd1c5" data-seed="23"></div></div>
-            <div class="lane-mock"><span class="name" style="--c:#7cc4ff">Chitarra</span><div class="wave-mock muted" style="--c:#7cc4ff" data-seed="37"></div></div>
-            <div class="loop-mock"><span>Assolo 1</span></div>
-            <div class="ph-mock" style="--at:.52"></div>
-          </div>
-        </div>
-      </div>
-      <p class="caption">La chitarra originale è in muto: il loop ripete l'assolo e tu lo suoni sopra la band.</p>
-    </div>
-  </div>
-</section>
-
-<section id="registra" style="padding-top: 24px">
-  <div class="wrap split">
-    <div class="reveal">
-      <div class="kicker">Registrazione</div>
-      <h2>Registra la tua parte sopra la band</h2>
-      <p class="sub">Aggiungi una traccia vuota, scegli l'ingresso e premi ⏺. Suoni sopra il brano e la registrazione finisce nella timeline, già allineata al resto.</p>
-      <ul class="ticks">
-        <li><span><b>Microfono o scheda audio</b>: ingresso 1, 2 o stereo, con VU meter per regolare il livello prima di partire.</span></li>
-        <li><span><b>Forma d'onda dal vivo</b> mentre registri, con la latenza dell'audio compensata in automatico.</span></li>
-        <li><span><b>Più riprese sulla stessa traccia</b>: la nuova sostituisce solo il tratto rifatto, il resto rimane. Annulla per tornare alla precedente.</span></li>
-        <li><span><b>Ascoltati</b> al posto dell'originale, confrontali, ed esporta il risultato come qualsiasi altra traccia.</span></li>
-      </ul>
-    </div>
-    <div class="media reveal" aria-hidden="true">
-      <div class="frame flat">
-        <div class="frame-bar"><i></i><i></i><i></i><span>Registrazione in corso</span></div>
-        <div class="mock">
-          <div class="mock-bar">
-            <span class="b">▶</span><span class="b rec on">⏺</span><span class="t">2:03</span>
-            <span class="lbl">Ingresso</span><span class="b">Scheda audio · In 1</span>
-          </div>
-          <div class="lanes">
-            <div class="lane-mock"><span class="name" style="--c:#ffb547">Batteria</span><div class="wave-mock" style="--c:#ffb547" data-seed="11"></div></div>
-            <div class="lane-mock"><span class="name" style="--c:#7cc4ff">Chitarra</span><div class="wave-mock muted" style="--c:#7cc4ff" data-seed="37"></div></div>
-            <div class="lane-mock"><span class="name" style="--c:#ff4d5e"><span class="arm">⏺</span>La mia chitarra</span><div class="wave-mock" style="--c:#ff4d5e" data-seed="53" data-from=".4" data-fill=".64"></div></div>
-            <div class="ph-mock" style="--at:.64"></div>
-          </div>
-        </div>
-      </div>
-      <p class="caption">La forma d'onda rossa cresce mentre suoni, a partire dal punto in cui hai premuto ⏺.</p>
-    </div>
-  </div>
-</section>
-
-<section id="condividi" style="padding-top: 24px">
-  <div class="wrap split rev">
-    <div class="reveal">
-      <div class="kicker">Salvataggi e condivisione</div>
-      <h2>Prepara i tuoi mix e falli ascoltare a tutti</h2>
-      <p class="sub">Salva lo stato del progetto con un nome, per esempio <i>Solo voce</i> o <i>Base assolo chitarra</i>, e richiamalo con un clic. Ogni salvataggio può diventare un link pubblico da mandare alla band o da pubblicare sui social.</p>
-      <ul class="ticks">
-        <li><span><b>Salvataggi</b> di volumi, muto/solo, tonalità, velocità e loop. Il salvataggio in uso raccoglie da solo le modifiche: sposti il loop e resta salvato lì.</span></li>
-        <li><span><b>Link pubblico</b> con una pagina elegante, senza account: chi lo apre ascolta il mix con il suo loop, la sua tonalità e la sua velocità.</span></li>
-        <li><span><b>Più salvataggi in una pagina</b>: chi ascolta passa da uno all'altro senza perdere il punto del brano.</span></li>
-        <li><span><b>Sempre aggiornato</b>: se modifichi un salvataggio, il link si aggiorna da solo. Lo disattivi quando vuoi.</span></li>
-        <li><span><b>Anteprima sui social</b> con titolo, salvataggio, loop e forma d'onda del mix.</span></li>
-      </ul>
-    </div>
-    <div class="media reveal" aria-hidden="true">
-      <div class="frame flat">
-        <div class="frame-bar"><i></i><i></i><i></i><span>noises.tuodominio.it/s/…</span></div>
-        <div class="mock">
-          <div class="mock-bar"><span class="b named">Solo voce</span><span class="b">Base assolo chitarra</span><span class="b">Mix completo</span><span class="t">⟳ Loop · velocità 80%</span></div>
-          <div class="lanes">
-            <div class="lane-mock"><span class="name" style="--c:#b6a4ff">Mix</span><div class="wave-mock" style="--c:#b6a4ff" data-seed="61"></div></div>
-            <div class="loop-mock"><span>Loop</span></div>
-            <div class="ph-mock" style="--at:.58"></div>
-          </div>
-        </div>
-      </div>
-      <p class="caption">La pagina condivisa: si sceglie il salvataggio da ascoltare e il loop riparte da solo.</p>
-    </div>
-  </div>
-</section>
-
-<section style="padding-top: 24px">
-  <div class="wrap split">
-    <div class="reveal">
-      <div class="kicker">Dallo strumento alla carta</div>
-      <h2>Lo spartito si scrive da solo</h2>
-      <p class="sub">Ogni traccia separata diventa uno spartito: pentagramma, tablatura o entrambi. È un punto di partenza da correggere nel piano roll, non un lavoro da rifare da zero.</p>
-      <ul class="ticks">
-        <li><span><b>Basso a 4 o 5 corde e chitarra</b> (anche Drop D e Drop C), con diteggiature che limitano gli spostamenti della mano.</span></li>
-        <li><span><b>Batteria in notazione percussiva</b>: cassa, rullante e hi-hat.</span></li>
-        <li><span><b>Cursore</b> che segue la riproduzione, alterazioni secondo la tonalità, export MusicXML e stampa.</span></li>
-      </ul>
-    </div>
-    <div class="media reveal">
-      <div class="frame flat">
-        <div class="frame-bar"><i></i><i></i><i></i><span>Spartito — Basso</span></div>
-        <img src="assets/score.webp" width="1800" height="780" decoding="async" alt="Spartito del basso di Horny generato automaticamente, in chiave di basso a 128 BPM.">
-      </div>
+      <article class="card reveal" style="--glow:#a48bff">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div>
+        <h3>Registra e condividi</h3>
+        <p>Registrati sopra il brano e manda il mix alla band con un link.</p>
+      </article>
     </div>
   </div>
 </section>
@@ -276,77 +120,24 @@
 <section id="come-funziona" style="padding-top: 24px">
   <div class="wrap">
     <div class="center reveal">
-      <div class="kicker">Come funziona</div>
-      <h2>Dal file al palco in tre passi</h2>
+      <h2>In tre passi</h2>
     </div>
     <div class="steps">
-      <div class="step reveal"><h3>Carica</h3><p>Trascina un file audio nella timeline o incolla un link YouTube. Il brano entra nella libreria e nel progetto.</p></div>
-      <div class="step reveal"><h3>Separa e analizza</h3><p>Dal menu ⋯ della traccia scegli separazione, accordi, ritmo e note. Tutto gira sul tuo server, anche senza internet.</p></div>
-      <div class="step reveal"><h3>Suona</h3><p>Rallenta, trasponi, salva il passaggio difficile come sezione e ripetilo in loop, togli il tuo strumento, accendi il click e registrati. Poi esporta la base.</p></div>
+      <div class="step reveal"><h3>Carica</h3><p>Trascina un brano o incolla un link di YouTube.</p></div>
+      <div class="step reveal"><h3>Separa</h3><p>Scegli quali strumenti vuoi isolare.</p></div>
+      <div class="step reveal"><h3>Suona</h3><p>Togli il tuo strumento, rallenta e suona sopra.</p></div>
     </div>
   </div>
 </section>
 
-<section id="installa" style="padding-top: 24px">
-  <div class="wrap split">
-    <div class="reveal">
-      <div class="kicker">Installa</div>
-      <h2>Tuo, sul tuo hardware</h2>
-      <p class="sub">Un'unica immagine Docker con modelli e librerie già dentro. Gira su un PC, su un server o su un <b>Raspberry Pi 4/5</b> a 64 bit, per più utenti, ognuno con la sua libreria.</p>
-      <ul class="ticks">
-        <li><span><b>Account</b> con verifica email o accesso con Google.</span></li>
-        <li><span><b>Amministrazione</b>: utenti e ruoli, inviti via email, registro di accessi e attività, avviso quando esce una nuova versione.</span></li>
-        <li><span><b>I tuoi dati restano a casa</b>: brani, progetti e analisi stanno in un volume Docker.</span></li>
-        <li><span><b>Backup di un progetto</b> in un file zip, con tutti i suoi brani: lo ripristini su un'altra installazione e i brani entrano nella libreria.</span></li>
-        <li><span><b>Fuori casa</b> con HTTPS, per esempio tramite Cloudflare Tunnel.</span></li>
-      </ul>
-    </div>
-    <div class="reveal">
-      <div class="tabs" role="tablist">
-        <button class="on" data-tab="pc" role="tab" aria-selected="true">PC o server</button>
-        <button data-tab="pi" role="tab" aria-selected="false">Raspberry Pi</button>
-      </div>
-      <div class="term" data-panel="pc">
-        <div class="frame-bar"><i></i><i></i><i></i><span>terminale</span></div>
-<pre><span class="p">$ </span>git clone https://github.com/teopost/noises.git
-<span class="p">$ </span>cd noises
-<span class="p">$ </span>make up      <span class="c"># build + avvio</span>
-<span class="p">$ </span>make open    <span class="c"># http://localhost:8080</span></pre>
-      </div>
-      <div class="term panel-hidden" data-panel="pi">
-        <div class="frame-bar"><i></i><i></i><i></i><span>raspberrypi</span></div>
-<pre><span class="p">$ </span>git clone https://github.com/teopost/noises.git
-<span class="p">$ </span>cd noises &amp;&amp; cp .env.example .env
-<span class="c"># in .env: immagine pronta della CI</span>
-<span class="k">NOISES_IMAGE</span>=ghcr.io/teopost/noises:latest
-<span class="p">$ </span>make pull    <span class="c"># scarica e avvia, niente build</span></pre>
-      </div>
-      <p class="note">Requisiti: Docker con Compose v2 e <code>make</code>. Il motore audio del browser richiede HTTPS oppure <code>localhost</code>.</p>
-    </div>
-  </div>
-</section>
-
-<section style="padding-top: 24px">
-  <div class="wrap center reveal">
-    <div class="kicker">Sotto il cofano</div>
-    <h2>Costruito su strumenti eccellenti</h2>
-    <p class="sub">Un server in Rust coordina librerie di riferimento per l'audio. Il browser fa il resto: mixa, cambia tonalità e velocità e tiene il click a tempo.</p>
-    <div class="stack">
-      <span><b>Rust</b> · axum · tokio</span><span><b>Demucs v4</b> separazione</span><span><b>BTC</b> accordi</span>
-      <span><b>Basic Pitch</b> note</span><span><b>librosa</b> ritmo</span><span><b>music21</b> + <b>OSMD</b> spartito</span>
-      <span><b>Rubber Band</b> export</span><span><b>Web Audio</b> AudioWorklet</span><span><b>yt-dlp</b> import</span><span><b>SQLite</b> account</span>
-    </div>
-  </div>
-</section>
-
-<section style="padding-top: 24px; padding-bottom: 0">
+<section id="installa" style="padding-top: 24px; padding-bottom: 0">
   <div class="wrap">
     <div class="final reveal">
-      <h2>Libero, aperto, tuo.</h2>
-      <p class="sub" style="margin: 0 auto">Noises è distribuito con licenza MIT: usalo, modificalo, condividilo.</p>
+      <h2>Tuo, a casa tua</h2>
+      <p class="sub" style="margin: 0 auto">Si installa sul tuo computer, su un server o su un Raspberry Pi. La tua musica non va sul cloud di nessuno.</p>
       <div class="cta">
-        <a class="btn primary" href="https://github.com/teopost/noises">Vai al repository →</a>
-        <a class="btn" href="https://github.com/teopost/noises/blob/main/README.md">Leggi la documentazione</a>
+        <a class="btn primary" href="https://github.com/teopost/noises#avvio-rapido">Guida all'installazione →</a>
+        <a class="btn" href="https://github.com/teopost/noises">Vai su GitHub</a>
       </div>
     </div>
   </div>
@@ -356,7 +147,7 @@
   <div class="wrap">
     <div><a class="brand" href="#" style="font-size:16px"><span class="logo"></span>Noises</a></div>
     <div>Licenza <a href="https://github.com/teopost/noises/blob/main/LICENSE.md">MIT</a> · © 2026 Stefano Teodorani</div>
-    <div>Usa solo contenuti per cui hai i diritti.</div>
+    <div>Usa solo musica per cui hai i diritti.</div>
   </div>
 </footer>
 
