@@ -243,7 +243,7 @@
           <span id="bpm" class="unit"></span>
           <button id="meter-btn" title="Metro, primo tempo della battuta e correzione del battito">4/4 ▾</button>
           <button id="analyze-notes" class="hidden" title="Rileva battiti e trascrive le note di tutte le tracce"><span class="emo">🎼</span> Analizza ritmo e note</button>
-          <span class="split-btn"><button id="precount" class="toggle" title="Pre-click: battute di conteggio prima dell'avvio della riproduzione">Pre-click</button>
+          <span class="split-btn"><button id="precount" class="toggle icon-toggle" title="Pre-click: battute di conteggio prima dell'avvio della riproduzione" aria-label="Pre-click"><span class="countin-ico" aria-hidden="true">1234</span></button>
           <button id="precount-cfg" class="split-caret" title="Impostazioni del pre-click: battute e volume" aria-label="Opzioni del pre-click">▾</button></span>
           <div id="precount-panel" class="menu click-panel hidden">
             <label>Battute
@@ -254,7 +254,7 @@
             </label>
             <label>Volume <input id="countin-vol" type="range" min="0" max="1.5" step="0.05" title="Volume del pre-click"></label>
           </div>
-          <span class="split-btn"><button id="click" class="toggle" title="Click che segue i battiti rilevati nel brano (accento sul primo tempo)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 3h5.6l4.4 17H4.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6.5 15.5h11" stroke="currentColor" stroke-width="1.6"/><path d="M12 15.5 17.5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16.4" cy="8" r="1.6" fill="currentColor"/></svg> Click</button>
+          <span class="split-btn"><button id="click" class="toggle icon-toggle" title="Click che segue i battiti rilevati nel brano (accento sul primo tempo)" aria-label="Click"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 3h5.6l4.4 17H4.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6.5 15.5h11" stroke="currentColor" stroke-width="1.6"/><path d="M12 15.5 17.5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16.4" cy="8" r="1.6" fill="currentColor"/></svg></button>
           <button id="click-cfg" class="split-caret" title="Impostazioni del click: suono, volume, modalità" aria-label="Opzioni del click">▾</button></span>
           <div id="click-panel" class="menu click-panel hidden">
  <label>Suono <select id="click-sound" title="Suono del metronomo (anche per il pre-click)"></select></label>

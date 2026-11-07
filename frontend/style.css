@@ -1104,3 +1104,7 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .adm-tabs button.hidden { display: none; }
 .adm-req-msg { max-width: 360px; white-space: pre-wrap; word-break: break-word; }
 .adm-acts .primary { padding: 4px 10px; font-size: 13px; }
+/* click e pre-click solo icona: metronomo e "1234" (conteggio d'ingresso) */
+.split-btn > button.icon-toggle { padding-left: 8px; padding-right: 8px; display: inline-flex; align-items: center; }
+.countin-ico { font-size: 11.5px; font-weight: 800; letter-spacing: -.2px; font-variant-numeric: tabular-nums; line-height: 1; }
+.split-btn > button.icon-toggle .ico { width: 17px; height: 17px; margin: 0; vertical-align: 0; }
