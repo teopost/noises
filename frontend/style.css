@@ -1048,40 +1048,43 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .adm-kv td:first-child { color: var(--muted); width: 55%; }
 .invite-hint { color: var(--accent-2); }
 
-/* ---- accesso e registrazione: caratteri più grandi ---- */
-.auth-card { width: min(450px, 100%); padding: 32px; gap: 16px; font-size: 16px; }
-.auth .brand.big { font-size: 34px; }
-.auth-sub { font-size: 15px; }
-.auth-form { gap: 14px; }
-.auth-form label { font-size: 14px; gap: 6px; }
-.auth-form input { font-size: 16px; padding: 11px 12px; } /* 16px: su iPhone niente zoom automatico */
-.auth-form .hint { font-size: 13.5px; line-height: 1.45; }
-.auth button.wide { font-size: 16px; padding: 12px; }
-.auth-links .link { font-size: 14.5px; }
-.auth-msg { font-size: 14.5px; }
-.auth .sep { font-size: 13.5px; }
-.auth .google-btn { font-size: 15.5px; padding: 12px; }
+/* ---- accesso, registrazione e amministrazione: stessa scala di caratteri ----
+   testo, campi e pulsanti 14.5px, etichette e intestazioni 13px, note e dettagli 12.5px */
+.auth-card { width: min(430px, 100%); padding: 28px; gap: 14px; font-size: 14.5px; }
+.auth .brand.big { font-size: 30px; }
+.auth-sub { font-size: 14px; }
+.auth-form { gap: 12px; }
+.auth-form label { font-size: 13px; gap: 5px; }
+.auth-form input { font-size: 14.5px; padding: 10px 11px; }
+.auth-form .hint { font-size: 12.5px; line-height: 1.45; }
+.auth button.wide { font-size: 14.5px; padding: 11px; }
+.auth-links .link { font-size: 13.5px; }
+.auth-msg { font-size: 13.5px; }
+.auth .sep { font-size: 12.5px; }
+.auth .google-btn { font-size: 14.5px; padding: 11px; }
+/* su telefoni e tablet almeno 16px nei campi: sotto i 16px l'iPhone ingrandisce la pagina al tocco */
+@media (pointer: coarse) {
+  .auth-form input, .admin-dlg input, .admin-dlg select { font-size: 16px; }
+}
 
-/* ---- amministrazione: stesse dimensioni del form di accesso e registrazione ----
-   testo e campi 16px, etichette e intestazioni 14px, note e dettagli 13.5px */
-.admin-dlg { font-size: 16px; }
-.adm-head h2 { font-size: 22px; }
-.adm-tabs button { font-size: 16px; padding: 8px 14px; }
-.adm-count { font-size: 14px; }
-.adm-table { font-size: 16px; }
-.adm-table th { font-size: 14px; }
-.adm-table th, .adm-table td { padding: 10px 12px; }
-.adm-table small { font-size: 13.5px; }
-.adm-acts button { font-size: 14.5px; padding: 5px 11px; }
-.admin-dlg input, .admin-dlg select { font-size: 16px; }
-.admin-dlg .adm-invite button, .admin-dlg .adm-bar button { font-size: 16px; padding: 10px 16px; }
-.adm-invite label { font-size: 14px; gap: 6px; }
-.adm-note { font-size: 15px; }
-.adm-notes { font-size: 13.5px; }
-.adm-stats b { font-size: 26px; }
-.adm-stats span { font-size: 14px; }
-.admin-dlg .hint { font-size: 13.5px; }
-.admin-dlg .pill { font-size: 13.5px; padding: 2px 10px; }
-.admin-dlg .tag { font-size: 13.5px; }
-.admin-dlg .avatar.sm { width: 36px; height: 36px; font-size: 15px; }
-.admin-dlg .adm-role { font-size: 16px; }
+.admin-dlg { font-size: 14.5px; }
+.adm-head h2 { font-size: 20px; }
+.adm-tabs button { font-size: 14.5px; padding: 7px 13px; }
+.adm-count { font-size: 13px; }
+.adm-table { font-size: 14.5px; }
+.adm-table th { font-size: 12px; }
+.adm-table th, .adm-table td { padding: 9px 11px; }
+.adm-table small { font-size: 12.5px; }
+.adm-acts button { font-size: 13px; padding: 4px 10px; }
+.admin-dlg input, .admin-dlg select { font-size: 14.5px; }
+.admin-dlg .adm-invite button, .admin-dlg .adm-bar button { font-size: 14.5px; padding: 8px 15px; }
+.adm-invite label { font-size: 13px; gap: 5px; }
+.adm-note { font-size: 14px; }
+.adm-notes { font-size: 12.5px; }
+.adm-stats b { font-size: 24px; }
+.adm-stats span { font-size: 13px; }
+.admin-dlg .hint { font-size: 12.5px; }
+.admin-dlg .pill { font-size: 12.5px; padding: 1px 9px; }
+.admin-dlg .tag { font-size: 12.5px; }
+.admin-dlg .avatar.sm { width: 33px; height: 33px; font-size: 14px; }
+.admin-dlg .adm-role { font-size: 14.5px; }
