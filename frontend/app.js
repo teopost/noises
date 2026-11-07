@@ -349,7 +349,6 @@ function renderSongs() {
         ${s.status === 'downloading' ? '' : `<button class="preview" data-preview="${s.id}">${PREVIEW_ICON.play}</button>`}
         <span class="song-name" title="${esc(s.name)}">${esc(s.name)}</span>
         <button class="more" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button>
-        <button class="del" title="${pl ? 'Elimina dalla libreria' : 'Elimina'}">✕</button>
       </div>
       <span class="song-status ${s.status === 'error' ? 'error' : s.status === 'new' ? 'new' : ''}">${esc(statusText(s))}${s.status === 'new' ? '' : ` · ${MODEL_LABELS[s.model] || s.model}`}${inPl ? ` · ♫ ${inPl}` : ''}</span>
       ${['downloading', 'queued', 'processing'].includes(s.status) ? `<div class="bar"><div style="width:${s.progress * 100}%"></div></div>` : ''}`;
@@ -367,17 +366,6 @@ function renderSongs() {
     li.querySelector('.more').addEventListener('click', (ev) => {
       ev.stopPropagation();
       openSongMenu(s, ev.currentTarget);
-    });
-    li.querySelector('.del').addEventListener('click', async (ev) => {
-      ev.stopPropagation();
-      if (!(await uiConfirm(`Eliminare definitivamente "${s.name}" dalla libreria?${inPl ? '\nVerrà rimosso anche dalle playlist.' : ''}\nLe sue tracce verranno tolte dai progetti che lo usano.`, { title: 'Elimina brano', ok: 'Elimina', danger: true }))) return;
-      if (preview.id === s.id) previewStop();
-      const usedHere = state.current && engine.tracks.some((t) => t.song === s.id);
-      await api(`/api/songs/${s.id}`, { method: 'DELETE' }).catch((e) => uiAlert(e.message));
-      await refreshPlaylists();
-      await refreshSongs();
-      refreshProjects();
-      if (usedHere) { const id = state.current.id; state.current = null; openProject(id); }
     });
     ul.appendChild(li);
   }
@@ -547,7 +535,35 @@ function addToCurrentPlaylist(song) {
   return pl && song ? setMembership(pl.id, song.id, true) : null;
 }
 
-/** Menu ⋯ di un brano della libreria: separazione delle tracce e playlist (sottomenu). */
+/** Elimina un brano dalla libreria (dopo conferma): esce anche dalle playlist e dai progetti. */
+async function deleteSong(s) {
+  const inPl = state.playlists.filter((p) => p.songs.includes(s.id)).length;
+  if (!(await uiConfirm(`Eliminare definitivamente "${s.name}" dalla libreria?${inPl ? '\nVerrà rimosso anche dalle playlist.' : ''}\nLe sue tracce verranno tolte dai progetti che lo usano.`, { title: 'Elimina brano', ok: 'Elimina', danger: true }))) return;
+  if (preview.id === s.id) previewStop();
+  const usedHere = state.current && engine.tracks.some((t) => t.song === s.id);
+  await api(`/api/songs/${s.id}`, { method: 'DELETE' }).catch((e) => uiAlert(e.message));
+  await refreshPlaylists();
+  await refreshSongs();
+  refreshProjects();
+  if (usedHere) { const id = state.current.id; state.current = null; openProject(id); }
+}
+
+async function renameSong(s) {
+  const name = await uiPrompt('Rinomina brano', s.name, { ok: 'Rinomina', max: 200 });
+  if (name == null || !name.trim() || name.trim() === s.name) return;
+  try {
+    await api(`/api/songs/${s.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+  } catch (e) {
+    uiAlert(e.message);
+  }
+  await refreshSongs();
+}
+
+/** Menu ⋯ di un brano della libreria: separazione, playlist (sottomenu), rinomina, elimina. */
 function openSongMenu(song, anchor) {
   const menu = $('#pl-menu');
   const close = () => menu.classList.add('hidden');
@@ -557,8 +573,11 @@ function openSongMenu(song, anchor) {
     if (song.status === 'error') items.push({ icon: '↻', label: T('Riprova la separazione…'), act: () => { close(); openProcess([song]); } });
     const n = state.playlists.filter((p) => p.songs.includes(song.id)).length;
     items.push({ icon: '♫', label: T('Aggiungi a playlist'), extra: `${n ? `<span class="mi-count">${n}</span>` : ''}<span class="mi-sub">›</span>`, act: playlists });
-    menu.innerHTML = items.map((it, i) =>
-      `<button class="menu-item" data-i="${i}"><span class="mi">${it.icon}</span><span class="mi-label">${esc(it.label)}</span>${it.extra || ''}</button>`).join('');
+    if (song.status !== 'downloading') items.push({ icon: '✎', label: T('Rinomina…'), act: () => { close(); renameSong(song); } });
+    items.push({ sep: true });
+    items.push({ icon: '✕', label: T('Elimina…'), danger: true, act: () => { close(); deleteSong(song); } });
+    menu.innerHTML = items.map((it, i) => it.sep ? '<div class="menu-sep"></div>'
+      : `<button class="menu-item${it.danger ? ' danger' : ''}" data-i="${i}"><span class="mi">${it.icon}</span><span class="mi-label">${esc(it.label)}</span>${it.extra || ''}</button>`).join('');
     menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => items[b.dataset.i].act()));
   };
   const playlists = () => {

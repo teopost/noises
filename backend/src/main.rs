@@ -472,6 +472,28 @@ async fn get_song(
     st.get(&id).map(Json).ok_or_else(not_found)
 }
 
+#[derive(Deserialize)]
+struct RenameSong {
+    name: String,
+}
+
+/// Rinomina un brano della libreria.
+async fn rename_song(
+    State(st): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(b): Json<RenameSong>,
+) -> Result<Json<Song>, AppError> {
+    let name: String = b.name.chars().filter(|c| !c.is_control()).collect::<String>().trim().to_owned();
+    if name.is_empty() {
+        return Err(bad_request("il nome non può essere vuoto"));
+    }
+    if name.chars().count() > 200 {
+        return Err(bad_request("nome troppo lungo (massimo 200 caratteri)"));
+    }
+    let song = st.update(&id, true, |s| s.name = name).ok_or_else(not_found)?;
+    Ok(Json(song))
+}
+
 async fn delete_song(
     State(st): State<AppState>,
     UrlPath(id): UrlPath<String>,
@@ -2217,7 +2239,7 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::put(add_to_playlist).delete(remove_from_playlist),
         )
         .route("/api/import", axum::routing::post(import_url))
-        .route("/api/songs/:id", get(get_song).delete(delete_song))
+        .route("/api/songs/:id", get(get_song).patch(rename_song).delete(delete_song))
         .route("/api/songs/:id/stems/:stem", get(get_stem))
         .route("/api/songs/:id/process", axum::routing::post(start_processing))
         .route("/api/songs/:id/original", get(get_original))
