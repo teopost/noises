@@ -127,6 +127,7 @@ const EN = {
   'Riprova la separazione…': 'Retry the separation…',
   'Separa le tracce…': 'Split the tracks…',
   'Altre azioni…': 'More actions…',
+  'Nuovo progetto con questo brano…': 'New project with this song…',
   'Rinomina…': 'Rename…',
   'Elimina…': 'Delete…',
   'Rinomina brano': 'Rename song',

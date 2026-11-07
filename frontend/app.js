@@ -548,6 +548,20 @@ async function deleteSong(s) {
   if (usedHere) { const id = state.current.id; state.current = null; openProject(id); }
 }
 
+/** Crea un progetto (nome proposto: quello del brano), lo apre e ci mette il brano dall'inizio. */
+async function newProjectWithSong(s) {
+  const name = await uiPrompt('Nome del nuovo progetto', s.name, { ok: 'Crea', max: 200 });
+  if (!name) return;
+  try {
+    const p = await createProject(name);
+    if (!p) return;
+    await openProject(p.id);
+    await addSongToProject(s.id, 0);
+  } catch (e) {
+    uiAlert(e.message);
+  }
+}
+
 async function renameSong(s) {
   const name = await uiPrompt('Rinomina brano', s.name, { ok: 'Rinomina', max: 200 });
   if (name == null || !name.trim() || name.trim() === s.name) return;
@@ -569,6 +583,7 @@ function openSongMenu(song, anchor) {
   const close = () => menu.classList.add('hidden');
   const main = () => {
     const items = [];
+    if (song.status !== 'downloading') items.push({ icon: '＋', label: T('Nuovo progetto con questo brano…'), act: () => { close(); newProjectWithSong(song); } });
     if (song.status === 'new') items.push({ icon: '⑂', label: T('Separa le tracce…'), act: () => { close(); openProcess([song]); } });
     if (song.status === 'error') items.push({ icon: '↻', label: T('Riprova la separazione…'), act: () => { close(); openProcess([song]); } });
     const n = state.playlists.filter((p) => p.songs.includes(song.id)).length;
