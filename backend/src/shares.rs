@@ -129,6 +129,25 @@ fn edit<R>(st: &AppState, f: impl FnOnce(&mut Vec<Share>) -> Result<R, AppError>
 }
 
 /// Elimina i file audio di un link, tranne quelli della versione `keep` (updated_at).
+/// Dopo aver preparato l'audio di una versione del link: elimina solo i file delle versioni
+/// **precedenti**. Un lavoro lento su una versione vecchia, che finisce dopo una modifica del link,
+/// non deve cancellare i file appena preparati per la versione nuova (l'anteprima per i social
+/// falliva con "No such file or directory" e mostrava l'immagine generica).
+fn drop_older_audio(st: &AppState, token: &str, current: u64) {
+    let Ok(rd) = std::fs::read_dir(audio_dir(st)) else { return };
+    let prefix = format!("{token}-");
+    for e in rd.filter_map(Result::ok) {
+        let p = e.path();
+        let Some(name) = p.file_name().and_then(|n| n.to_str()) else { continue };
+        // nome: <token>-<versione>-<indice>.mp3 oppure <token>-<versione>-og-<impronta>.jpg
+        let Some(rest) = name.strip_prefix(&prefix) else { continue };
+        let Some(version) = rest.split('-').next().and_then(|v| v.parse::<u64>().ok()) else { continue };
+        if version < current {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
 fn drop_audio(st: &AppState, token: &str, keep: Option<u64>) {
     let Ok(rd) = std::fs::read_dir(audio_dir(st)) else { return };
     let keep = keep.map(|v| format!("{token}-{v}-"));
@@ -217,7 +236,7 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
     };
     let (tmp, _) = mix_to_file(&dir.join("tmp"), items, &req, &format!("link {} #{i}", sh.title)).await?;
     tokio::fs::rename(&tmp, &out).await?;
-    drop_audio(st, &sh.token, Some(sh.updated_at));
+    drop_older_audio(st, &sh.token, sh.updated_at);
     Ok(out)
 }
 
@@ -366,22 +385,32 @@ async fn ensure_og(st: &AppState, sh: &Share) -> Result<PathBuf, AppError> {
 
 /// GET /api/public/:token/og.jpg — anteprima per i social; se non si può preparare, quella generica.
 pub async fn public_og(State(st): State<AppState>, UrlPath(token): UrlPath<String>, req: Request) -> Response {
+    let generic = st.0.static_dir.join("share-og.jpg");
     let path = match find(&st, &token) {
+        // un secondo tentativo copre un errore momentaneo (es. audio del mix rifatto nel frattempo)
         Some(sh) => match ensure_og(&st, &sh).await {
-            Ok(p) => p,
+            Ok(p) => Some(p),
             Err(e) => {
-                warn!("anteprima del link {token}: {}", e.1);
-                st.0.static_dir.join("share-og.jpg")
+                warn!("anteprima del link {token}: {}, nuovo tentativo", e.1);
+                match ensure_og(&st, &sh).await {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        warn!("anteprima del link {token}: {}, uso quella generica", e.1);
+                        None
+                    }
+                }
             }
         },
-        None => st.0.static_dir.join("share-og.jpg"),
+        None => None,
     };
-    let mut res = match tower_http::services::ServeFile::new(path).oneshot(req).await {
+    let ok = path.is_some();
+    let mut res = match tower_http::services::ServeFile::new(path.unwrap_or(generic)).oneshot(req).await {
         Ok(r) => r.into_response(),
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
     };
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, header::HeaderValue::from_static("public, max-age=3600"));
+    // l'immagine generica non va tenuta in cache: alla richiesta successiva arriva quella vera
+    let cache = if ok { "public, max-age=3600" } else { "no-cache, max-age=0" };
+    res.headers_mut().insert(header::CACHE_CONTROL, header::HeaderValue::from_static(cache));
     res
 }
 
