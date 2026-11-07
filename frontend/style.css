@@ -127,6 +127,11 @@ select {
 .knob { display: flex; align-items: center; gap: 6px; }
 .knob .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
 .knob output { min-width: 46px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* tonalità e velocità: larghezza su misura del valore più lungo ("+12", "150%"), così i pulsanti
+   restano vicini al numero e non si spostano quando cambia */
+.knob output#pitch { min-width: 3.2ch; }
+.knob output#tempo { min-width: 4.6ch; }
+.knob:has(#pitch), .knob:has(#tempo) { gap: 4px; }
 .knob .unit { color: var(--muted); font-size: 12px; }
 .knob button[data-pitch], .knob button[data-tempo] { width: 30px; padding: 4px 0; }
 .master { margin-left: auto; }
