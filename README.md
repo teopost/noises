@@ -264,7 +264,7 @@ flowchart LR
   S --> M[music21<br/>MusicXML]
   S --> F[ffmpeg<br/>mix ed export]
   S --> Y[yt-dlp<br/>import URL]
-  S --> DB[(SQLite<br/>utenti, sessioni)]
+  S --> DB[(PostgreSQL<br/>utenti, sessioni)]
   S --> FS[(/data<br/>brani, tracce, cache)]
   S -. SMTP .-> E[Email]
   S -. OAuth2 .-> G[Google]
@@ -272,7 +272,7 @@ flowchart LR
 
 | Livello | Tecnologia | Percorso |
 |---|---|---|
-| Server HTTP, coda, autenticazione, streaming | Rust · axum · tokio · rusqlite · argon2 · lettre · reqwest | `backend/` |
+| Server HTTP, coda, autenticazione, streaming | Rust · axum · tokio · tokio-postgres · argon2 · lettre · reqwest | `backend/` |
 | Separazione | Demucs v4 e Mel-Band RoFormer (PyTorch, CPU) | — |
 | Tonalità e velocità | AudioWorklet nel browser (ascolto) · Rubber Band (export) | `frontend/stretch-worklet.js` |
 | Accordi | BTC, vocabolario da 170 classi | `analysis/chords.py` |
@@ -286,11 +286,15 @@ Il motore AudioWorklet funziona solo in pagine sicure: HTTPS oppure `localhost` 
 
 ### Dati
 
-Tutto sta nel volume Docker `noises-data` (`/data`):
+Utenti, sessioni, token, inviti e registro di accessi e attività stanno in **PostgreSQL**
+(servizio `db` del compose, volume `noises-pg`; password in `POSTGRES_PASSWORD` nel `.env`).
+Aggiornando da una versione con SQLite, al primo avvio il vecchio `noises.db` viene importato
+automaticamente e rinominato in `noises.db.migrated`.
+
+Il resto sta nel volume Docker `noises-data` (`/data`):
 
 ```
 /data
-├── noises.db                 # utenti, sessioni, token, inviti, registro di accessi e attività (SQLite)
 ├── playlists.json
 ├── setlists.json             # scalette
 ├── shares.json               # link pubblici
@@ -379,7 +383,7 @@ Tutte le API sotto `/api` (tranne `/api/auth/*`, `/api/public/*` e `/api/health`
 | `make build` / `make rebuild` | build (senza cache con `rebuild`) |
 | `make update-ytdlp` | aggiorna yt-dlp, utile quando YouTube cambia |
 | `make open` | apre l'app nel browser |
-| `make clean` | rimuove container, immagine e **volume dati** (cancella brani e account) |
+| `make clean` | rimuove container, immagine e **volumi** dati e database (cancella brani e account) |
 | `make purge` | `clean` più pulizia della cache di build |
 
 ## Limiti noti

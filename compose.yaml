@@ -7,10 +7,16 @@ services:
     container_name: noises
     init: true
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "${NOISES_PORT:-8080}:8080"
     environment:
       RUST_LOG: ${RUST_LOG:-info}
+      # Database PostgreSQL (servizio db qui sotto). Al primo avvio un eventuale noises.db (SQLite)
+      # delle versioni precedenti viene importato e rinominato in noises.db.migrated.
+      DATABASE_URL: postgres://noises:${POSTGRES_PASSWORD:?imposta POSTGRES_PASSWORD in .env}@db:5432/noises
       # cpu | cuda (cuda richiede un'immagine torch con supporto GPU)
       DEMUCS_DEVICE: ${DEMUCS_DEVICE:-cpu}
       # Thread PyTorch per Demucs: su CPU ibride/laptop 4 è spesso più veloce del default
@@ -37,5 +43,25 @@ services:
     volumes:
       - noises-data:/data
 
+  db:
+    image: postgres:17-alpine
+    container_name: noises-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: noises
+      POSTGRES_DB: noises
+      # solo lettere e cifre (finisce dentro DATABASE_URL), es. openssl rand -hex 24
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?imposta POSTGRES_PASSWORD in .env}
+    # nessuna porta pubblicata: il database è raggiungibile solo dalla rete interna del compose
+    volumes:
+      - noises-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noises -d noises"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    shm_size: 128mb
+
 volumes:
   noises-data:
+  noises-pg:

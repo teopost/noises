@@ -14,12 +14,12 @@ use axum::{
     http::{Method, StatusCode},
     Extension, Json,
 };
-use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::{
     auth::{now, random_token, sha256_hex, Client, User},
+    db::{ts, u},
     bad_request, not_found, AppError, AppState,
 };
 
@@ -137,43 +137,45 @@ fn usage(st: &AppState) -> HashMap<String, (usize, usize, usize, usize, u64)> {
     m
 }
 
-fn list_users_db(st: &AppState) -> anyhow::Result<Vec<AdminUser>> {
-    let db = st.0.auth.db.lock().unwrap();
-    let mut q = db.prepare(
-        "SELECT id, email, name, is_admin, disabled, email_verified, google_sub IS NOT NULL, password_hash IS NOT NULL,
-                created_at, last_login, last_seen
-         FROM users ORDER BY created_at",
-    )?;
-    let rows = q
-        .query_map([], |r| {
-            Ok(AdminUser {
-                id: r.get(0)?,
-                email: r.get(1)?,
-                name: r.get(2)?,
-                role: if r.get::<_, bool>(3)? { "admin" } else { "user" },
-                disabled: r.get(4)?,
-                email_verified: r.get(5)?,
-                google: r.get(6)?,
-                has_password: r.get(7)?,
-                created_at: r.get(8)?,
-                last_login: r.get(9)?,
-                last_seen: r.get(10)?,
-                songs: 0,
-                projects: 0,
-                setlists: 0,
-                shares: 0,
-                bytes: 0,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows)
+async fn list_users_db(st: &AppState) -> anyhow::Result<Vec<AdminUser>> {
+    let rows = st
+        .0
+        .auth
+        .query(
+            "SELECT id, email::text, name, is_admin, disabled, email_verified, google_sub IS NOT NULL, password_hash IS NOT NULL,
+                    created_at, last_login, last_seen
+             FROM users ORDER BY created_at",
+            &[],
+        )
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| AdminUser {
+            id: r.get(0),
+            email: r.get(1),
+            name: r.get(2),
+            role: if r.get::<_, bool>(3) { "admin" } else { "user" },
+            disabled: r.get(4),
+            email_verified: r.get(5),
+            google: r.get(6),
+            has_password: r.get(7),
+            created_at: u(r.get(8)),
+            last_login: r.get::<_, Option<i64>>(9).map(u),
+            last_seen: r.get::<_, Option<i64>>(10).map(u),
+            songs: 0,
+            projects: 0,
+            setlists: 0,
+            shares: 0,
+            bytes: 0,
+        })
+        .collect())
 }
 
 pub async fn users(State(st): State<AppState>, Extension(me): Extension<User>) -> Result<Json<Vec<AdminUser>>, AppError> {
     require_admin(&me)?;
     let st2 = st.clone();
     let use_ = tokio::task::spawn_blocking(move || usage(&st2)).await?;
-    let mut list = list_users_db(&st)?;
+    let mut list = list_users_db(&st).await?;
     for u in &mut list {
         if let Some(x) = use_.get(&u.id) {
             (u.songs, u.projects, u.setlists, u.shares, u.bytes) = *x;
@@ -191,12 +193,13 @@ pub struct UserPatch {
 }
 
 /// Amministratori attivi, escluso `except`.
-fn other_admins(st: &AppState, except: &str) -> anyhow::Result<i64> {
-    Ok(st.0.auth.db.lock().unwrap().query_row(
-        "SELECT COUNT(*) FROM users WHERE is_admin = 1 AND disabled = 0 AND id != ?1",
-        params![except],
-        |r| r.get(0),
-    )?)
+async fn other_admins(st: &AppState, except: &str) -> anyhow::Result<i64> {
+    Ok(st
+        .0
+        .auth
+        .query_one("SELECT COUNT(*) FROM users WHERE is_admin AND NOT disabled AND id != $1", &[&except])
+        .await?
+        .get(0))
 }
 
 pub async fn update_user(
@@ -208,9 +211,9 @@ pub async fn update_user(
 ) -> Result<StatusCode, AppError> {
     require_admin(&me)?;
     let auth = &st.0.auth;
-    let target = auth_user(&st, &id)?;
+    let target = auth_user(&st, &id).await?;
     let losing_admin = (b.role.as_deref() == Some("user") && target.is_admin) || (b.disabled == Some(true) && target.is_admin);
-    if losing_admin && other_admins(&st, &id)? == 0 {
+    if losing_admin && other_admins(&st, &id).await? == 0 {
         return Err(bad_request("deve restare almeno un amministratore attivo"));
     }
     if b.disabled == Some(true) && id == me.id {
@@ -223,35 +226,36 @@ pub async fn update_user(
             "user" => false,
             _ => return Err(bad_request("ruolo non valido")),
         };
-        auth.exec("UPDATE users SET is_admin = ?1 WHERE id = ?2", params![admin, id])?;
-        auth.log_event(Some(&me.id), &me.email, "admin", &format!("Ruolo di {} → {}", target.email, if admin { "amministratore" } else { "utente" }), "", 200, &client);
+        auth.exec("UPDATE users SET is_admin = $1 WHERE id = $2", &[&admin, &id]).await?;
+        auth.log_event(Some(&me.id), &me.email, "admin", &format!("Ruolo di {} → {}", target.email, if admin { "amministratore" } else { "utente" }), "", 200, &client).await;
     }
     if let Some(d) = b.disabled {
-        auth.exec("UPDATE users SET disabled = ?1 WHERE id = ?2", params![d, id])?;
+        auth.exec("UPDATE users SET disabled = $1 WHERE id = $2", &[&d, &id]).await?;
         if d {
-            auth.exec("DELETE FROM sessions WHERE user_id = ?1", params![id])?; // esce subito
+            auth.exec("DELETE FROM sessions WHERE user_id = $1", &[&id]).await?; // esce subito
         }
-        auth.log_event(Some(&me.id), &me.email, "admin", &format!("{} {}", if d { "Disattivato" } else { "Riattivato" }, target.email), "", 200, &client);
+        auth.log_event(Some(&me.id), &me.email, "admin", &format!("{} {}", if d { "Disattivato" } else { "Riattivato" }, target.email), "", 200, &client).await;
     }
     info!("amministrazione: {} ha modificato {}", me.email, target.email);
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn auth_user(st: &AppState, id: &str) -> Result<User, AppError> {
-    let db = st.0.auth.db.lock().unwrap();
-    db.query_row("SELECT id, email, name, email_verified, is_admin FROM users WHERE id = ?1", params![id], |r| {
-        Ok(User {
-            id: r.get(0)?,
-            email: r.get(1)?,
-            name: r.get(2)?,
-            email_verified: r.get(3)?,
-            is_admin: r.get(4)?,
-            has_password: false,
-            google: false,
-        })
+async fn auth_user(st: &AppState, id: &str) -> Result<User, AppError> {
+    let r = st
+        .0
+        .auth
+        .query_opt("SELECT id, email::text, name, email_verified, is_admin FROM users WHERE id = $1", &[&id])
+        .await?
+        .ok_or_else(not_found)?;
+    Ok(User {
+        id: r.get(0),
+        email: r.get(1),
+        name: r.get(2),
+        email_verified: r.get(3),
+        is_admin: r.get(4),
+        has_password: false,
+        google: false,
     })
-    .optional()?
-    .ok_or_else(not_found)
 }
 
 // ------------------------------------------------------------------------------ inviti
@@ -270,26 +274,29 @@ pub struct Invite {
 
 pub async fn invites(State(st): State<AppState>, Extension(me): Extension<User>) -> Result<Json<Vec<Invite>>, AppError> {
     require_admin(&me)?;
-    let db = st.0.auth.db.lock().unwrap();
-    let mut q = db.prepare(
-        "SELECT i.id, i.email, i.role, a.email, i.created_at, i.expires_at, i.used_at, u.email
-         FROM invites i LEFT JOIN users a ON a.id = i.invited_by LEFT JOIN users u ON u.id = i.used_by
-         ORDER BY i.created_at DESC LIMIT 200",
-    )?;
-    let list = q
-        .query_map([], |r| {
-            Ok(Invite {
-                id: r.get(0)?,
-                email: r.get(1)?,
-                role: r.get(2)?,
-                invited_by: r.get(3)?,
-                created_at: r.get(4)?,
-                expires_at: r.get(5)?,
-                used_at: r.get(6)?,
-                used_by: r.get(7)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    let rows = st
+        .0
+        .auth
+        .query(
+            "SELECT i.id, i.email::text, i.role, a.email::text, i.created_at, i.expires_at, i.used_at, u.email::text
+             FROM invites i LEFT JOIN users a ON a.id = i.invited_by LEFT JOIN users u ON u.id = i.used_by
+             ORDER BY i.created_at DESC LIMIT 200",
+            &[],
+        )
+        .await?;
+    let list = rows
+        .iter()
+        .map(|r| Invite {
+            id: r.get(0),
+            email: r.get(1),
+            role: r.get(2),
+            invited_by: r.get(3),
+            created_at: u(r.get(4)),
+            expires_at: u(r.get(5)),
+            used_at: r.get::<_, Option<i64>>(6).map(u),
+            used_by: r.get(7),
+        })
+        .collect();
     Ok(Json(list))
 }
 
@@ -326,24 +333,19 @@ pub async fn create_invite(
         r @ ("admin" | "user") => r.to_owned(),
         _ => return Err(bad_request("ruolo non valido")),
     };
-    let exists: bool = auth
-        .db
-        .lock()
-        .unwrap()
-        .query_row("SELECT 1 FROM users WHERE email = ?1", params![email], |_| Ok(true))
-        .optional()?
-        .unwrap_or(false);
+    let exists = auth.query_opt("SELECT 1 FROM users WHERE email = $1", &[&email]).await?.is_some();
     if exists {
         return Err(bad_request("esiste già un account con questo indirizzo"));
     }
     // un nuovo invito sostituisce quelli non ancora usati per lo stesso indirizzo
-    auth.exec("DELETE FROM invites WHERE email = ?1 AND used_at IS NULL", params![email])?;
+    auth.exec("DELETE FROM invites WHERE email = $1 AND used_at IS NULL", &[&email]).await?;
     let token = random_token();
     let id = uuid::Uuid::new_v4().to_string();
     auth.exec(
-        "INSERT INTO invites (id, token_hash, email, role, invited_by, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![id, sha256_hex(&token), email, role, me.id, now(), now() + INVITE_TTL],
-    )?;
+        "INSERT INTO invites (id, token_hash, email, role, invited_by, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        &[&id, &sha256_hex(&token), &email, &role, &me.id, &ts(now()), &ts(now() + INVITE_TTL)],
+    )
+    .await?;
     let link = format!("{}/?invite={token}", auth.config.public_url);
     let (subject, text) = if b.en {
         ("You're invited to Noises", format!("Hi,\n{} invited you to Noises: split tracks, practise with loops and play your songs.\nCreate your account with this link (valid for 7 days).", me.name))
@@ -361,7 +363,7 @@ pub async fn create_invite(
     } else {
         (false, None)
     };
-    auth.log_event(Some(&me.id), &me.email, "admin", &format!("Invitato {email} ({role})"), "", 200, &Client::from_headers(&headers));
+    auth.log_event(Some(&me.id), &me.email, "admin", &format!("Invitato {email} ({role})"), "", 200, &Client::from_headers(&headers)).await;
     info!("invito per {email} ({role}) da {}", me.email);
     Ok(Json(InviteCreated { id, link, emailed, email_error }))
 }
@@ -372,7 +374,7 @@ pub async fn delete_invite(
     UrlPath(id): UrlPath<String>,
 ) -> Result<StatusCode, AppError> {
     require_admin(&me)?;
-    if st.0.auth.exec("DELETE FROM invites WHERE id = ?1 AND used_at IS NULL", params![id])? == 0 {
+    if st.0.auth.exec("DELETE FROM invites WHERE id = $1 AND used_at IS NULL", &[&id]).await? == 0 {
         return Err(not_found());
     }
     Ok(StatusCode::NO_CONTENT)
@@ -422,40 +424,37 @@ pub async fn events(
         _ => &[],
     };
     let mut sql = String::from(
-        "SELECT id, at, user_id, email, kind, detail, path, status, count, ip, ua FROM events WHERE id < ?1",
+        "SELECT id, at, user_id, email, kind, detail, path, status, count, ip, ua FROM events WHERE id < $1",
     );
     if !kinds.is_empty() {
         sql += &format!(" AND kind IN ({})", kinds.iter().map(|k| format!("'{k}'")).collect::<Vec<_>>().join(","));
     }
     if q.user.as_deref().is_some_and(|u| !u.is_empty()) {
-        sql += " AND user_id = ?3";
+        sql += " AND user_id = $3";
     } else {
-        sql += " AND ?3 IS NULL";
+        sql += " AND $3::text IS NULL";
     }
-    sql += " ORDER BY id DESC LIMIT ?2";
-    let db = st.0.auth.db.lock().unwrap();
-    let mut stmt = db.prepare(&sql)?;
+    sql += " ORDER BY id DESC LIMIT $2";
     let user = q.user.filter(|u| !u.is_empty());
-    let list = stmt
-        .query_map(
-            params![q.before.unwrap_or(i64::MAX), q.limit.unwrap_or(100).clamp(1, 500), user],
-            |r| {
-                Ok(Event {
-                    id: r.get(0)?,
-                    at: r.get(1)?,
-                    user_id: r.get(2)?,
-                    email: r.get(3)?,
-                    kind: r.get(4)?,
-                    detail: r.get(5)?,
-                    path: r.get(6)?,
-                    status: r.get(7)?,
-                    count: r.get(8)?,
-                    ip: r.get(9)?,
-                    ua: r.get(10)?,
-                })
-            },
-        )?
-        .collect::<Result<Vec<_>, _>>()?;
+    let before = q.before.unwrap_or(i64::MAX);
+    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    let rows = st.0.auth.query(&sql, &[&before, &limit, &user]).await?;
+    let list = rows
+        .iter()
+        .map(|r| Event {
+            id: r.get(0),
+            at: u(r.get(1)),
+            user_id: r.get(2),
+            email: r.get(3),
+            kind: r.get(4),
+            detail: r.get(5),
+            path: r.get(6),
+            status: r.get::<_, i32>(7).clamp(0, u16::MAX as i32) as u16,
+            count: r.get::<_, i32>(8).max(0) as u32,
+            ip: r.get(9),
+            ua: r.get(10),
+        })
+        .collect();
     Ok(Json(list))
 }
 
@@ -592,11 +591,8 @@ pub async fn system(State(st): State<AppState>, Extension(me): Extension<User>) 
     require_admin(&me)?;
     let l = latest().read().unwrap().clone();
     let update_available = l.as_ref().is_some_and(|r| is_newer(&r.version, env!("CARGO_PKG_VERSION")));
-    let (users, admins): (usize, usize) = st.0.auth.db.lock().unwrap().query_row(
-        "SELECT COUNT(*), COALESCE(SUM(is_admin), 0) FROM users",
-        [],
-        |r| Ok((r.get::<_, i64>(0)? as usize, r.get::<_, i64>(1)? as usize)),
-    )?;
+    let r = st.0.auth.query_one("SELECT COUNT(*), COUNT(*) FILTER (WHERE is_admin) FROM users", &[]).await?;
+    let (users, admins) = (r.get::<_, i64>(0) as usize, r.get::<_, i64>(1) as usize);
     let data = st.0.data_dir.clone();
     let (data_bytes, free) = tokio::task::spawn_blocking(move || (dir_size(&data), disk_free(&data))).await?;
     let c = &st.0.auth.config;

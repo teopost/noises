@@ -8,6 +8,7 @@
 mod admin;
 mod auth;
 mod backup;
+mod db;
 mod projects;
 mod setlists;
 mod shares;
@@ -2099,7 +2100,7 @@ async fn main() -> anyhow::Result<()> {
     let saved_setlists = setlists::load(&data_dir);
     let saved_shares = shares::load(&data_dir);
     let st = AppState(Arc::new(Inner {
-        auth: auth::Auth::open(&data_dir)?,
+        auth: auth::Auth::open(&data_dir).await?,
         projects: RwLock::new(projects),
         data_dir,
         analysis_dir: env("ANALYSIS_DIR", "/app/analysis").into(),

@@ -10,7 +10,10 @@ base64 = "0.22"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls", "hostname"] }
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# rusqlite: solo per importare una volta il vecchio noises.db (SQLite) in PostgreSQL
 rusqlite = { version = "0.32", features = ["bundled"] }
+deadpool-postgres = "0.14"
+tokio-postgres = "0.7"
 sha2 = "0.10"
 axum = { version = "0.7", features = ["multipart"] }
 serde = { version = "1", features = ["derive"] }
