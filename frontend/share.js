@@ -4,7 +4,15 @@
 
 (() => {
   const $ = (s) => document.querySelector(s);
-  const EN = !/^it\b/i.test(navigator.language || '');
+  // prima lingua preferita tra italiano e inglese (come nell'app, vedi i18n.js)
+  const EN = (() => {
+    const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''];
+    for (const l of list) {
+      if (/^it\b/i.test(l)) return false;
+      if (/^en\b/i.test(l)) return true;
+    }
+    return true;
+  })();
   const L = EN ? {
     preparing: 'Preparing the audio…', loading: 'Loading', gone: 'This link is no longer active.',
     failed: 'The audio could not be loaded. Try again in a moment.', sections: 'Sections', loop: 'Loop', full: 'Full mix',

@@ -5,8 +5,19 @@
 // alert/confirm/prompt e nei messaggi d'errore del server. Le frasi con parti variabili usano {…}.
 // Dove un testo diventa un dato (nomi predefiniti, etichette disegnate) si usa T() esplicitamente.
 
-// La lingua è quella del browser: italiano se è l'italiano, altrimenti inglese.
-const LANG = /^it\b/i.test(navigator.language || '') ? 'it' : 'en';
+// La lingua è quella del browser: si scorrono le lingue preferite (navigator.languages, nell'ordine
+// scelto dall'utente) e vince la prima tra italiano e inglese. Basta che l'italiano sia tra le lingue
+// preferite prima dell'inglese, anche se l'interfaccia del browser o del sistema è in un'altra lingua.
+// Nessuna delle due → inglese.
+function browserLang() {
+  const list = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || '']);
+  for (const l of list) {
+    if (/^it\b/i.test(l)) return 'it';
+    if (/^en\b/i.test(l)) return 'en';
+  }
+  return 'en';
+}
+const LANG = browserLang();
 document.documentElement.lang = LANG;
 try { localStorage.removeItem('noises.lang'); } catch {} // scelta manuale delle versioni precedenti
 

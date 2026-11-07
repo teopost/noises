@@ -1061,3 +1061,27 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .auth-msg { font-size: 14.5px; }
 .auth .sep { font-size: 13.5px; }
 .auth .google-btn { font-size: 15.5px; padding: 12px; }
+
+/* ---- amministrazione: stesse dimensioni del form di accesso e registrazione ----
+   testo e campi 16px, etichette e intestazioni 14px, note e dettagli 13.5px */
+.admin-dlg { font-size: 16px; }
+.adm-head h2 { font-size: 22px; }
+.adm-tabs button { font-size: 16px; padding: 8px 14px; }
+.adm-count { font-size: 14px; }
+.adm-table { font-size: 16px; }
+.adm-table th { font-size: 14px; }
+.adm-table th, .adm-table td { padding: 10px 12px; }
+.adm-table small { font-size: 13.5px; }
+.adm-acts button { font-size: 14.5px; padding: 5px 11px; }
+.admin-dlg input, .admin-dlg select { font-size: 16px; }
+.admin-dlg .adm-invite button, .admin-dlg .adm-bar button { font-size: 16px; padding: 10px 16px; }
+.adm-invite label { font-size: 14px; gap: 6px; }
+.adm-note { font-size: 15px; }
+.adm-notes { font-size: 13.5px; }
+.adm-stats b { font-size: 26px; }
+.adm-stats span { font-size: 14px; }
+.admin-dlg .hint { font-size: 13.5px; }
+.admin-dlg .pill { font-size: 13.5px; padding: 2px 10px; }
+.admin-dlg .tag { font-size: 13.5px; }
+.admin-dlg .avatar.sm { width: 36px; height: 36px; font-size: 15px; }
+.admin-dlg .adm-role { font-size: 16px; }
