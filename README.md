@@ -8,7 +8,7 @@ Web app self-hosted in stile Moises: separazione delle tracce con l'AI, mixer mu
 cambio di tonalità e velocità indipendenti, accordi, trascrizione delle note, spartito, tablatura,
 click intelligente ed esportazione di basi.
 
-![Versione](https://img.shields.io/badge/versione-1.3.0-7c5cff)
+![Versione](https://img.shields.io/badge/versione-2.0.0-7c5cff)
 ![Licenza](https://img.shields.io/badge/licenza-MIT-2bd47d)
 ![Rust](https://img.shields.io/badge/backend-Rust%20%2B%20axum-orange)
 ![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
