@@ -850,22 +850,29 @@ function drawFolder(g) {
     ctx.strokeRect(x0 + 0.5 * dpr, 2 * dpr, x1 - x0 - dpr, h - 4 * dpr);
   }
   drawLinkStrip(ctx, rep.clips, w, dpr);
+  // forma d'onda: piena per le tracce che si sentono, attenuata per quelle mute o escluse da un solo
+  // (come le tracce singole), così non sparisce quando si mette in solo un'altra traccia
+  const audible = kids.map((kid) => engine.isAudible(kid));
+  const bar = (x, peak) => {
+    const y = Math.max(dpr * 0.5, Math.min(1, peak) * (mid - 4 * dpr) * 0.95);
+    ctx.fillRect(x, mid - y, 1, y * 2);
+  };
   ctx.fillStyle = USER_COLOR;
   for (let x = 0; x < w; x++) {
     const t0 = (sl + x / dpr) / z / k, t1 = (sl + (x + 1) / dpr) / z / k;
-    let peak = 0;
-    for (const kid of kids) {
-      if (!engine.isAudible(kid)) continue;
+    let peak = 0, peakAll = 0;
+    kids.forEach((kid, j) => {
       const c = kid.clips.find((cc) => t0 >= cc.start && t0 < cc.start + cc.duration);
-      if (!c) continue;
+      if (!c) return;
       const b0 = Math.max(0, Math.floor((t0 - c.start + c.offset) * bps)), b1 = Math.max(b0 + 1, Math.floor((t1 - c.start + c.offset) * bps));
       const stride = Math.max(1, Math.floor((b1 - b0) / 64));
-      for (let i = b0; i < b1 && i < kid.peaks.length; i += stride) if (kid.peaks[i] * kid.volume > peak) peak = kid.peaks[i] * kid.volume;
-    }
-    if (peak > 0) {
-      const y = Math.max(dpr * 0.5, Math.min(1, peak) * (mid - 4 * dpr) * 0.95);
-      ctx.fillRect(x, mid - y, 1, y * 2);
-    }
+      let m = 0;
+      for (let i = b0; i < b1 && i < kid.peaks.length; i += stride) if (kid.peaks[i] * kid.volume > m) m = kid.peaks[i] * kid.volume;
+      if (m > peakAll) peakAll = m;
+      if (audible[j] && m > peak) peak = m;
+    });
+    if (peakAll > peak) { ctx.globalAlpha = 0.25; bar(x, peakAll); ctx.globalAlpha = 1; }
+    if (peak > 0) bar(x, peak);
   }
 }
 

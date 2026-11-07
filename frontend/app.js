@@ -1062,6 +1062,7 @@ function syncTrackButtons() {
     tr.row.classList.toggle('silent', !engine.isAudible(tr));
   }
   drawOverview();
+  requestRedraw(); // le righe dei gruppi disegnano diverse le tracce che non si sentono
 }
 
 /** Ricalcola larghezze (contenuto, area visibile) e ridisegna. */
