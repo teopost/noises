@@ -501,7 +501,7 @@ async fn upload(
     tokio::fs::create_dir_all(&dir).await?;
 
     let result = match receive_upload(&dir, &mut mp).await {
-        Ok(v) => keep_audio_only(&dir).await.map(|()| v),
+        Ok(v) => keep_audio_only(&dir).await.map(|()| v).map_err(|e| bad_request(format!("{e:#}"))),
         Err(e) => Err(e),
     };
     let (name, model) = match result {
@@ -588,8 +588,9 @@ async fn receive_upload(dir: &Path, mp: &mut Multipart) -> Result<(String, Strin
 /// Se il file caricato è un video (per esempio ripreso col telefono), ne tiene solo l'audio
 /// in `input.flac` e cancella il video: separazione e analisi lavorano su un file audio
 /// e il video non occupa spazio. Le copertine dei file audio (mp3, m4a…) non contano come video.
-async fn keep_audio_only(dir: &Path) -> Result<(), AppError> {
-    let input = find_input(dir).map_err(|_| bad_request("nessun file inviato"))?;
+/// Usata anche dopo i download da link, quando il sito offre solo il video completo.
+async fn keep_audio_only(dir: &Path) -> anyhow::Result<()> {
+    let input = find_input(dir).map_err(|_| anyhow!("nessun file inviato"))?;
     let probe = Command::new("ffprobe")
         .args(["-v", "error", "-show_entries", "stream=codec_type:stream_disposition=attached_pic", "-of", "csv=p=0"])
         .arg(&input)
@@ -603,7 +604,7 @@ async fn keep_audio_only(dir: &Path) -> Result<(), AppError> {
         return Ok(());
     }
     if !has("audio") {
-        return Err(bad_request("il video non contiene audio"));
+        bail!("il video non contiene audio");
     }
     let tmp = dir.join("audio.tmp.flac");
     let conv = Command::new("ffmpeg")
@@ -617,7 +618,7 @@ async fn keep_audio_only(dir: &Path) -> Result<(), AppError> {
         .context("avvio ffmpeg")?;
     if !conv.status.success() {
         let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(bad_request("impossibile estrarre l'audio dal video"));
+        bail!("impossibile estrarre l'audio dal video");
     }
     tokio::fs::remove_file(&input).await?;
     tokio::fs::rename(&tmp, dir.join("input.flac")).await?;
@@ -1353,6 +1354,7 @@ async fn download_task(st: AppState, id: String) {
 }
 
 /// Scarica l'audio con yt-dlp in `input.<ext>` e restituisce il titolo.
+/// Funziona con YouTube e con gli altri siti supportati da yt-dlp (Facebook, Instagram, Vimeo…).
 async fn download(st: &AppState, id: &str) -> anyhow::Result<String> {
     let url = st
         .get(id)
@@ -1434,7 +1436,7 @@ async fn download(st: &AppState, id: &str) -> anyhow::Result<String> {
         .and_then(|v| v.get("title").and_then(|t| t.as_str()).map(str::to_owned))
         .unwrap_or_else(|| "Brano importato".to_owned());
     let _ = tokio::fs::remove_file(info_path).await;
-    find_input(&dir)?;
+    keep_audio_only(&dir).await?;
     Ok(title)
 }
 
