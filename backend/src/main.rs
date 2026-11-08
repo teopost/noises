@@ -9,6 +9,7 @@ mod admin;
 mod auth;
 mod backup;
 mod db;
+mod fx;
 mod projects;
 mod setlists;
 mod shares;
@@ -43,7 +44,7 @@ use tower_http::{
 };
 use tracing::{error, info, warn};
 
-const MODELS: &[&str] = &["htdemucs", "htdemucs_ft", "htdemucs_6s", "roformer", "roformer_6s"];
+const MODELS: &[&str] = &["htdemucs", "htdemucs_ft", "htdemucs_6s", "roformer", "roformer_ft", "roformer_6s"];
 const STEM_ORDER: &[&str] = &["vocals", "drums", "bass", "guitar", "piano", "other"];
 const CHORD_QUALITIES: &[&str] = &[
     "min", "maj", "dim", "aug", "min6", "maj6", "min7", "minmaj7", "maj7", "7", "dim7", "hdim7",
@@ -1593,11 +1594,12 @@ fn write_click_wav(path: &Path, c: &ClickSpec) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Sorgente da mixare: file (già con tonalità/velocità) e sue clip sulla timeline.
+/// Sorgente da mixare: file (già con tonalità/velocità), sue clip sulla timeline ed effetti.
 struct MixInput {
     path: PathBuf,
     clips: Vec<Clip>,
     gain: f32,
+    fx: Option<fx::Fx>,
 }
 
 /// Mixa le sorgenti con ffmpeg e restituisce il contenuto del file (scaricato dal browser).
@@ -1635,6 +1637,11 @@ async fn mix_to_file(
     let scale = 100.0 / req.tempo.unwrap_or(100).clamp(25, 200) as f64;
     let mut inputs: Vec<PathBuf> = vec![];
     let mut filter = String::new();
+    let mut sends: Vec<String> = vec![];
+    // con il riverbero ogni traccia continua 2,5 s in silenzio: ci finisce la coda del riverbero e
+    // ffmpeg non perde la fine del brano (senza, asplit + afir tagliavano gli ultimi ~0,15 s)
+    let ir_path = fx::REVERB_IR.get().filter(|p| p.exists()).cloned();
+    let reverb = ir_path.is_some() && items.iter().any(|it| it.fx.as_ref().is_some_and(|f| f.clone().clamped().send() > 0.0));
     for (k, it) in items.iter().enumerate() {
         inputs.push(it.path.clone());
         let n = it.clips.len();
@@ -1657,13 +1664,46 @@ async fn mix_to_file(
         if n > 1 {
             filter += &format!("amix=inputs={n}:normalize=0:duration=longest,");
         }
-        filter += &format!("volume={:.4}[a{k}];", it.gain.clamp(0.0, 2.0));
+        // effetti della traccia, poi il volume (come nell'editor) e la mandata al riverbero
+        let mut volume = format!("volume={:.4}", it.gain.clamp(0.0, 2.0));
+        if reverb {
+            volume += ",apad=pad_dur=2.5";
+        }
+        match it.fx.as_ref().and_then(|f| f.graph(&format!("p{k}"), &format!("q{k}"), k)) {
+            Some(g) => filter += &format!("anull[p{k}];{g}[q{k}]{volume}"),
+            None => filter += &volume,
+        }
+        let send = it.fx.as_ref().map_or(0.0, |f| f.clone().clamped().send());
+        if send > 0.0 && reverb {
+            filter += &format!(",asplit=2[a{k}][s{k}];[s{k}]volume={send:.6}[r{k}];");
+            sends.push(format!("[r{k}]"));
+        } else {
+            filter += &format!("[a{k}];");
+        }
     }
+    // riverbero condiviso: la somma delle mandate attraversa una sola risposta all'impulso
+    let has_reverb = reverb && !sends.is_empty();
+    if let (true, Some(ir_path)) = (has_reverb, ir_path) {
+        inputs.push(ir_path);
+        let ir = inputs.len() - 1;
+        const STEREO: &str = "aformat=sample_fmts=flt:sample_rates=44100:channel_layouts=stereo";
+        filter += &sends.concat();
+        if sends.len() > 1 {
+            filter += &format!("amix=inputs={}:normalize=0:duration=longest,", sends.len());
+        }
+        // afir di ffmpeg 5.1 restituisce la convoluzione raddoppiata anche senza guadagno automatico
+        // (misurato con un impulso): 0,5 la riporta identica al ConvolverNode dell'editor
+        filter += &format!("{STEREO}[rvin];[{ir}:a]{STEREO}[rvir];[rvin][rvir]afir=gtype=none,volume=0.5[rv];");
+    }
+    let mains = items.len() + usize::from(has_reverb);
     for k in 0..items.len() {
         filter += &format!("[a{k}]");
     }
-    if items.len() > 1 {
-        filter += &format!("amix=inputs={}:normalize=0:duration=longest,", items.len());
+    if has_reverb {
+        filter += "[rv]";
+    }
+    if mains > 1 {
+        filter += &format!("amix=inputs={mains}:normalize=0:duration=longest,");
     } else {
         filter += "anull,";
     }
@@ -1881,10 +1921,12 @@ async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
     Ok(stems)
 }
 
-/// Modelli "massima qualità": la voce con Mel-Band RoFormer, il resto diviso da Demucs.
+/// Modelli "massima qualità": la voce con Mel-Band RoFormer, il resto diviso da Demucs
+/// (con `roformer_ft` dal Demucs perfezionato, un modello per traccia: il più accurato e il più lento).
 fn roformer_pair(model: &str) -> Option<&'static str> {
     match model {
         "roformer" => Some("htdemucs"),
+        "roformer_ft" => Some("htdemucs_ft"),
         "roformer_6s" => Some("htdemucs_6s"),
         _ => None,
     }
@@ -1975,8 +2017,8 @@ async fn separate_roformer(
         .kill_on_drop(true)
         .spawn()
         .context("avvio RoFormer")?;
-    // la voce pesa circa i due terzi del tempo totale
-    const VOICE: f32 = 0.7;
+    // la voce pesa circa i due terzi del tempo totale (meno della metà con il Demucs perfezionato, 4 passate)
+    let voice: f32 = if demucs_model == "htdemucs_ft" { 0.4 } else { 0.7 };
     let mut tail: VecDeque<String> = VecDeque::new();
     let mut downloading = false;
     for_each_line(child.stderr.take().unwrap(), |s| {
@@ -1994,7 +2036,7 @@ async fn separate_roformer(
             }
             st.update(id, false, |x| {
                 x.phase = Some("Voce (RoFormer)".into());
-                x.progress = p / 100.0 * VOICE;
+                x.progress = p / 100.0 * voice;
             });
         } else if !s.contains("Warning") && !s.contains("autocast") {
             tail.push_back(s);
@@ -2012,7 +2054,7 @@ async fn separate_roformer(
         bail!("RoFormer fallito ({status}): {}", tail.into_iter().collect::<Vec<_>>().join(" | "));
     }
     st.update(id, false, |x| x.phase = Some("Strumenti (Demucs)".into()));
-    let out_dir = run_demucs(st, id, demucs_model, &rf_dir.join("instrumental.wav"), sep_dir, (VOICE, 0.99)).await?;
+    let out_dir = run_demucs(st, id, demucs_model, &rf_dir.join("instrumental.wav"), sep_dir, (voice, 0.99)).await?;
 
     let stems_dir = dir.join("stems");
     tokio::fs::create_dir_all(&stems_dir).await?;
@@ -2141,6 +2183,7 @@ async fn main() -> anyhow::Result<()> {
     let env = |k: &str, d: &str| std::env::var(k).unwrap_or_else(|_| d.to_owned());
     let data_dir = PathBuf::from(env("DATA_DIR", "/data"));
     let static_dir = PathBuf::from(env("STATIC_DIR", "/app/static"));
+    let _ = fx::REVERB_IR.set(static_dir.join("reverb.wav"));
     let port: u16 = env("PORT", "8080").parse()?;
     let render_jobs: usize = env("RENDER_JOBS", "0").parse().unwrap_or(0);
     let render_jobs = if render_jobs == 0 {

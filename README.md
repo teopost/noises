@@ -47,8 +47,9 @@ click intelligente ed esportazione di basi.
 
 ### Separazione e mixer
 - **Separazione delle tracce** con [Demucs v4](https://github.com/facebookresearch/demucs): 4 tracce (voce, batteria, basso, altro), 4 tracce in alta qualità, oppure 6 tracce (+ chitarra e piano). Si avvia dal menu ⋯ della traccia, quando vuoi tu.
-- **Voce di massima qualità** con [Mel-Band RoFormer](https://huggingface.co/KimberleyJSN/melbandroformer) (4 o 6 tracce): la voce la separa RoFormer, più pulita di Demucs, e Demucs divide il resto. Sulla CPU è molto più lento (circa 8–10 minuti per minuto di brano su un portatile); il modello (900 MB) si scarica al primo uso in `/data/models`. Con una GPU (`DEMUCS_DEVICE=cuda`) la usa anche RoFormer.
+- **Voce di massima qualità** con [Mel-Band RoFormer](https://huggingface.co/KimberleyJSN/melbandroformer) (4 o 6 tracce): la voce la separa RoFormer, più pulita di Demucs, e Demucs divide il resto. Con **RoFormer + HQ** anche batteria, basso e resto escono dal Demucs in alta qualità (un modello per traccia): la qualità più alta su tutte le tracce, e la separazione più lenta. Sulla CPU è molto più lento (circa 8–10 minuti per minuto di brano su un portatile); il modello (900 MB) si scarica al primo uso in `/data/models`. Con una GPU (`DEMUCS_DEVICE=cuda`) la usa anche RoFormer.
 - **Mixer** con muto, solo e volume per traccia e per gruppo, volume master.
+- **Effetti per traccia**, per migliorare il suono delle tracce separate (ad esempio da un brano dal vivo): **equalizzatore** (taglio dei bassi, bassi, medi con frequenza regolabile, alti), **definizione** (ricrea le armoniche acute di una traccia ovattata, come il basso separato), **compressore** con attacco regolabile e **riverbero**. Preset per tipo di traccia, confronto immediato con l'originale (*Attivi*) e regolazione in tempo reale durante l'ascolto. Gli effetti sono salvati nel progetto e si sentono uguali nei file esportati e nei link condivisi.
 - **Tonalità** (±12 semitoni) e **velocità** (50–150%) indipendenti, applicate **in tempo reale** nel browser; nei file esportati con [Rubber Band](https://breakfastquay.com/rubberband/). La tonalità del brano, già trasposta, compare accanto ai comandi.
 
 ### Editor multitraccia
@@ -201,6 +202,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Zoom | `Ctrl` + rotella, pinch, slider, oppure i bordi del riquadro nella panoramica |
 | Scorrere | trascina il riquadro della panoramica, `Shift` + rotella, trackpad |
 | Separare, rinominare, duplicare, esportare, eliminare una traccia | menu **⋯** della traccia |
+| Effetti di una traccia (equalizzatore, definizione, compressore, riverbero) | menu **⋯** → *Aggiungi effetti…*, poi il pulsante **FX** sulla traccia; togli *Attivi* per confrontare con l'originale, doppio clic su un cursore per azzerarlo |
 | Note e spartito di una traccia separata | menu **⋯** → Mostra note · Spartito e tablatura |
 | Modificare le note | clic per selezionare · trascina per spostare · bordo destro per la durata · doppio clic per aggiungere · `Canc` per eliminare · `↑`/`↓` per un semitono · `Shift` per muoversi senza griglia |
 | Correggere un accordo | clic sull'accordo; trascina il bordo sinistro per spostare il cambio |
@@ -278,12 +280,15 @@ flowchart LR
 | Server HTTP, coda, autenticazione, streaming | Rust · axum · tokio · tokio-postgres · argon2 · lettre · reqwest | `backend/` |
 | Separazione | Demucs v4 e Mel-Band RoFormer (PyTorch, CPU) | — |
 | Tonalità e velocità | AudioWorklet nel browser (ascolto) · Rubber Band (export) | `frontend/stretch-worklet.js` |
+| Effetti per traccia | AudioWorklet e ConvolverNode nel browser (ascolto) · ffmpeg con gli stessi calcoli (export, link) | `frontend/fx-worklet.js`, `backend/src/fx.rs` |
 | Accordi | BTC, vocabolario da 170 classi | `analysis/chords.py` |
 | Note e battiti | Basic Pitch (ONNX, senza TensorFlow), librosa | `analysis/transcribe.py` |
 | Spartito | music21 → MusicXML | `analysis/score.py` |
 | Frontend | HTML/CSS/JS senza framework, Web Audio API, OpenSheetMusicDisplay | `frontend/` |
 
 Il lavoro pesante lo fanno librerie native (PyTorch, ffmpeg, Rubber Band) che il server Rust orchestra. Il browser decodifica le tracce una volta sola, poi le mixa e applica tonalità e velocità in tempo reale con un motore AudioWorklet (WSOLA e ricampionamento). Click, synth e loop restano sincronizzati al campione. Rubber Band si usa per i file esportati.
+
+Le tracce con effetti escono dal motore ognuna su una propria uscita (fino a 16), già con tonalità e velocità, e passano nella loro catena: equalizzatore, definizione e compressore in un AudioWorklet, poi il volume e una mandata al riverbero condiviso (ConvolverNode con la risposta all'impulso `frontend/reverb.wav`). Nell'esportazione e nei link condivisi ffmpeg ripete gli stessi calcoli: filtri `biquad` con coefficienti identici, `acompressor` (lo stesso algoritmo del compressore nel browser) e `afir` con la stessa risposta all'impulso. La differenza tra ascolto ed export è sotto i −80 dB.
 
 Il motore AudioWorklet funziona solo in pagine sicure: HTTPS oppure `localhost` (vedi [Raspberry Pi e server in rete](#raspberry-pi-e-server-in-rete)).
 

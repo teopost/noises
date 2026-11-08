@@ -83,7 +83,7 @@ function saveLayout() {
 
 function snapshot() {
   return JSON.stringify({
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null })),
     groups: state.groups, markers: state.markers || [], regions: state.regions || [],
   }, plain);
 }
@@ -127,6 +127,10 @@ async function restoreSnapshot(json) {
     t.label = st.label || '';
     t.rec = isEmptyTrack(st) || !!st.rec;
     engine.setClips(t);
+    if (JSON.stringify(t.fx || null) !== JSON.stringify(st.fx || null)) {
+      t.fx = normFx(st.fx);
+      engine.applyFx(t);
+    }
   }
   const order = new Map(s.tracks.map((t, i) => [t.name, i]));
   engine.tracks.sort((a, b) => (order.get(a.name) ?? 999) - (order.get(b.name) ?? 999));
@@ -738,6 +742,7 @@ function openTrackMenu(t, anchor, isRefStem, song) {
   if (t.part === 'original' && !isEmptyTrack(t)) {
     items.push({ icon: '⏺', label: t.rec ? 'Non usare per registrare' : 'Usa per registrare', disabled: rec.active || rec.busy, run: () => setRecTrack(t, !t.rec) });
   }
+  items.push({ icon: '🎛', label: t.fx ? 'Effetti…' : 'Aggiungi effetti…', run: () => openFxPanel(t, anchor) });
   items.push({ icon: '✎', label: 'Rinomina', run: () => { const n = t.row.querySelector('.tname'); n.focus(); n.select(); } });
   items.push({ icon: '⧉', label: 'Duplica traccia', run: () => duplicateTrack(t) });
   const sel = state.selClip && state.selClip.name === t.name && !state.selClip.folder;

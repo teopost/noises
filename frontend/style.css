@@ -1143,3 +1143,45 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .track:hover .track-title .tmenu, .track-title .tmenu:focus { visibility: visible; }
 .track-title .tmenu:hover { color: var(--text); }
 @media (pointer: coarse) { .track-title .tmenu { visibility: visible; } }
+
+/* ===================== effetti per traccia ===================== */
+/* il nome si stringe per fare spazio al pulsante FX */
+.track .tname { flex: 0 1 auto; }
+.track-title .fxb {
+  margin-left: auto; flex: none; padding: 0 5px; font-size: 10px; font-weight: 700; letter-spacing: .5px; line-height: 16px;
+  color: #fff; background: var(--accent); border: 1px solid var(--accent); border-radius: 5px; text-transform: none;
+}
+.track-title .fxb.off { color: var(--muted); background: none; border-color: var(--border); }
+.track-title .fxb:not(.hidden) + .tmenu { margin-left: 0; }
+
+.fx-panel {
+  position: fixed; z-index: 55; width: 320px; max-height: calc(100vh / var(--ui-zoom) - 16px); overflow-y: auto;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px #000a;
+  font-size: 13px;
+}
+.fx-head {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; cursor: move; user-select: none;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel-2); z-index: 1;
+}
+.fx-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.fx-title b { color: var(--text); }
+.fx-close { background: none; border: 0; padding: 2px 6px; color: var(--muted); }
+.fx-close:hover { color: var(--text); }
+.fx-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px 4px; }
+.fx-on { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
+.fx-on input { accent-color: var(--accent); }
+.fx-preset {
+  flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 6px;
+}
+.fx-body { padding: 0 12px 4px; }
+.fx-panel.bypass .fx-body { opacity: .45; }
+.fx-sec { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+.fx-row { display: grid; grid-template-columns: 104px 1fr 62px; align-items: center; gap: 8px; padding: 2px 0; }
+.fx-row input { width: 100%; accent-color: var(--accent); }
+.fx-row output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.fx-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-foot { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); margin-top: 8px; }
+.fx-foot button { font-size: 12px; }
+.fx-remove:disabled { opacity: .45; cursor: default; }
+@media (max-width: 480px) { .fx-panel { width: calc(100vw / var(--ui-zoom) - 16px); } }

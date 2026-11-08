@@ -307,7 +307,7 @@ async function loadProjectTracks(p) {
     const list = await Promise.all(valid.map(async (t, i) => {
       if (isEmptyTrack(t)) {
         decoded++;
-        return { name: t.name, song: '', part: t.part, label: t.label, clips: [], rec: true, ...emptyAudio() };
+        return { name: t.name, song: '', part: t.part, label: t.label, clips: [], rec: true, fx: t.fx, ...emptyAudio() };
       }
       const data = await fetchWithProgress(sourceUrl(t.song, t.part), (got, total) => {
         Object.assign(prog[i], { started: true, got, total });
@@ -316,7 +316,7 @@ async function loadProjectTracks(p) {
       const audio = await decodeToArrays(data);
       decoded++;
       report();
-      return { name: t.name, song: t.song, part: t.part, label: t.label, clips: t.clips, rec: !!t.rec, ...audio };
+      return { name: t.name, song: t.song, part: t.part, label: t.label, clips: t.clips, rec: !!t.rec, fx: t.fx, ...audio };
     }));
     if (seq !== state.loadSeq) return;
     const pending = state.pending;
@@ -361,7 +361,7 @@ function fitTitle() {
 function projectState() {
   return {
     name: (state.current && state.current.name) || 'Progetto',
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, ...(t.fx ? { fx: t.fx } : {}) })),
     groups: deep(state.groups),
     markers: state.markers || [],
     regions: state.regions || [],
@@ -525,7 +525,7 @@ async function duplicateTrack(t) {
       audio = await decodeToArrays(await r.arrayBuffer());
     }
     pushUndo('Duplica traccia');
-    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part, rec: t.rec,
+    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part, rec: t.rec, fx: t.fx ? { ...t.fx } : null,
       label: tr(`${trackTitle(t)} (copia)`), clips: t.clips.map((c) => ({ ...c, id: newClipId() })), ...audio });
     engine.tracks.splice(engine.tracks.indexOf(copy), 1);
     engine.tracks.splice(engine.tracks.indexOf(t) + 1, 0, copy);

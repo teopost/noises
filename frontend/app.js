@@ -3,7 +3,7 @@
 const $ = (s) => document.querySelector(s);
 const COLORS = { vocals: '#ff6b9a', drums: '#ffb547', bass: '#4fd1c5', guitar: '#7cc4ff', piano: '#c49bff', other: '#9be36b' };
 const LABELS = { vocals: T('Voce'), drums: T('Batteria'), bass: T('Basso'), guitar: T('Chitarra'), piano: T('Piano'), other: T('Altro') };
-const MODEL_LABELS = { htdemucs: T('4 tracce'), htdemucs_ft: T('4 tracce HQ'), htdemucs_6s: T('6 tracce'), roformer: T('4 tracce RoFormer'), roformer_6s: T('6 tracce RoFormer') };
+const MODEL_LABELS = { htdemucs: T('4 tracce'), htdemucs_ft: T('4 tracce HQ'), htdemucs_6s: T('6 tracce'), roformer: T('4 tracce RoFormer'), roformer_ft: T('4 tracce RoFormer HQ'), roformer_6s: T('6 tracce RoFormer') };
 
 const state = { zoom: 40, follow: true, notes: null, showNotes: new Set(), synth: new Set(), selNote: null,
   songs: [], playlists: [], view: 'all', query: '', current: null, pitch: 0, tempo: 100, loadSeq: 0, debounce: null, sel: null, loopOn: false,
@@ -63,11 +63,15 @@ const engine = {
       this.ready = Promise.resolve();
       return;
     }
-    this.ready = this.ctx.audioWorklet.addModule('stretch-worklet.js').then(() => {
+    this.ready = Promise.all([
+      this.ctx.audioWorklet.addModule('stretch-worklet.js'),
+      this.ctx.audioWorklet.addModule('fx-worklet.js'),
+    ]).then(() => {
+      // uscita 0: tracce senza effetti; 1…FX_SLOTS: una per ogni traccia con effetti
       this.node = new AudioWorkletNode(this.ctx, 'stretch-player', {
-        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+        numberOfInputs: 0, numberOfOutputs: FX_SLOTS + 1, outputChannelCount: Array(FX_SLOTS + 1).fill(2),
       });
-      this.node.connect(this.master);
+      this.node.connect(this.master, 0, 0);
       this.node.port.onmessage = (e) => {
         const m = e.data;
         if (m.type === 'pos') {
@@ -89,9 +93,10 @@ const engine = {
   k() { return 100 / this.tempo; },
   toSrc(t) { return (t / this.k()) * this.sr; },
 
-  /** list: [{ name, song, part, label, clips, l, r, peaks }] — ogni traccia è un insieme di clip. */
+  /** list: [{ name, song, part, label, clips, fx, l, r, peaks }] — ogni traccia è un insieme di clip. */
   setTracks(list, keepMix, initialMix) {
     const prev = keepMix ? Object.fromEntries(this.tracks.map((t) => [t.name, t])) : (initialMix || {});
+    this.releaseAllFx();
     this.songDuration = 0;
     this.tracks = list.map((t) => this.trackObject(t, prev[t.name]));
     this.origDuration = 0;
@@ -100,12 +105,13 @@ const engine = {
       stems: list.map((t, i) => ({ name: t.name, l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: this.clipSamples(t.clips) })),
     }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
     this.updateLength(true);
+    for (const t of this.tracks) if (t.fx) this.applyFx(t);
   },
 
   trackObject(t, p) {
     return {
       name: t.name, song: t.song, part: t.part, label: t.label || '', peaks: t.peaks, rec: !!t.rec,
-      clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr,
+      clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr, fx: normFx(t.fx),
       muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1,
     };
   },
@@ -131,6 +137,7 @@ const engine = {
     this.post({ type: 'add', name: o.name, l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o) },
       t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer]);
     this.updateLength();
+    if (o.fx) this.applyFx(o);
     return o;
   },
 
@@ -144,6 +151,7 @@ const engine = {
     const i = this.tracks.indexOf(t);
     if (i < 0) return;
     this.post({ type: 'remove', name: t.name });
+    this.releaseFx(t.name);
     this.tracks.splice(i, 1);
     this.updateLength();
   },
@@ -151,6 +159,7 @@ const engine = {
   clear() {
     this.stop();
     if (this.node) this.post({ type: 'load', length: 0, stems: [] });
+    this.releaseAllFx();
     this.tracks = [];
     this.duration = 0;
     this.origDuration = 0;
@@ -266,13 +275,90 @@ const engine = {
     return anySolo ? solo(t) : !(t.muted || (f(t) && f(t).muted));
   },
 
-  gainOf(t) {
+  volumeOf(t) {
     const f = typeof folderOf === 'function' ? folderOf(t.name) : null;
-    return this.isAudible(t) ? t.volume * (f ? f.volume : 1) : 0;
+    return t.volume * (f ? f.volume : 1);
+  },
+
+  gainOf(t) {
+    return this.isAudible(t) ? this.volumeOf(t) : 0;
   },
 
   updateGains() {
-    if (this.node) this.post({ type: 'gains', gains: Object.fromEntries(this.tracks.map((t) => [t.name, this.gainOf(t)])) });
+    if (!this.node) return;
+    // le tracce con effetti entrano nella catena a livello pieno: il volume si applica dopo gli
+    // effetti (come un fader dopo gli insert), così non cambia quanto lavora il compressore
+    const gains = {};
+    for (const t of this.tracks) {
+      const slot = this.fxSlots.get(t.name);
+      if (!slot) { gains[t.name] = this.gainOf(t); continue; }
+      gains[t.name] = this.isAudible(t) ? 1 : 0;
+      slot.post.gain.setTargetAtTime(this.volumeOf(t), this.ctx.currentTime, 0.01);
+    }
+    this.post({ type: 'gains', gains });
+  },
+
+  // ------------------------------------------------------------------ effetti
+
+  fxSlots: new Map(),   // nome traccia → { k, node, post, send }
+  reverb: null,
+
+  /** Riverbero condiviso: le tracce ci mandano una parte del loro segnale (mandata). */
+  ensureReverb() {
+    if (this.reverb) return this.reverb;
+    const conv = this.ctx.createConvolver();
+    conv.normalize = false; // come sul server (ffmpeg afir senza guadagno automatico)
+    conv.connect(this.master);
+    this.reverb = conv;
+    fetch('reverb.wav').then((r) => r.arrayBuffer()).then((b) => this.ctx.decodeAudioData(b))
+      .then((buf) => { conv.buffer = buf; })
+      .catch((e) => console.warn('riverbero non disponibile', e));
+    return conv;
+  },
+
+  /** Collega (o scollega) la catena di effetti della traccia e le passa i parametri. */
+  applyFx(t) {
+    if (!this.node) return true;
+    let slot = this.fxSlots.get(t.name);
+    if (!t.fx) {
+      if (slot) { this.releaseFx(t.name); this.updateGains(); }
+      return true;
+    }
+    if (!slot) {
+      const used = new Set([...this.fxSlots.values()].map((x) => x.k));
+      let k = 1;
+      while (used.has(k)) k++;
+      if (k > FX_SLOTS) return false;
+      const node = new AudioWorkletNode(this.ctx, 'noises-fx', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+      const post = this.ctx.createGain();
+      const send = this.ctx.createGain();
+      send.gain.value = 0;
+      this.node.connect(node, k, 0);
+      node.connect(post);
+      post.connect(this.master);
+      post.connect(send);
+      send.connect(this.ensureReverb());
+      slot = { k, node, post, send };
+      this.fxSlots.set(t.name, slot);
+      this.post({ type: 'bus', name: t.name, bus: k });
+    }
+    slot.node.port.postMessage({ type: 'params', fx: t.fx });
+    slot.send.gain.setTargetAtTime(t.fx.on === false ? 0 : t.fx.rev, this.ctx.currentTime, 0.02);
+    this.updateGains();
+    return true;
+  },
+
+  releaseFx(name) {
+    const slot = this.fxSlots.get(name);
+    if (!slot) return;
+    this.fxSlots.delete(name);
+    this.post({ type: 'bus', name, bus: 0 });
+    // si scollega dopo un attimo, quando il motore ha già spostato la traccia
+    setTimeout(() => { slot.node.disconnect(); slot.post.disconnect(); slot.send.disconnect(); try { this.node.disconnect(slot.node); } catch {} }, 200);
+  },
+
+  releaseAllFx() {
+    for (const name of [...this.fxSlots.keys()]) this.releaseFx(name);
   },
 };
 
@@ -988,6 +1074,7 @@ function buildTracks() {
       <div class="track-head">
         <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>
           <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} — clic per rinominare">
+          <button class="fxb hidden" aria-label="Effetti">FX</button>
           <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
         <div class="track-btns">
           ${isRecTrack(t) ? '<button class="arm" title="Registra su questa traccia: premi ⏺ nel trasporto (R)">⏺</button>' : ''}
@@ -1023,7 +1110,9 @@ function buildTracks() {
     });
     name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
     row.querySelector('.tmenu').addEventListener('click', (e) => { e.stopPropagation(); openTrackMenu(t, e.currentTarget, isRefStem, song); });
+    row.querySelector('.fxb').addEventListener('click', (e) => { e.stopPropagation(); openFxPanel(t, e.currentTarget); });
     t.row = row;
+    syncFxBadge(t);
     t.canvas = row.querySelector('canvas');
     t.color = color;
     root.appendChild(row);
@@ -1043,6 +1132,7 @@ function buildTracks() {
   root.appendChild(pend);
   renderPendingImports();
   root.appendChild(add);
+  if (fxUi.track) renderFxPanel(); // la traccia potrebbe non esserci più
   syncTrackButtons();
   updateSplitBadges();
   layoutTimeline();

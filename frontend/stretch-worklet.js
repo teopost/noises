@@ -9,9 +9,14 @@
  *
  * Il processore conosce in ogni istante la posizione del brano corrispondente al campione in
  * uscita e la comunica al thread principale (cursore, click, synth restano sincronizzati).
+ *
+ * Uscite: la 0 porta il mix delle tracce senza effetti; le tracce con effetti escono ognuna dalla
+ * sua (1…MAX_BUS-1), già con velocità e tonalità applicate, verso la propria catena di effetti.
+ * Il WSOLA cerca l'allineamento sul mix completo e lo applica uguale a tutte le uscite.
  */
 
 const FIFO = 1 << 15;
+const MAX_BUS = 17;
 
 class StretchPlayer extends AudioWorkletProcessor {
   constructor() {
@@ -28,13 +33,14 @@ class StretchPlayer extends AudioWorkletProcessor {
     this.N = Math.round(sampleRate * 0.04);   // segmento
     this.L = Math.round(sampleRate * 0.008);  // sovrapposizione
     this.S = Math.round(sampleRate * 0.012);  // finestra di ricerca
-    this.fifoL = new Float32Array(FIFO);
-    this.fifoR = new Float32Array(FIFO);
     this.fifoSrc = new Float64Array(FIFO);
-    this.prevL = new Float32Array(this.L);
+    this.prevL = new Float32Array(this.L);   // coda del segmento precedente (mix completo)
     this.prevR = new Float32Array(this.L);
     this.segL = new Float32Array(this.N + this.S + 4);
     this.segR = new Float32Array(this.N + this.S + 4);
+    this.buses = [];         // per uscita: FIFO e coda del segmento precedente
+    this.active = [0];       // uscite in uso
+    this.bus(0);
     this.resetStretch(0);
     this.blocks = 0;
     this.port.onmessage = (e) => this.onMessage(e.data);
@@ -42,6 +48,30 @@ class StretchPlayer extends AudioWorkletProcessor {
 
   get bypass() {
     return this.rate === 1 && this.pitch === 1;
+  }
+
+  bus(k) {
+    if (!this.buses[k]) {
+      this.buses[k] = {
+        fifoL: new Float32Array(FIFO), fifoR: new Float32Array(FIFO),
+        prevL: new Float32Array(this.L), prevR: new Float32Array(this.L),
+        segL: new Float32Array(this.N + 4), segR: new Float32Array(this.N + 4),
+      };
+    }
+    return this.buses[k];
+  }
+
+  /** Ricalcola le uscite in uso; una che si attiva parte da silenzio. */
+  updateActive() {
+    const set = new Set([0]);
+    for (const s of this.stems) set.add(s.bus);
+    const next = [...set].sort((a, b) => a - b);
+    for (const k of next) {
+      if (this.active.includes(k)) continue;
+      const b = this.bus(k);
+      b.fifoL.fill(0); b.fifoR.fill(0); b.prevL.fill(0); b.prevR.fill(0);
+    }
+    this.active = next;
   }
 
   resetStretch(pos) {
@@ -54,17 +84,26 @@ class StretchPlayer extends AudioWorkletProcessor {
   onMessage(m) {
     switch (m.type) {
       case 'load':
-        this.stems = m.stems.map((s) => ({ name: s.name, l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, clips: s.clips || null }));
+        this.stems = m.stems.map((s) => ({ name: s.name, l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, clips: s.clips || null, bus: s.bus || 0 }));
         this.len = m.length;
         this.playing = false;
+        this.updateActive();
         break;
       case 'add':
         this.stems = this.stems.filter((s) => s.name !== m.name);
-        this.stems.push({ name: m.name, l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, clips: m.clips || [] });
+        this.stems.push({ name: m.name, l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, clips: m.clips || [], bus: m.bus || 0 });
+        this.updateActive();
         break;
       case 'remove':
         this.stems = this.stems.filter((s) => s.name !== m.name);
+        this.updateActive();
         break;
+      case 'bus': {
+        // la traccia passa a un'altra uscita (catena di effetti) o torna nel mix senza effetti
+        const s = this.stems.find((x) => x.name === m.name);
+        if (s) { s.bus = m.bus > 0 && m.bus < MAX_BUS ? m.bus : 0; this.updateActive(); }
+        break;
+      }
       case 'clips': {
         // null = traccia intera (percorso veloce), altrimenti elenco di clip
         const s = this.stems.find((x) => x.name === m.name);
@@ -123,12 +162,13 @@ class StretchPlayer extends AudioWorkletProcessor {
     return -1;
   }
 
-  /** Mix delle tracce a partire da `pos` (con il loop applicato campione per campione). */
-  readMix(pos, outL, outR, n) {
+  /** Mix delle tracce a partire da `pos` (con il loop applicato campione per campione);
+   *  con `bus` solo le tracce di quell'uscita. */
+  readMix(pos, outL, outR, n, bus = -1) {
     outL.fill(0, 0, n);
     outR.fill(0, 0, n);
     for (const s of this.stems) {
-      if (s.gain === 0) continue;
+      if (s.gain === 0 || (bus >= 0 && s.bus !== bus)) continue;
       const g = s.gain, l = s.l, r = s.r;
       for (let i = 0; i < n; i++) {
         const p = this.wrap(pos + i);
@@ -163,23 +203,36 @@ class StretchPlayer extends AudioWorkletProcessor {
       }
     }
     const start = base + best;
-    this.readMix(start, this.segL, this.segR, N);
     if (this.fifoLen + N > FIFO) this.compact();
-    let w = this.fifoLen;
-    for (let i = 0; i < N - L; i++, w++) {
-      let l = this.segL[i], r = this.segR[i];
-      if (i < L && this.hasPrev) {
-        const k = i / L;
-        l = this.prevL[i] * (1 - k) + l * k;
-        r = this.prevR[i] * (1 - k) + r * k;
+    const single = this.active.length === 1;
+    if (!single) { this.prevL.fill(0); this.prevR.fill(0); }
+    for (const k of this.active) {
+      const b = this.buses[k];
+      // con una sola uscita il mix è quello di tutte le tracce
+      this.readMix(start, b.segL, b.segR, N, single ? -1 : k);
+      let w = this.fifoLen;
+      for (let i = 0; i < N - L; i++, w++) {
+        let l = b.segL[i], r = b.segR[i];
+        if (i < L && this.hasPrev) {
+          const f = i / L;
+          l = b.prevL[i] * (1 - f) + l * f;
+          r = b.prevR[i] * (1 - f) + r * f;
+        }
+        b.fifoL[w] = l;
+        b.fifoR[w] = r;
       }
-      this.fifoL[w] = l;
-      this.fifoR[w] = r;
-      this.fifoSrc[w] = this.wrap(start + i);
+      b.prevL.set(b.segL.subarray(N - L, N));
+      b.prevR.set(b.segR.subarray(N - L, N));
+      if (single) {
+        this.prevL.set(b.prevL);
+        this.prevR.set(b.prevR);
+      } else {
+        for (let i = 0; i < L; i++) { this.prevL[i] += b.prevL[i]; this.prevR[i] += b.prevR[i]; }
+      }
     }
+    let w = this.fifoLen;
+    for (let i = 0; i < N - L; i++, w++) this.fifoSrc[w] = this.wrap(start + i);
     this.fifoLen = w;
-    this.prevL.set(this.segL.subarray(N - L, N));
-    this.prevR.set(this.segR.subarray(N - L, N));
     this.hasPrev = true;
     this.inPos = this.wrap(this.inPos + (N - L) * ratio);
   }
@@ -187,8 +240,11 @@ class StretchPlayer extends AudioWorkletProcessor {
   compact() {
     const drop = Math.max(0, Math.floor(this.fifoRead) - 2);
     if (!drop) return;
-    this.fifoL.copyWithin(0, drop, this.fifoLen);
-    this.fifoR.copyWithin(0, drop, this.fifoLen);
+    for (const k of this.active) {
+      const b = this.buses[k];
+      b.fifoL.copyWithin(0, drop, this.fifoLen);
+      b.fifoR.copyWithin(0, drop, this.fifoLen);
+    }
     this.fifoSrc.copyWithin(0, drop, this.fifoLen);
     this.fifoLen -= drop;
     this.fifoRead -= drop;
@@ -202,9 +258,8 @@ class StretchPlayer extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
-    const out = outputs[0];
-    const oL = out[0], oR = out[1] || out[0];
-    const n = oL.length;
+    for (const o of outputs) for (const c of o) c.fill(0);
+    const n = outputs[0][0].length;
     // guadagni: avvicinamento graduale al valore richiesto (niente click)
     for (const s of this.stems) s.gain += (s.target - s.gain) * 0.25;
     if (!this.playing || !this.stems.length) return true;
@@ -221,16 +276,14 @@ class StretchPlayer extends AudioWorkletProcessor {
       for (; i < n; i++) {
         let p = this.src;
         if (p >= this.len) { this.end(); break; }
-        let l = 0, r = 0;
         for (const s of this.stems) {
           if (s.gain === 0) continue;
           const q = s.clips ? StretchPlayer.index(s, p) : (p < s.l.length ? p : -1);
           if (q < 0) continue;
-          l += s.l[q] * s.gain;
-          r += s.r[q] * s.gain;
+          const o = outputs[s.bus] || outputs[0];
+          o[0][i] += s.l[q] * s.gain;
+          (o[1] || o[0])[i] += s.r[q] * s.gain;
         }
-        oL[i] = l;
-        oR[i] = r;
         p++;
         if (this.loop && p >= this.loop.e) p = this.loop.s;
         this.src = p;
@@ -248,8 +301,12 @@ class StretchPlayer extends AudioWorkletProcessor {
         const a = Math.max(0, k - 1);
         const cub = (y0, y1, y2, y3) =>
           y1 + 0.5 * t * (y2 - y0 + t * (2 * y0 - 5 * y1 + 4 * y2 - y3 + t * (3 * (y1 - y2) + y3 - y0)));
-        oL[i] = cub(this.fifoL[a], this.fifoL[k], this.fifoL[k + 1], this.fifoL[k + 2]);
-        oR[i] = cub(this.fifoR[a], this.fifoR[k], this.fifoR[k + 1], this.fifoR[k + 2]);
+        for (const j of this.active) {
+          const b = this.buses[j], o = outputs[j];
+          if (!o) continue;
+          o[0][i] = cub(b.fifoL[a], b.fifoL[k], b.fifoL[k + 1], b.fifoL[k + 2]);
+          if (o[1]) o[1][i] = cub(b.fifoR[a], b.fifoR[k], b.fifoR[k + 1], b.fifoR[k + 2]);
+        }
         this.fifoRead += this.pitch;
       }
       if (this.fifoRead > FIFO / 2) this.compact();
