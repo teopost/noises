@@ -8,7 +8,7 @@ Web app self-hosted in stile Moises: separazione delle tracce con l'AI, mixer mu
 cambio di tonalità e velocità indipendenti, accordi, trascrizione delle note, spartito, tablatura,
 click intelligente ed esportazione di basi.
 
-![Versione](https://img.shields.io/badge/versione-2.0.1-7c5cff)
+![Versione](https://img.shields.io/badge/versione-2.1.0-7c5cff)
 ![Licenza](https://img.shields.io/badge/licenza-MIT-2bd47d)
 ![Rust](https://img.shields.io/badge/backend-Rust%20%2B%20axum-orange)
 ![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
@@ -39,7 +39,7 @@ click intelligente ed esportazione di basi.
 ## Funzionalità
 
 ### Libreria e progetti
-- **Libreria** dei brani (caricati dal computer o importati da **YouTube** e dagli altri siti supportati da yt-dlp, con avanzamento del download), con **playlist** e ricerca.
+- **Libreria** dei brani (file audio o **video**, di cui si tiene solo l'audio, caricati dal computer o importati da **YouTube**, **Facebook**, **Instagram** e dagli altri siti supportati da yt-dlp, con avanzamento del download), con **playlist**, ricerca, **ascolto** veloce (▶) e menu ⋯ per separare, aggiungere a una playlist o a un nuovo progetto, rinominare ed eliminare.
 - **Progetti**: timeline multitraccia salvate, separate dalla libreria. Trascini i brani nella timeline e li tieni interi o ne separi le tracce.
 - **Backup e ripristino** di un progetto così com'è: uno zip con un manifest, il progetto (tracce, clip, gruppi, segnalibri, sezioni, salvataggi) e tutti i suoi brani (audio originale, tracce separate, accordi, note e correzioni manuali). Ripristinato su un'altra installazione, i brani entrano nella libreria e il progetto si apre pronto.
 - **Scalette**: elenchi ordinati di progetti da suonare in sequenza, con pausa configurabile tra un brano e l'altro (o attesa del Play), avanzamento automatico e barra con posizione e brano successivo.
@@ -52,7 +52,7 @@ click intelligente ed esportazione di basi.
 - **Tonalità** (±12 semitoni) e **velocità** (50–150%) indipendenti, applicate **in tempo reale** nel browser; nei file esportati con [Rubber Band](https://breakfastquay.com/rubberband/). La tonalità del brano, già trasposta, compare accanto ai comandi.
 
 ### Editor multitraccia
-- **Clip** spostabili, tagliabili (`X`) ed eliminabili; tracce aggiungibili da libreria, computer o YouTube, duplicabili, rinominabili, riordinabili.
+- **Clip** spostabili, tagliabili (`X` o ✂), **duplicabili** (`Ctrl+D`) ed eliminabili, con i pezzi **fissabili** insieme (🔗) per spostarli in blocco; tracce aggiungibili da libreria, computer o YouTube, duplicabili, rinominabili, riordinabili.
 - **Gruppi**: le tracce separate di un brano stanno in un gruppo apribile e chiudibile; con **Raggruppa** ne crei altri. Le tracce di un gruppo si spostano e si modificano insieme.
 - **Annulla/ripeti** (`Ctrl+Z` / `Ctrl+Y`), **segnalibri** con nome e navigazione, **selezione** e **loop** con precisione al campione.
 - **Zoom** in pixel al secondo (slider, `Ctrl` + rotella o pinch) e **panoramica** del progetto con un riquadro da trascinare.
@@ -189,7 +189,9 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Regolare inizio e fine del loop | trascina i bordi della selezione (`Ctrl`: aggancio al click) · ‹ › (0,1 s, `Shift`: 0,01 s) · « » (click precedente/successivo) |
 | Registrare una traccia | traccia vuota da **＋ Aggiungi traccia → ⏺ Registra**, poi `R` o ⏺ nel trasporto; pausa o stop per fermare |
 | Annullare selezione / chiudere i menu | `Esc` |
-| Tagliare le clip selezionate alla testina | `X` |
+| Tagliare le clip selezionate alla testina | `X` o ✂ |
+| Ripetere un pezzo: copia subito dopo di sé (la copia copre quello che c'era sotto) | clic sul pezzo, poi `Ctrl+D` (ancora per altre ripetizioni) |
+| Fissare i pezzi di una traccia, per spostarli tutti trascinandone uno | 🔗 nella barra, oppure ⋯ della traccia → *Fissa i pezzi* |
 | Eliminare la clip selezionata | `Canc` |
 | Annulla / ripeti | `Ctrl+Z` / `Ctrl+Y` |
 | Raggruppare / sciogliere le tracce selezionate | `Ctrl+G` / `Ctrl+Shift+G` |
