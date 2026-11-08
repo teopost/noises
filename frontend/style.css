@@ -770,7 +770,6 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 ::-webkit-scrollbar-thumb:hover { background: #4a5266; }
 
 /* menu ⋯ delle tracce */
-.track-btns .tmenu { padding: 0 8px; font-size: 16px; line-height: 22px; letter-spacing: 1px; }
 .split-badge { font-size: 11px; color: var(--accent-2); white-space: nowrap; }
 .track-menu { min-width: 220px; }
 .track-menu .menu-item { gap: 10px; font-size: 13px; }
@@ -1135,3 +1134,12 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 
 /* Pezzi fissati: pulsante attivo */
 #fix-btn.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+/* ⋯ delle tracce: in alto a destra sulla riga del titolo, visibile passando col mouse (come nella libreria) */
+.track-title .tmenu {
+  margin-left: auto; flex: none; background: none; border: 0; padding: 0 4px;
+  color: var(--muted); font-size: 16px; line-height: 1; visibility: hidden;
+}
+.track:hover .track-title .tmenu, .track-title .tmenu:focus { visibility: visible; }
+.track-title .tmenu:hover { color: var(--text); }
+@media (pointer: coarse) { .track-title .tmenu { visibility: visible; } }

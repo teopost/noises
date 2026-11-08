@@ -987,14 +987,14 @@ function buildTracks() {
     row.innerHTML = `
       <div class="track-head">
         <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>
-          <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} — clic per rinominare"></div>
+          <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} — clic per rinominare">
+          <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
         <div class="track-btns">
           ${isRecTrack(t) ? '<button class="arm" title="Registra su questa traccia: premi ⏺ nel trasporto (R)">⏺</button>' : ''}
           <button class="m" title="Muto">M</button>
           <button class="s" title="Solo">S</button>
           <input type="range" class="vol" min="0" max="1.5" step="0.01" value="${t.volume}" title="Volume">
           <span class="split-badge hidden" title="Separazione in corso"></span>
-          <button class="tmenu" title="Altre azioni">⋯</button>
         </div>
         ${isRecTrack(t) ? `<div class="rec-line">
           <select class="rec-dev" title="Sorgente della registrazione"></select>
