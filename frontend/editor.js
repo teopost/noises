@@ -862,7 +862,6 @@ function buildFolderRow(g, kids) {
   row.innerHTML = `
     <div class="track-head">
       <div class="track-title"><span class="grip" title="Trascina per spostare tutto il gruppo (Alt+↑/↓)">⠿</span><button class="fold" title="${g.collapsed ? 'Apri il gruppo' : 'Chiudi il gruppo'}">${g.collapsed ? '▸' : '▾'}</button>
-        <span class="folder-ico">▤</span>
         <input class="tname" value="${esc(g.name)}" maxlength="60" title="Gruppo: ${kids.length} tracce — clic per rinominare">
         <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
       <div class="track-btns">
