@@ -326,6 +326,7 @@
         <button id="cut-btn" class="icon-only" disabled title="Taglia le tracce selezionate nel punto della testina (X)" aria-label="Taglia"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.6 20 18M8.2 16.4 20 6"/></svg></button>
         <button id="dup-btn" class="icon-only" disabled title="Duplica il pezzo selezionato subito dopo di sé (Ctrl+D)" aria-label="Duplica pezzo"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="8" width="8" height="8" rx="1.5" fill="currentColor" fill-opacity=".25"/><rect x="13.5" y="8" width="8" height="8" rx="1.5" stroke-dasharray="2.4 1.6"/></svg></button>
         <button id="fix-btn" class="icon-only" disabled title="Fissa i pezzi delle tracce selezionate: trascinandone uno si spostano tutti" aria-label="Fissa i pezzi"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
+        <button id="env-btn" class="icon-only" aria-pressed="false" title="Linea del volume (V): clic sulla traccia per aggiungere un punto, trascinalo per spostarlo, doppio clic per toglierlo" aria-label="Linea del volume"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h5l5 8h8"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><circle cx="13" cy="16" r="1.6" fill="currentColor"/></svg></button>
         <span id="sel-tracks" class="sel-info"></span>
         <input id="add-track-file" type="file" accept="audio/*,video/*,.mp3,.wav,.flac,.ogg,.m4a,.aac,.opus,.aif,.aiff,.wma,.mp4,.mov,.m4v,.mkv,.webm,.3gp" multiple hidden>
         <span class="grow"></span>
@@ -451,6 +452,7 @@
   <div id="chord-menu" class="menu chord-menu hidden"></div>
   <div id="track-menu" class="menu track-menu hidden"></div>
   <div id="fx-panel" class="fx-panel hidden" role="dialog" aria-label="Effetti"></div>
+  <div id="env-tip" class="env-tip hidden"></div>
   <div id="regions-menu" class="menu regions-menu hidden"></div>
   <div id="presets-menu" class="menu regions-menu presets-menu hidden"></div>
   <dialog id="share-dlg" class="share-dlg">
@@ -636,6 +638,7 @@
   <script src="usertracks.js"></script>
   <script src="recorder.js"></script>
   <script src="fx.js"></script>
+  <script src="envelope.js"></script>
   <script src="editor.js"></script>
   <script src="project.js"></script>
   <script src="setlist.js"></script>

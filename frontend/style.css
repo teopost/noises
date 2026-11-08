@@ -1185,3 +1185,11 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .fx-foot button { font-size: 12px; }
 .fx-foot button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 480px) { .fx-panel { width: calc(100vw / var(--ui-zoom) - 16px); } }
+
+/* ===================== linea del volume ===================== */
+#env-btn.on { color: #0f1115; background: #ffd166; border-color: #ffd166; }
+body.env-mode .track .lane canvas { cursor: copy; }
+.env-tip {
+  position: fixed; z-index: 60; pointer-events: none; padding: 3px 7px; border-radius: 6px; font-size: 12px;
+  font-variant-numeric: tabular-nums; color: #0f1115; background: #ffd166; box-shadow: 0 4px 12px #0007; white-space: nowrap;
+}

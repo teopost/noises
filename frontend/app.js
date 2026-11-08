@@ -69,7 +69,8 @@ const engine = {
     ]).then(() => {
       // uscita 0: tracce senza effetti; 1…FX_SLOTS: una per ogni traccia con effetti
       this.node = new AudioWorkletNode(this.ctx, 'stretch-player', {
-        numberOfInputs: 0, numberOfOutputs: FX_SLOTS + 1, outputChannelCount: Array(FX_SLOTS + 1).fill(2),
+        // le uscite delle tracce con effetti hanno un terzo canale: la linea del volume
+        numberOfInputs: 0, numberOfOutputs: FX_SLOTS + 1, outputChannelCount: [2, ...Array(FX_SLOTS).fill(3)],
       });
       this.node.connect(this.master, 0, 0);
       this.node.port.onmessage = (e) => {
@@ -106,12 +107,13 @@ const engine = {
     }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
     this.updateLength(true);
     for (const t of this.tracks) if (t.fx) this.applyFx(t);
+    this.syncEnvs();
   },
 
   trackObject(t, p) {
     return {
       name: t.name, song: t.song, part: t.part, label: t.label || '', peaks: t.peaks, rec: !!t.rec,
-      clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr, fx: normFx(t.fx),
+      clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr, fx: normFx(t.fx), env: normEnv(t.env),
       muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1,
     };
   },
@@ -138,6 +140,7 @@ const engine = {
       t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer]);
     this.updateLength();
     if (o.fx) this.applyFx(o);
+    this.syncEnvs();
     return o;
   },
 
@@ -298,6 +301,18 @@ const engine = {
     this.post({ type: 'gains', gains });
   },
 
+  /** Linee del volume al motore: per ogni traccia la sua e quella del suo gruppo, in campioni. */
+  syncEnvs() {
+    if (!this.node) return;
+    const conv = (env) => (env && env.length ? env.map((p) => ({ s: p.t * this.sr, v: p.v })) : null);
+    const envs = {};
+    for (const t of this.tracks) {
+      const f = typeof folderOf === 'function' ? folderOf(t.name) : null;
+      envs[t.name] = [conv(t.env), conv(f && f.env)].filter(Boolean);
+    }
+    this.post({ type: 'envs', envs });
+  },
+
   // ------------------------------------------------------------------ effetti
 
   fxSlots: new Map(),   // nome traccia → { k, node, post, send }
@@ -329,7 +344,10 @@ const engine = {
       let k = 1;
       while (used.has(k)) k++;
       if (k > FX_SLOTS) return false;
-      const node = new AudioWorkletNode(this.ctx, 'noises-fx', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+      const node = new AudioWorkletNode(this.ctx, 'noises-fx', {
+        numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+        channelCount: 3, channelCountMode: 'explicit', channelInterpretation: 'discrete',
+      });
       const post = this.ctx.createGain();
       const send = this.ctx.createGain();
       send.gain.value = 0;
@@ -1133,6 +1151,7 @@ function buildTracks() {
   renderPendingImports();
   root.appendChild(add);
   if (fxUi.track) renderFxPanel(); // la traccia potrebbe non esserci più
+  engine.syncEnvs(); // i gruppi possono essere cambiati (linea del gruppo)
   syncTrackButtons();
   updateSplitBadges();
   layoutTimeline();

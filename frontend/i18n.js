@@ -168,6 +168,16 @@ const EN = {
   '4 tracce': '4 tracks',
   '4 tracce HQ': '4 tracks HQ',
   '4 tracce RoFormer HQ': '4 tracks RoFormer HQ',
+  // ---------------------------------------------------------------- linea del volume
+  "Linea del volume": "Volume line",
+  "Linea del volume (V)": "Volume line (V)",
+  "Chiudi la linea del volume (V)": "Close the volume line (V)",
+  "Linea del volume (V): clic sulla traccia per aggiungere un punto, trascinalo per spostarlo, doppio clic per toglierlo": "Volume line (V): click on the track to add a point, drag it to move it, double-click to remove it",
+  "Abbassa il volume nella selezione": "Lower the volume in the selection",
+  "Cancella la linea del volume": "Clear the volume line",
+  "muto": "muted",
+  "Seleziona prima una porzione della timeline": "Select a part of the timeline first",
+  "Volume abbassato di 10 dB nella selezione: trascina la linea per regolarlo": "Volume lowered by 10 dB in the selection: drag the line to adjust it",
   // ---------------------------------------------------------------- effetti
   "Trascina per spostare tutto il gruppo (Alt+↑/↓)": "Drag to move the whole group (Alt+↑/↓)",
   "Sposta gruppo": "Move group",

@@ -35,6 +35,9 @@ pub struct PTrack {
     /// effetti della traccia (equalizzatore, definizione, compressore, riverbero)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fx: Option<crate::fx::Fx>,
+    /// linea del volume della traccia
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<Vec<crate::env::EnvPoint>>,
 }
 
 /// Sezione salvata del progetto (es. "Assolo"): intervallo da riascoltare in loop.
@@ -290,9 +293,23 @@ pub async fn put_state(
         return Err(bad_request("sezioni non valide"));
     }
     p.name = clean_name(&b.name)?;
-    p.tracks = b.tracks.into_iter().map(|mut t| { t.fx = t.fx.map(crate::fx::Fx::clamped); t }).collect();
+    p.tracks = b.tracks
+        .into_iter()
+        .map(|mut t| {
+            t.fx = t.fx.map(crate::fx::Fx::clamped);
+            t.env = crate::env::clean(t.env);
+            t
+        })
+        .collect();
     // nomi lunghi (titoli da YouTube) accorciati invece di rifiutare il salvataggio
-    p.groups = b.groups.into_iter().map(|mut g| { g.name = g.name.chars().take(120).collect(); g }).collect();
+    p.groups = b.groups
+        .into_iter()
+        .map(|mut g| {
+            g.name = g.name.chars().take(120).collect();
+            g.env = crate::env::clean(g.env.take());
+            g
+        })
+        .collect();
     p.markers = b.markers.into_iter().map(|mut m| { m.name = m.name.trim().chars().take(60).collect(); m }).collect();
     p.markers.sort_by(|a, c| a.t.total_cmp(&c.t));
     p.regions = b.regions.into_iter().map(|mut r| { r.name = r.name.trim().chars().take(60).collect(); r }).collect();
@@ -389,10 +406,16 @@ pub async fn export(
         } else {
             render_file(&st, &dir.join("render"), &t.part, &src, pitch, tempo).await?
         };
-        items.push(MixInput { path, clips: t.clips.clone(), gain: e.gain, fx: t.fx.clone() });
+        items.push(MixInput { path, clips: t.clips.clone(), gain: e.gain, fx: t.fx.clone(), envs: track_envs(&p, t) });
     }
     let work = st.0.data_dir.join("projects").join(&pid).join("exports");
     run_export(&work, items, &req, &p.name).await
+}
+
+/// Linee del volume di una traccia: la sua e quella del gruppo (cartella) che la contiene.
+pub(crate) fn track_envs(p: &Project, t: &PTrack) -> Vec<Vec<crate::env::EnvPoint>> {
+    let group = p.groups.iter().find(|g| g.folder && g.tracks.contains(&t.name)).and_then(|g| g.env.clone());
+    [t.env.clone(), group].into_iter().flatten().filter(|e| !e.is_empty()).collect()
 }
 
 // ------------------------------------------------------------------ migrazione
@@ -430,7 +453,7 @@ pub fn migrate(st: &AppState) {
             let clips = layout.stem_clips.get(stem).cloned().unwrap_or_else(|| {
                 vec![Clip { id: format!("{stem}-0"), start: 0.0, offset: 0.0, duration, link: None }]
             });
-            tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false, fx: None });
+            tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false, fx: None, env: None });
         }
         for ut in &song.user_tracks {
             let tname = format!("user:{}", ut.id);
@@ -465,7 +488,7 @@ pub fn migrate(st: &AppState) {
             ns.created_at = now_secs();
             st.0.songs.write().unwrap().insert(new_id.clone(), ns.clone());
             let _ = st.save_meta(&ns);
-            tracks.push(PTrack { name: tname, label: ut.name.clone(), song: new_id, part: "original".into(), clips: ut.clips.clone(), rec: false, fx: None });
+            tracks.push(PTrack { name: tname, label: ut.name.clone(), song: new_id, part: "original".into(), clips: ut.clips.clone(), rec: false, fx: None, env: None });
         }
         if !layout.order.is_empty() {
             let pos = |n: &String| layout.order.iter().position(|x| x == n).unwrap_or(usize::MAX);
@@ -483,6 +506,7 @@ pub fn migrate(st: &AppState) {
                 muted: false,
                 solo: false,
                 volume: 1.0,
+                env: None,
             }]
         } else {
             layout.groups.clone()

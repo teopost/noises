@@ -83,7 +83,7 @@ function saveLayout() {
 
 function snapshot() {
   return JSON.stringify({
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null, env: t.env || null })),
     groups: state.groups, markers: state.markers || [], regions: state.regions || [],
   }, plain);
 }
@@ -127,6 +127,7 @@ async function restoreSnapshot(json) {
     t.label = st.label || '';
     t.rec = isEmptyTrack(st) || !!st.rec;
     engine.setClips(t);
+    t.env = normEnv(st.env);
     if (JSON.stringify(t.fx || null) !== JSON.stringify(st.fx || null)) {
       t.fx = normFx(st.fx);
       engine.applyFx(t);
@@ -138,7 +139,9 @@ async function restoreSnapshot(json) {
   state.markers = s.markers;
   state.regions = s.regions || [];
   state.selClip = null;
+  envUi.sel = null;
   engine.updateLength();
+  engine.syncEnvs();
   if (state.refTrack && !trackByName(state.refTrack) && engine.tracks.length) setReference(engine.tracks[0], true);
   saveProject();
   layoutTimeline();
@@ -683,6 +686,8 @@ function drawClipTrack(t) {
   const bps = engine.sr / PEAK_BLOCK;
   const mid = h / 2;
   const color = trackColor(t);
+  const tf = folderOf(t.name);
+  const withEnv = !!(t.env || (tf && tf.env)); // la forma d'onda segue la linea del volume
   for (const c of t.clips) {
     const x0 = (c.start * k * z - sl) * dpr;
     const x1 = ((c.start + c.duration) * k * z - sl) * dpr;
@@ -698,6 +703,7 @@ function drawClipTrack(t) {
       let peak = 0;
       const stride = Math.max(1, Math.floor((b1 - b0) / 64));
       for (let i = b0; i < b1 && i < t.peaks.length; i += stride) if (t.peaks[i] > peak) peak = t.peaks[i];
+      if (withEnv) peak = Math.min(1, peak * trackEnvGain(t, t0));
       const y = Math.max(dpr * 0.5, peak * (mid - 4 * dpr) * 0.95);
       ctx.fillRect(x, mid - y, 1, y * 2);
     }
@@ -709,6 +715,7 @@ function drawClipTrack(t) {
     ctx.fillRect(x1 - 3 * dpr, mid - 8 * dpr, 3 * dpr, 16 * dpr);
   }
   drawLinkStrip(ctx, t.clips, w, dpr);
+  drawEnvelope(ctx, w, h, dpr, t.env || null, envSelectedIn({ track: t }));
 }
 
 /** Pezzi fissati: una linea viola in alto che li unisce, dal primo all'ultimo. */
@@ -750,6 +757,7 @@ function decorateRow(t, row) {
   });
   setupGrip(t, row);
   setupClipCanvas(t);
+  setupEnvCanvas(t.canvas);
 }
 
 /** Clic sullo spazio vuoto di una traccia (gestito dalla timeline): seleziona la traccia. */
@@ -772,6 +780,7 @@ function setupEditor() {
   $('#cut-btn').addEventListener('click', splitSelected);
   $('#dup-btn').addEventListener('click', duplicateSelectedClip);
   $('#fix-btn').addEventListener('click', () => toggleFixed(fixTargets()));
+  $('#env-btn').addEventListener('click', () => setEnvMode(!envUi.mode));
   document.addEventListener('keydown', (e) => {
     if (!state.current || e.target.matches('input:not([type=range]):not([type=checkbox]), select, textarea')) return;
     if (e.target.matches('canvas.roll')) return; // il piano roll gestisce i propri tasti
@@ -782,6 +791,8 @@ function setupEditor() {
     else if (mod && e.code === 'KeyG') { e.preventDefault(); if (e.shiftKey) ungroupSelected(); else groupSelected(); }
     else if (e.altKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) { e.preventDefault(); moveSelectedTracks(e.code === 'ArrowUp' ? -1 : 1); }
     else if (e.code === 'KeyX' && !mod) { e.preventDefault(); splitSelected(); }
+    else if (e.code === 'KeyV' && !mod && !e.altKey) { e.preventDefault(); setEnvMode(!envUi.mode); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && envDeleteSelected()) e.preventDefault();
     else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selClip) { e.preventDefault(); deleteSelectedClip(); }
     else if (e.code === 'Escape' && state.selTracks.size) clearTrackSelection();
   });
@@ -826,6 +837,9 @@ function openTrackMenu(t, anchor, isRefStem, song) {
   items.push({ icon: '⧉', label: 'Duplica pezzo selezionato (Ctrl+D)', disabled: !sel, run: duplicateSelectedClip });
   const peers = peersOf(t);
   items.push({ icon: '🔗', label: isFixed(peers) ? 'Sblocca i pezzi' : 'Fissa i pezzi', disabled: peers.flatMap((x) => x.clips).length < 2, run: () => toggleFixed(peers) });
+  items.push({ sep: true });
+  items.push(...envMenuItems({ track: t, get: () => t.env || null, set: (e) => { t.env = e; } }));
+  items.push({ sep: true });
   items.push({ icon: '⤓', label: 'Esporta', run: () => openExport(t) });
   items.push({ sep: true });
   items.push({ icon: '🗑', label: 'Elimina', danger: true, run: () => deleteTrack(t) });
@@ -896,6 +910,7 @@ function buildFolderRow(g, kids) {
   setupFolderGrip(g, row);
   g._canvas = row.querySelector('canvas');
   if (kids[0]) setupClipCanvas(kids[0], g._canvas, kids, g);
+  setupEnvCanvas(g._canvas);
   return row;
 }
 
@@ -950,12 +965,14 @@ function drawFolder(g) {
       const stride = Math.max(1, Math.floor((b1 - b0) / 64));
       let m = 0;
       for (let i = b0; i < b1 && i < kid.peaks.length; i += stride) if (kid.peaks[i] * kid.volume > m) m = kid.peaks[i] * kid.volume;
+      if (kid.env || g.env) m *= trackEnvGain(kid, t0);
       if (m > peakAll) peakAll = m;
       if (audible[j] && m > peak) peak = m;
     });
     if (peakAll > peak) { ctx.globalAlpha = 0.25; bar(x, peakAll); ctx.globalAlpha = 1; }
     if (peak > 0) bar(x, peak);
   }
+  drawEnvelope(ctx, w, h, dpr, g.env || null, envSelectedIn({ group: g }));
 }
 
 function openFolderMenu(g, anchor) {
@@ -973,6 +990,9 @@ function openFolderMenu(g, anchor) {
     { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
     { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },
     { icon: '🔗', label: isFixed(kids) ? 'Sblocca i pezzi' : 'Fissa i pezzi', run: () => toggleFixed(kids) },
+    { sep: true },
+    ...envMenuItems({ group: g, get: () => g.env || null, set: (e) => { g.env = e; } }),
+    { sep: true },
     { icon: '⑂', label: 'Sciogli gruppo', run: () => {
       pushUndo('Sciogli gruppo');
       state.groups = state.groups.filter((x) => x !== g);
@@ -995,7 +1015,7 @@ function openFolderMenu(g, anchor) {
   ];
   menu.innerHTML = `<div class="menu-title">${esc(g.name)} · ${kids.length} tracce</div>` + items.map((it, i) => it.sep
     ? '<div class="menu-sep"></div>'
-    : `<button class="menu-item ${it.danger ? 'danger' : ''}" data-i="${i}"><span class="mi">${it.icon}</span>${esc(it.label)}</button>`).join('');
+    : `<button class="menu-item ${it.danger ? 'danger' : ''}" data-i="${i}" ${it.disabled ? 'disabled' : ''}><span class="mi">${it.icon}</span>${esc(it.label)}</button>`).join('');
   menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => { closeTrackMenu(); items[Number(b.dataset.i)].run(); }));
   menu.classList.remove('hidden');
   placeMenu(menu, anchor.getBoundingClientRect());

@@ -13,10 +13,43 @@
  * Uscite: la 0 porta il mix delle tracce senza effetti; le tracce con effetti escono ognuna dalla
  * sua (1…MAX_BUS-1), già con velocità e tonalità applicate, verso la propria catena di effetti.
  * Il WSOLA cerca l'allineamento sul mix completo e lo applica uguale a tutte le uscite.
+ *
+ * Linea del volume (automazione): punti { s: campione, v: dB } con rampe lineari in dB, calcolata
+ * per ogni campione alla sua posizione nel brano (segue velocità, loop e salti da sola). Per le
+ * tracce nel mix si applica qui; per quelle con effetti esce come terzo canale della loro uscita
+ * e la applica la catena effetti dopo gli effetti (come un fader).
  */
 
 const FIFO = 1 << 15;
 const MAX_BUS = 17;
+const ENV_MIN_DB = -60;
+const DB = Math.LN10 / 20;
+
+/** Guadagno di una linea del volume alla posizione `p` (campioni). */
+function envAt(e, p) {
+  const S = e.s, V = e.v, n = S.length;
+  let v;
+  if (p <= S[0]) v = V[0];
+  else if (p >= S[n - 1]) v = V[n - 1];
+  else {
+    let i = e.i;
+    if (!(i < n - 1 && p >= S[i] && p < S[i + 1])) {
+      let lo = 0, hi = n - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= p) lo = m; else hi = m; }
+      i = e.i = lo;
+    }
+    v = V[i] + ((p - S[i]) / (S[i + 1] - S[i])) * (V[i + 1] - V[i]);
+  }
+  return v <= ENV_MIN_DB ? 0 : Math.exp(v * DB);
+}
+
+/** Prodotto delle linee della traccia (la sua e quella del gruppo); 1 senza linee. */
+function envGain(s, p) {
+  if (!s.envs) return 1;
+  let g = 1;
+  for (const e of s.envs) g *= envAt(e, p);
+  return g;
+}
 
 class StretchPlayer extends AudioWorkletProcessor {
   constructor() {
@@ -40,6 +73,7 @@ class StretchPlayer extends AudioWorkletProcessor {
     this.segR = new Float32Array(this.N + this.S + 4);
     this.buses = [];         // per uscita: FIFO e coda del segmento precedente
     this.active = [0];       // uscite in uso
+    this.busStem = [];       // traccia di ogni uscita con effetti
     this.bus(0);
     this.resetStretch(0);
     this.blocks = 0;
@@ -66,6 +100,8 @@ class StretchPlayer extends AudioWorkletProcessor {
     const set = new Set([0]);
     for (const s of this.stems) set.add(s.bus);
     const next = [...set].sort((a, b) => a - b);
+    this.busStem = [];
+    for (const s of this.stems) if (s.bus > 0) this.busStem[s.bus] = s;
     for (const k of next) {
       if (this.active.includes(k)) continue;
       const b = this.bus(k);
@@ -112,6 +148,14 @@ class StretchPlayer extends AudioWorkletProcessor {
       }
       case 'length':
         this.len = m.length;
+        break;
+      case 'envs':
+        // { nome: [[{ s, v }…], …] | null }: linee della traccia e del suo gruppo
+        for (const st of this.stems) {
+          if (!(st.name in m.envs)) continue;
+          const list = (m.envs[st.name] || []).filter((x) => x && x.length);
+          st.envs = list.length ? list.map((x) => ({ s: Float64Array.from(x, (q) => q.s), v: Float64Array.from(x, (q) => q.v), i: 0 })) : null;
+        }
         break;
       case 'gains':
         for (const s of this.stems) if (s.name in m.gains) s.target = m.gains[s.name];
@@ -170,13 +214,15 @@ class StretchPlayer extends AudioWorkletProcessor {
     for (const s of this.stems) {
       if (s.gain === 0 || (bus >= 0 && s.bus !== bus)) continue;
       const g = s.gain, l = s.l, r = s.r;
+      const env = s.envs && s.bus === 0; // le tracce con effetti hanno la linea dopo gli effetti
       for (let i = 0; i < n; i++) {
         const p = this.wrap(pos + i);
         if (p < 0 || p >= this.len) continue;
         const q = StretchPlayer.index(s, p);
         if (q < 0) continue;
-        outL[i] += l[q] * g;
-        outR[i] += r[q] * g;
+        const gg = env ? g * envGain(s, p) : g;
+        outL[i] += l[q] * gg;
+        outR[i] += r[q] * gg;
       }
     }
   }
@@ -258,7 +304,11 @@ class StretchPlayer extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
-    for (const o of outputs) for (const c of o) c.fill(0);
+    for (const o of outputs) {
+      o[0].fill(0);
+      if (o[1]) o[1].fill(0);
+      if (o[2]) o[2].fill(1); // guadagno della linea del volume (1 = invariato)
+    }
     const n = outputs[0][0].length;
     // guadagni: avvicinamento graduale al valore richiesto (niente click)
     for (const s of this.stems) s.gain += (s.target - s.gain) * 0.25;
@@ -277,12 +327,14 @@ class StretchPlayer extends AudioWorkletProcessor {
         let p = this.src;
         if (p >= this.len) { this.end(); break; }
         for (const s of this.stems) {
+          const o = outputs[s.bus] || outputs[0];
+          if (s.bus > 0 && o[2]) o[2][i] = envGain(s, p); // linea per la catena effetti
           if (s.gain === 0) continue;
           const q = s.clips ? StretchPlayer.index(s, p) : (p < s.l.length ? p : -1);
           if (q < 0) continue;
-          const o = outputs[s.bus] || outputs[0];
-          o[0][i] += s.l[q] * s.gain;
-          (o[1] || o[0])[i] += s.r[q] * s.gain;
+          const g = s.bus === 0 && s.envs ? s.gain * envGain(s, p) : s.gain;
+          o[0][i] += s.l[q] * g;
+          (o[1] || o[0])[i] += s.r[q] * g;
         }
         p++;
         if (this.loop && p >= this.loop.e) p = this.loop.s;
@@ -306,6 +358,7 @@ class StretchPlayer extends AudioWorkletProcessor {
           if (!o) continue;
           o[0][i] = cub(b.fifoL[a], b.fifoL[k], b.fifoL[k + 1], b.fifoL[k + 2]);
           if (o[1]) o[1][i] = cub(b.fifoR[a], b.fifoR[k], b.fifoR[k + 1], b.fifoR[k + 2]);
+          if (o[2] && this.busStem[j]) o[2][i] = envGain(this.busStem[j], this.fifoSrc[k]);
         }
         this.fifoRead += this.pitch;
       }

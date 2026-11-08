@@ -5,6 +5,8 @@
  * volume, come un exciter) e ne tiene solo la parte sopra la frequenza scelta, sommandola al
  * segnale: ridà presenza a una traccia ovattata (es. il basso separato) senza alzare i residui.
  * Il riverbero non è qui: è una mandata verso un riverbero condiviso (ConvolverNode).
+ * Il terzo canale in ingresso è la linea del volume della traccia (guadagno campione per campione,
+ * calcolato dal motore alla posizione nel brano): si applica dopo gli effetti, come un fader.
  *
  * Gli stessi calcoli sono replicati nell'esportazione sul server con ffmpeg (backend, fx_filter):
  * filtri biquad con coefficienti identici (formule RBJ), valore assoluto e il compressore di
@@ -150,9 +152,13 @@ class FxProcessor extends AudioWorkletProcessor {
     const inp = inputs[0], out = outputs[0];
     const oL = out[0], oR = out[1] || out[0];
     if (!inp || !inp.length) { oL.fill(0); oR.fill(0); return true; }
-    const iL = inp[0], iR = inp[1] || inp[0];
+    const iL = inp[0], iR = inp[1] || inp[0], G = inp[2] || null;
     const fx = this.fx;
-    if (!fx || fx.on === false) { oL.set(iL); oR.set(iR); return true; }
+    if (!fx || fx.on === false) {
+      if (G) for (let i = 0; i < oL.length; i++) { oL[i] = iL[i] * G[i]; oR[i] = iR[i] * G[i]; }
+      else { oL.set(iL); oR.set(iR); }
+      return true;
+    }
     const n = oL.length;
     const eq = this.eq, exc = this.exc, comp = this.comp, amt = fx.exc * EXC_GAIN;
     for (let i = 0; i < n; i++) {
@@ -171,8 +177,9 @@ class FxProcessor extends AudioWorkletProcessor {
         const g = comp.gain(Math.max(Math.abs(l), Math.abs(r)));
         l *= g; r *= g;
       }
-      oL[i] = l;
-      oR[i] = r;
+      const g = G ? G[i] : 1;
+      oL[i] = l * g;
+      oR[i] = r * g;
     }
     return true;
   }

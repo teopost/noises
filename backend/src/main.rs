@@ -9,6 +9,7 @@ mod admin;
 mod auth;
 mod backup;
 mod db;
+mod env;
 mod fx;
 mod projects;
 mod setlists;
@@ -155,6 +156,9 @@ struct TrackGroup {
     /// cartella (tracce separate di un brano): si apre e si chiude come in Moises
     #[serde(default)]
     folder: bool,
+    /// linea del volume del gruppo (vale per tutte le sue tracce)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    env: Option<Vec<env::EnvPoint>>,
     #[serde(default)]
     collapsed: bool,
     #[serde(default)]
@@ -1594,12 +1598,25 @@ fn write_click_wav(path: &Path, c: &ClickSpec) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// File temporanei cancellati quando escono di scope.
+struct TempFiles(Vec<PathBuf>);
+
+impl Drop for TempFiles {
+    fn drop(&mut self) {
+        for p in &self.0 {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
 /// Sorgente da mixare: file (già con tonalità/velocità), sue clip sulla timeline ed effetti.
 struct MixInput {
     path: PathBuf,
     clips: Vec<Clip>,
     gain: f32,
     fx: Option<fx::Fx>,
+    /// linee del volume (della traccia e del suo gruppo), da moltiplicare
+    envs: Vec<Vec<env::EnvPoint>>,
 }
 
 /// Mixa le sorgenti con ffmpeg e restituisce il contenuto del file (scaricato dal browser).
@@ -1642,6 +1659,22 @@ async fn mix_to_file(
     // ffmpeg non perde la fine del brano (senza, asplit + afir tagliavano gli ultimi ~0,15 s)
     let ir_path = fx::REVERB_IR.get().filter(|p| p.exists()).cloned();
     let reverb = ir_path.is_some() && items.iter().any(|it| it.fx.as_ref().is_some_and(|f| f.clone().clamped().send() > 0.0));
+    tokio::fs::create_dir_all(work_dir).await?;
+    let job = uuid::Uuid::new_v4();
+    // linee del volume: un file del guadagno per traccia, letto come ingresso dopo i brani
+    let mut env_files = TempFiles(vec![]); // cancellati all'uscita, anche in caso di errore
+    let mut env_input: Vec<Option<usize>> = vec![];
+    for (k, it) in items.iter().enumerate() {
+        if it.envs.is_empty() {
+            env_input.push(None);
+            continue;
+        }
+        let end = it.clips.iter().map(|c| c.start + c.duration).fold(0.0, f64::max);
+        let p = work_dir.join(format!("{job}.env{k}.wav"));
+        env_files.0.push(p.clone());
+        env_input.push(Some(items.len() + env_files.0.len() - 1));
+        env::write_wav(&p, &it.envs, scale, end * scale + 1.0)?;
+    }
     for (k, it) in items.iter().enumerate() {
         inputs.push(it.path.clone());
         let n = it.clips.len();
@@ -1662,17 +1695,28 @@ async fn mix_to_file(
             filter += &format!("[c{k}_{j}]");
         }
         if n > 1 {
-            filter += &format!("amix=inputs={n}:normalize=0:duration=longest,");
+            filter += &format!("amix=inputs={n}:normalize=0:duration=longest[p{k}];");
+        } else {
+            filter += &format!("anull[p{k}];");
         }
-        // effetti della traccia, poi il volume (come nell'editor) e la mandata al riverbero
-        let mut volume = format!("volume={:.4}", it.gain.clamp(0.0, 2.0));
+        // effetti della traccia, linea del volume, volume (come nell'editor) e mandata al riverbero
+        let mut cur = format!("p{k}");
+        if let Some(g) = it.fx.as_ref().and_then(|f| f.graph(&cur, &format!("q{k}"), k)) {
+            filter += &g;
+            cur = format!("q{k}");
+        }
+        if let Some(ei) = env_input[k] {
+            filter += &format!(
+                "[{cur}]aformat=sample_fmts=flt:sample_rates=44100:channel_layouts=stereo[x{k}];\
+                 [{ei}:a]aresample=44100,pan=stereo|c0=c0|c1=c0,aformat=sample_fmts=flt[e{k}];[x{k}][e{k}]amultiply[m{k}];"
+            );
+            cur = format!("m{k}");
+        }
+        let mut volume = format!("[{cur}]volume={:.4}", it.gain.clamp(0.0, 2.0));
         if reverb {
             volume += ",apad=pad_dur=2.5";
         }
-        match it.fx.as_ref().and_then(|f| f.graph(&format!("p{k}"), &format!("q{k}"), k)) {
-            Some(g) => filter += &format!("anull[p{k}];{g}[q{k}]{volume}"),
-            None => filter += &volume,
-        }
+        filter += &volume;
         let send = it.fx.as_ref().map_or(0.0, |f| f.clone().clamped().send());
         if send > 0.0 && reverb {
             filter += &format!(",asplit=2[a{k}][s{k}];[s{k}]volume={send:.6}[r{k}];");
@@ -1681,6 +1725,7 @@ async fn mix_to_file(
             filter += &format!("[a{k}];");
         }
     }
+    inputs.extend(env_files.0.iter().cloned());
     // riverbero condiviso: la somma delle mandate attraversa una sola risposta all'impulso
     let has_reverb = reverb && !sends.is_empty();
     if let (true, Some(ir_path)) = (has_reverb, ir_path) {
@@ -1725,8 +1770,6 @@ async fn mix_to_file(
         filter += &format!(",adelay=delays={}:all=1", (pre_roll * 1000.0).round() as u64);
     }
 
-    tokio::fs::create_dir_all(work_dir).await?;
-    let job = uuid::Uuid::new_v4();
     let out = work_dir.join(format!("{job}.{ext}"));
     let click_path = work_dir.join(format!("{job}.click.wav"));
     match &req.click {

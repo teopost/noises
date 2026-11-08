@@ -36,6 +36,9 @@ pub struct ShareTrack {
     gain: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     fx: Option<crate::fx::Fx>,
+    /// linee del volume (della traccia e del suo gruppo)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    envs: Vec<Vec<crate::env::EnvPoint>>,
 }
 
 /// Un mix condiviso: tracce con il loro volume, tonalità, velocità, master e loop.
@@ -223,7 +226,7 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
         } else {
             render_file(st, &sdir.join("render"), &t.part, &src, pitch, tempo).await?
         };
-        items.push(MixInput { path, clips: t.clips.clone(), gain: t.gain, fx: t.fx.clone() });
+        items.push(MixInput { path, clips: t.clips.clone(), gain: t.gain, fx: t.fx.clone(), envs: t.envs.clone() });
     }
     let req = ExportRequest {
         stems: vec![],
@@ -515,7 +518,7 @@ fn build_mix(st: &AppState, p: &crate::projects::Project, b: &MixBody) -> Result
         if t.song.is_empty() || t.clips.is_empty() {
             continue;
         }
-        tracks.push(ShareTrack { song: t.song.clone(), part: t.part.clone(), clips: t.clips.clone(), gain: e.gain.min(2.0), fx: t.fx.clone() });
+        tracks.push(ShareTrack { song: t.song.clone(), part: t.part.clone(), clips: t.clips.clone(), gain: e.gain.min(2.0), fx: t.fx.clone(), envs: crate::projects::track_envs(&p, t) });
     }
     if tracks.is_empty() {
         return Err(bad_request("nessuna traccia udibile da condividere"));
