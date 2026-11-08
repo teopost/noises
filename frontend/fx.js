@@ -141,7 +141,7 @@ function renderFxPanel() {
     <div class="fx-head"><span class="fx-title">${esc(T('Effetti'))} · <b>${esc(trackTitle(t))}</b></span>
       <button class="fx-close" title="Chiudi (Esc)" aria-label="Chiudi (Esc)">✕</button></div>
     <div class="fx-top">
-      <label class="fx-on" title="Togli la spunta per ascoltare la traccia senza effetti e confrontare"><input type="checkbox" ${fx.on !== false ? 'checked' : ''}> Attivi</label>
+      <label class="fx-on" title="Togli la spunta per ascoltare la traccia senza effetti e confrontare"><input type="checkbox" ${fx.on !== false ? 'checked' : ''} ${t.fx ? '' : 'disabled'}> Attivi</label>
       <select class="fx-preset" title="Punto di partenza: poi regola a orecchio">
         <option value="">Preset…</option>
         ${recommended.length ? `<optgroup label="${esc(T('Per questa traccia'))}">${recommended.map(opt).join('')}</optgroup><optgroup label="${esc(T('Altri'))}">${others.map(opt).join('')}</optgroup>` : FX_PRESETS.map(opt).join('')}
@@ -153,8 +153,7 @@ function renderFxPanel() {
           <input type="range" min="0" max="1000" step="1" data-k="${c.k}" value="${c.to(fx[c.k])}">
           <output>${esc(c.fmt(fx[c.k]))}</output></label>`)).join('')}</div>
     <div class="fx-foot">
-      <button class="fx-reset" title="Riporta tutti i controlli a zero">Azzera</button>
-      <button class="fx-remove" ${t.fx ? '' : 'disabled'} title="Toglie gli effetti dalla traccia">Rimuovi effetti</button>
+      <button class="fx-remove" ${t.fx ? '' : 'disabled'} title="Riporta tutti i controlli a zero: la traccia torna senza effetti">Azzera</button>
     </div>`;
   panel.querySelector('.fx-close').addEventListener('click', closeFxPanel);
   panel.querySelector('.fx-on input').addEventListener('change', (e) => {
@@ -176,7 +175,9 @@ function renderFxPanel() {
       out.textContent = c.fmt(v);
       // regolando un controllo gli effetti si riaccendono
       setTrackFx(t, { ...(t.fx || FX_DEFAULT), [c.k]: v, on: true });
-      panel.querySelector('.fx-on input').checked = true;
+      const on = panel.querySelector('.fx-on input');
+      on.checked = true;
+      on.disabled = !t.fx;
       panel.classList.remove('bypass');
       panel.querySelector('.fx-remove').disabled = !t.fx;
     });
@@ -186,9 +187,6 @@ function renderFxPanel() {
       inp.value = c.to(FX_DEFAULT[c.k]);
       inp.dispatchEvent(new Event('input'));
     });
-  });
-  panel.querySelector('.fx-reset').addEventListener('click', () => {
-    if (fxStep(() => setTrackFx(t, { ...FX_DEFAULT }))) renderFxPanel();
   });
   panel.querySelector('.fx-remove').addEventListener('click', () => {
     fxStep(() => setTrackFx(t, null));

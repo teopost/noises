@@ -1170,6 +1170,7 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .fx-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px 4px; }
 .fx-on { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
 .fx-on input { accent-color: var(--accent); }
+.fx-on:has(input:disabled) { opacity: .45; cursor: default; }
 .fx-preset {
   flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border);
   border-radius: 8px; padding: 4px 6px;
@@ -1181,7 +1182,7 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .fx-row input { width: 100%; accent-color: var(--accent); }
 .fx-row output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
 .fx-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fx-foot { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); margin-top: 8px; }
+.fx-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); margin-top: 8px; }
 .fx-foot button { font-size: 12px; }
 .fx-remove:disabled { opacity: .45; cursor: default; }
 @media (max-width: 480px) { .fx-panel { width: calc(100vw / var(--ui-zoom) - 16px); } }
