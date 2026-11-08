@@ -196,7 +196,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Eliminare la clip selezionata | `Canc` |
 | Annulla / ripeti | `Ctrl+Z` / `Ctrl+Y` |
 | Raggruppare / sciogliere le tracce selezionate | `Ctrl+G` / `Ctrl+Shift+G` |
-| Riordinare le tracce | trascina la maniglia ⠿, oppure `Alt+↑` / `Alt+↓` |
+| Riordinare le tracce | trascina la maniglia ⠿, oppure `Alt+↑` / `Alt+↓`; la ⠿ di un gruppo sposta tutto il gruppo (anche `Alt+↑`/`Alt+↓` con il gruppo selezionato) |
 | Segnalibri | `M` per aggiungere, `,` e `.` per il precedente e il successivo (anche ‹ ＋ › nella corsia) |
 | Linee delle battute nella timeline | casella **Battute** accanto a *Segui* (serve l'analisi del ritmo) |
 | Zoom | `Ctrl` + rotella, pinch, slider, oppure i bordi del riquadro nella panoramica |

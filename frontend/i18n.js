@@ -169,6 +169,8 @@ const EN = {
   '4 tracce HQ': '4 tracks HQ',
   '4 tracce RoFormer HQ': '4 tracks RoFormer HQ',
   // ---------------------------------------------------------------- effetti
+  "Trascina per spostare tutto il gruppo (Alt+↑/↓)": "Drag to move the whole group (Alt+↑/↓)",
+  "Sposta gruppo": "Move group",
   "Effetti": "Effects",
   "Effetti…": "Effects…",
   "Aggiungi effetti…": "Add effects…",

@@ -258,9 +258,86 @@ function ungroupSelected() {
 
 // ------------------------------------------------------------------------ ordine
 
+/** Blocchi dell'elenco nell'ordine a schermo: un gruppo (cartella) intero oppure una traccia. */
+function trackUnits() {
+  const units = [];
+  const seen = new Set();
+  for (const t of engine.tracks) {
+    if (seen.has(t.name)) continue;
+    const g = folderOf(t.name);
+    const tracks = g ? folderKids(g) : [t];
+    tracks.forEach((x) => seen.add(x.name));
+    const first = g ? g._row : t.row;
+    const last = g ? (g.collapsed ? g._row : (tracks[tracks.length - 1].row || g._row)) : t.row;
+    units.push({ g, tracks, first, last });
+  }
+  return units;
+}
+
+/** Sposta un blocco di tracce contigue prima del blocco `index` (o in fondo). */
+function moveUnitTo(tracks, index, units) {
+  const target = units[index];
+  if (target && target.tracks.includes(tracks[0])) return;
+  const cur = units.findIndex((u) => u.tracks.includes(tracks[0]));
+  if (index === cur + 1) return; // già lì
+  pushUndo('Sposta gruppo');
+  const rest = engine.tracks.filter((t) => !tracks.includes(t));
+  const at = target ? rest.indexOf(target.tracks[0]) : rest.length;
+  rest.splice(at, 0, ...tracks);
+  engine.tracks = rest;
+  saveLayout();
+  buildTracks();
+}
+
+/** Riordino di un gruppo intero trascinando la sua maniglia ⠿: si ferma solo tra un blocco e
+ *  l'altro, mai in mezzo alle tracce di un altro gruppo. */
+function setupFolderGrip(g, row) {
+  const grip = row.querySelector('.grip');
+  if (!grip) return;
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    grip.setPointerCapture(e.pointerId);
+    row.classList.add('dragging');
+    const units = trackUnits().filter((u) => u.first && u.last);
+    let target = null;
+    const marker = $('#reorder-line');
+    const move = (ev) => {
+      let idx = units.length;
+      for (let i = 0; i < units.length; i++) {
+        const a = units[i].first.getBoundingClientRect(), b = units[i].last.getBoundingClientRect();
+        if (ev.clientY < (a.top + b.bottom) / 2) { idx = i; break; }
+      }
+      target = idx;
+      const y = idx < units.length ? units[idx].first.getBoundingClientRect().top : units[units.length - 1].last.getBoundingClientRect().bottom;
+      marker.style.top = `${(y - $('#tl-inner').getBoundingClientRect().top) / uiZoom() - 1}px`;
+      marker.classList.remove('hidden');
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      row.classList.remove('dragging');
+      marker.classList.add('hidden');
+      if (target != null) moveUnitTo(folderKids(g), target, units);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
+}
+
 function moveSelectedTracks(dir) {
   const sel = engine.tracks.filter((t) => state.selTracks.has(t.name));
   if (!sel.length) return;
+  // un gruppo intero selezionato (clic sulla sua riga): scavalca un blocco alla volta
+  const g = folderOf(sel[0].name);
+  if (g && folderKids(g).length === sel.length && sel.every((t) => g.tracks.includes(t.name))) {
+    const units = trackUnits();
+    const cur = units.findIndex((u) => u.g === g);
+    const to = dir < 0 ? cur - 1 : cur + 2;
+    if (to < 0 || to > units.length) return;
+    moveUnitTo(folderKids(g), to, units);
+    return;
+  }
   const list = engine.tracks;
   const idx = sel.map((t) => list.indexOf(t));
   if ((dir < 0 && Math.min(...idx) === 0) || (dir > 0 && Math.max(...idx) === list.length - 1)) return;
@@ -784,7 +861,7 @@ function buildFolderRow(g, kids) {
   row.className = `track audio-row folder-row ${g.collapsed ? 'collapsed' : ''}`;
   row.innerHTML = `
     <div class="track-head">
-      <div class="track-title"><button class="fold" title="${g.collapsed ? 'Apri il gruppo' : 'Chiudi il gruppo'}">${g.collapsed ? '▸' : '▾'}</button>
+      <div class="track-title"><span class="grip" title="Trascina per spostare tutto il gruppo (Alt+↑/↓)">⠿</span><button class="fold" title="${g.collapsed ? 'Apri il gruppo' : 'Chiudi il gruppo'}">${g.collapsed ? '▸' : '▾'}</button>
         <span class="folder-ico">▤</span>
         <input class="tname" value="${esc(g.name)}" maxlength="60" title="Gruppo: ${kids.length} tracce — clic per rinominare">
         <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
@@ -812,11 +889,12 @@ function buildFolderRow(g, kids) {
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
   row.querySelector('.tmenu').addEventListener('click', (e) => { e.stopPropagation(); openFolderMenu(g, e.currentTarget); });
   row.querySelector('.track-head').addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button, a, select, input[type=range]')) return;
+    if (e.target.closest('button, a, select, .grip, input[type=range]')) return;
     selectFolder(g, e.ctrlKey || e.metaKey || e.shiftKey);
   });
   row.querySelector('.track-head').addEventListener('dblclick', (e) => { if (!e.target.closest('button, input')) toggle(); });
   g._row = row;
+  setupFolderGrip(g, row);
   g._canvas = row.querySelector('canvas');
   if (kids[0]) setupClipCanvas(kids[0], g._canvas, kids, g);
   return row;
