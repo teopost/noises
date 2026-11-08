@@ -715,7 +715,7 @@ function drawClipTrack(t) {
     ctx.fillRect(x1 - 3 * dpr, mid - 8 * dpr, 3 * dpr, 16 * dpr);
   }
   drawLinkStrip(ctx, t.clips, w, dpr);
-  drawEnvelope(ctx, w, h, dpr, t.env || null, envSelectedIn({ track: t }));
+  drawEnvelope(ctx, w, h, dpr, t.env || null, envSelectedIn({ track: t }), { track: t });
 }
 
 /** Pezzi fissati: una linea viola in alto che li unisce, dal primo all'ultimo. */
@@ -780,7 +780,7 @@ function setupEditor() {
   $('#cut-btn').addEventListener('click', splitSelected);
   $('#dup-btn').addEventListener('click', duplicateSelectedClip);
   $('#fix-btn').addEventListener('click', () => toggleFixed(fixTargets()));
-  $('#env-btn').addEventListener('click', () => setEnvMode(!envUi.mode));
+  $('#env-btn').addEventListener('click', toggleEnvMode);
   document.addEventListener('keydown', (e) => {
     if (!state.current || e.target.matches('input:not([type=range]):not([type=checkbox]), select, textarea')) return;
     if (e.target.matches('canvas.roll')) return; // il piano roll gestisce i propri tasti
@@ -791,7 +791,7 @@ function setupEditor() {
     else if (mod && e.code === 'KeyG') { e.preventDefault(); if (e.shiftKey) ungroupSelected(); else groupSelected(); }
     else if (e.altKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) { e.preventDefault(); moveSelectedTracks(e.code === 'ArrowUp' ? -1 : 1); }
     else if (e.code === 'KeyX' && !mod) { e.preventDefault(); splitSelected(); }
-    else if (e.code === 'KeyV' && !mod && !e.altKey) { e.preventDefault(); setEnvMode(!envUi.mode); }
+    else if (e.code === 'KeyV' && !mod && !e.altKey) { e.preventDefault(); toggleEnvMode(); }
     else if ((e.key === 'Delete' || e.key === 'Backspace') && envDeleteSelected()) e.preventDefault();
     else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selClip) { e.preventDefault(); deleteSelectedClip(); }
     else if (e.code === 'Escape' && state.selTracks.size) clearTrackSelection();
@@ -972,7 +972,7 @@ function drawFolder(g) {
     if (peakAll > peak) { ctx.globalAlpha = 0.25; bar(x, peakAll); ctx.globalAlpha = 1; }
     if (peak > 0) bar(x, peak);
   }
-  drawEnvelope(ctx, w, h, dpr, g.env || null, envSelectedIn({ group: g }));
+  drawEnvelope(ctx, w, h, dpr, g.env || null, envSelectedIn({ group: g }), { group: g });
 }
 
 function openFolderMenu(g, anchor) {

@@ -237,6 +237,7 @@ async function openProject(id) {
   engine.init();
   engine.clear();
   state.current = p;
+  if (envUi.mode) setEnvMode(null);
   state.refSong = null;
   state.refTrack = null;
   state.chords = null;

@@ -10,7 +10,11 @@ const ENV_MAX = 6;
 const ENV_HIT = 7;    // px: distanza per prendere un punto
 const ENV_COLOR = '#ffd166';
 
-const envUi = { mode: false, sel: null, drag: null };
+// mode: riga su cui la linea è aperta ({ track } o { group }), null = chiusa
+const envUi = { mode: null, sel: null, drag: null };
+
+/** true se la linea è aperta su questa traccia o gruppo. */
+const envActive = (o) => !!envUi.mode && !!o && (o.group ? envUi.mode.group === o.group : !!o.track && envUi.mode.track === o.track);
 
 const envGainOfDb = (v) => (v <= ENV_MIN ? 0 : Math.pow(10, v / 20));
 
@@ -67,15 +71,16 @@ function envOwnerOf(canvas) {
 }
 
 /** Disegna la linea sopra la forma d'onda (in modalità volume con i punti). */
-function drawEnvelope(ctx, w, h, dpr, env, selected) {
-  if (!envUi.mode && !env) return;
+function drawEnvelope(ctx, w, h, dpr, env, selected, owner) {
+  const active = envActive(owner);
+  if (!active && !env) return;
   const sl = tlEl().scrollLeft, z = state.zoom, k = ek();
   const X = (t) => (t * k * z - sl) * dpr;
   const H = h / dpr;
   ctx.save();
   ctx.strokeStyle = ENV_COLOR;
-  ctx.lineWidth = (envUi.mode ? 2 : 1.5) * dpr;
-  ctx.globalAlpha = envUi.mode ? 1 : 0.55;
+  ctx.lineWidth = (active ? 2 : 1.5) * dpr;
+  ctx.globalAlpha = active ? 1 : 0.55;
   if (!env) ctx.setLineDash([6 * dpr, 4 * dpr]);
   ctx.beginPath();
   const pts = env || [{ t: 0, v: 0 }];
@@ -83,7 +88,7 @@ function drawEnvelope(ctx, w, h, dpr, env, selected) {
   for (const p of pts) ctx.lineTo(Math.max(-10, Math.min(w + 10, X(p.t))), envY(p.v, H) * dpr);
   ctx.lineTo(w, envY(pts[pts.length - 1].v, H) * dpr);
   ctx.stroke();
-  if (envUi.mode && env) {
+  if (active && env) {
     ctx.setLineDash([]);
     env.forEach((p, i) => {
       const x = X(p.t);
@@ -113,10 +118,11 @@ function envChanged() {
   requestRedraw();
 }
 
-function setEnvMode(on) {
-  envUi.mode = on;
+/** Apre la linea su una traccia o un gruppo ({ track } / { group }), oppure la chiude (null). */
+function setEnvMode(target) {
+  envUi.mode = target && (target.track || target.group) ? { track: target.track || null, group: target.group || null } : null;
   envUi.sel = null;
-  document.body.classList.toggle('env-mode', on);
+  const on = !!envUi.mode;
   const b = $('#env-btn');
   if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   hideEnvTip();
@@ -132,6 +138,16 @@ function showEnvTip(clientX, clientY, t, v) {
   tip.style.left = `${clientX / z + 12}px`;
   tip.style.top = `${clientY / z - 28}px`;
 }
+/** Pulsante 📈 / tasto V: chiude la linea, oppure la apre sulla traccia o sul gruppo selezionato. */
+function toggleEnvMode() {
+  if (envUi.mode) { setEnvMode(null); return; }
+  const names = engine.tracks.map((t) => t.name).filter((n) => state.selTracks.has(n));
+  if (!names.length) { toast('Seleziona la traccia su cui mostrare la linea del volume'); return; }
+  const f = folderOf(names[0]);
+  if (f && f.tracks.every((n) => state.selTracks.has(n)) && names.every((n) => f.tracks.includes(n))) { setEnvMode({ group: f }); return; }
+  setEnvMode({ track: trackByName(names[0]) });
+}
+
 function hideEnvTip() { const tip = $('#env-tip'); if (tip) tip.classList.add('hidden'); }
 
 /** Gesti sulla riga in modalità volume. Agganciato in fase di cattura: ha la precedenza sui pezzi. */
@@ -157,7 +173,8 @@ function setupEnvCanvas(canvas) {
   canvas.addEventListener('pointermove', (e) => {
     if (!envUi.mode || envUi.drag) return;
     const owner = envOwnerOf(canvas);
-    if (!owner) return;
+    if (!envActive(owner)) return;
+    e.stopImmediatePropagation();
     const h = hit(owner, e);
     canvas.style.cursor = h.node != null ? 'move' : h.line && owner.get() ? 'ns-resize' : 'copy';
     if (h.node != null) { const p = owner.get()[h.node]; showEnvTip(e.clientX, e.clientY, p.t, p.v); } else hideEnvTip();
@@ -167,7 +184,7 @@ function setupEnvCanvas(canvas) {
   canvas.addEventListener('pointerdown', (e) => {
     if (!envUi.mode || e.button !== 0) return;
     const owner = envOwnerOf(canvas);
-    if (!owner) return;
+    if (!envActive(owner)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     const h = hit(owner, e);
@@ -180,7 +197,8 @@ function setupEnvCanvas(canvas) {
       // tratto tra due punti: si alza o abbassa tutto (prima del primo / dopo l'ultimo: quel punto)
       let i = env.findIndex((p) => p.t > h.t);
       const idx = i < 0 ? [env.length - 1] : i === 0 ? [0] : [i - 1, i];
-      drag = { kind: 'segment', idx };
+      // un clic senza trascinare aggiunge un punto sulla linea (non cambia il suono)
+      drag = { kind: 'segment', idx, t: Math.max(0, h.t) };
     } else {
       // nuovo punto dove si clicca
       pushUndo('Linea del volume');
@@ -233,7 +251,19 @@ function setupEnvCanvas(canvas) {
     e.stopImmediatePropagation();
     envUi.drag = null;
     hideEnvTip();
-    if (d.moved) { d.owner.set(normEnv(d.owner.get())); envChanged(); saveProject(); }
+    if (d.moved) { d.owner.set(normEnv(d.owner.get())); envChanged(); saveProject(); return; }
+    if (d.kind === 'segment') {
+      const env = (d.owner.get() || []).map((p) => ({ ...p }));
+      if (env.some((p) => Math.abs(p.t - d.t) < 0.001)) return;
+      pushUndo('Linea del volume');
+      const p = { t: Math.round(d.t * 1000) / 1000, v: Math.round(envValueAt(env, d.t) * 10) / 10 };
+      env.push(p);
+      env.sort((a, b) => a.t - b.t);
+      d.owner.set(env);
+      envUi.sel = { track: d.owner.track, group: d.owner.group, i: env.indexOf(p) };
+      envChanged();
+      saveProject();
+    }
   };
   canvas.addEventListener('pointerup', end, true);
   canvas.addEventListener('pointercancel', end, true);
@@ -242,7 +272,7 @@ function setupEnvCanvas(canvas) {
   canvas.addEventListener('dblclick', (e) => {
     if (!envUi.mode) return;
     const owner = envOwnerOf(canvas);
-    if (!owner) return;
+    if (!envActive(owner)) return;
     e.stopImmediatePropagation();
     const h = hit(owner, e);
     if (h.node == null) return;
@@ -285,7 +315,7 @@ function lowerSelection(owner) {
   owner.set(normEnv([...keep, ...added, { t: e, v: ve }, { t: b, v: vb }]));
   envChanged();
   saveProject();
-  if (!envUi.mode) setEnvMode(true);
+  if (!envActive(owner)) setEnvMode(owner);
   toast('Volume abbassato di 10 dB nella selezione: trascina la linea per regolarlo');
 }
 
@@ -302,7 +332,7 @@ function clearEnvelope(owner) {
 function envMenuItems(owner) {
   const has = !!owner.get();
   return [
-    { icon: '📈', label: envUi.mode ? 'Chiudi la linea del volume (V)' : 'Linea del volume (V)', run: () => setEnvMode(!envUi.mode) },
+    { icon: '📈', label: envActive(owner) ? 'Chiudi la linea del volume (V)' : 'Linea del volume (V)', run: () => setEnvMode(envActive(owner) ? null : owner) },
     { icon: '↘', label: 'Abbassa il volume nella selezione', disabled: !state.sel || state.sel.end - state.sel.start < 0.05, run: () => lowerSelection(owner) },
     { icon: '⌫', label: 'Cancella la linea del volume', disabled: !has, run: () => clearEnvelope(owner) },
   ];
