@@ -8,7 +8,7 @@ Web app self-hosted in stile Moises: separazione delle tracce con l'AI, mixer mu
 cambio di tonalità e velocità indipendenti, accordi, trascrizione delle note, spartito, tablatura,
 click intelligente ed esportazione di basi.
 
-![Versione](https://img.shields.io/badge/versione-2.1.0-7c5cff)
+![Versione](https://img.shields.io/badge/versione-2.2.0-7c5cff)
 ![Licenza](https://img.shields.io/badge/licenza-MIT-2bd47d)
 ![Rust](https://img.shields.io/badge/backend-Rust%20%2B%20axum-orange)
 ![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
@@ -55,7 +55,7 @@ click intelligente ed esportazione di basi.
 ### Editor multitraccia
 - **Clip** spostabili, tagliabili (`X` o ✂), **duplicabili** (`Ctrl+D`) ed eliminabili, con i pezzi **fissabili** insieme (🔗) per spostarli in blocco; tracce aggiungibili da libreria, computer o YouTube, duplicabili, rinominabili, riordinabili.
 - **Gruppi**: le tracce separate di un brano stanno in un gruppo apribile e chiudibile; con **Raggruppa** ne crei altri. Le tracce di un gruppo si spostano e si modificano insieme.
-- **Linea del volume** (automazione) per traccia e per gruppo: con il pulsante 📈 o `V` sopra la forma d'onda compare una linea; un clic aggiunge un punto, trascinandolo si alza, si abbassa o si sposta nel tempo, il doppio clic lo toglie. Le rampe tra i punti sono lineari in dB, la linea è relativa al volume della traccia e la forma d'onda la segue. *Abbassa il volume nella selezione* crea da solo i punti per abbassare di 10 dB un passaggio. Si sente uguale nell'ascolto (a ogni velocità, nei loop), nei file esportati e nei link condivisi.
+- **Linea del volume** (automazione) per traccia e per gruppo: selezionata la traccia (o il gruppo), con il pulsante 📈 o `V` sopra la sua forma d'onda compare una linea; un clic aggiunge un punto (anche sulla linea, senza cambiare il suono), trascinandolo si alza, si abbassa o si sposta nel tempo, il doppio clic lo toglie. Le rampe tra i punti sono lineari in dB, la linea è relativa al volume della traccia e la forma d'onda la segue. *Abbassa il volume nella selezione* crea da solo i punti per abbassare di 10 dB un passaggio. Si sente uguale nell'ascolto (a ogni velocità, nei loop), nei file esportati e nei link condivisi.
 - **Annulla/ripeti** (`Ctrl+Z` / `Ctrl+Y`), **segnalibri** con nome e navigazione, **selezione** e **loop** con precisione al campione.
 - **Zoom** in pixel al secondo (slider, `Ctrl` + rotella o pinch) e **panoramica** del progetto con un riquadro da trascinare.
 
@@ -203,7 +203,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Zoom | `Ctrl` + rotella, pinch, slider, oppure i bordi del riquadro nella panoramica |
 | Scorrere | trascina il riquadro della panoramica, `Shift` + rotella, trackpad |
 | Separare, rinominare, duplicare, esportare, eliminare una traccia | menu **⋯** della traccia |
-| Linea del volume | 📈 nella barra o `V`: clic sulla traccia per un nuovo punto, trascina per spostarlo (`Shift`: solo in verticale, `Ctrl`: aggancio al click), trascina la linea tra due punti per alzarla o abbassarla, doppio clic o `Canc` per togliere un punto; menu **⋯** → *Abbassa il volume nella selezione* · *Cancella la linea del volume* |
+| Linea del volume | seleziona la traccia, poi 📈 nella barra o `V` (oppure ⋯ della traccia → *Linea del volume*): clic per un nuovo punto, trascina per spostarlo (`Shift`: solo in verticale, `Ctrl`: aggancio al click), trascina la linea tra due punti per alzarla o abbassarla, doppio clic o `Canc` per togliere un punto; menu **⋯** → *Abbassa il volume nella selezione* · *Cancella la linea del volume* |
 | Effetti di una traccia (equalizzatore, definizione, compressore, riverbero) | menu **⋯** → *Aggiungi effetti…*, poi il pulsante **FX** sulla traccia; togli *Attivi* per confrontare con l'originale, doppio clic su un cursore per azzerarlo |
 | Note e spartito di una traccia separata | menu **⋯** → Mostra note · Spartito e tablatura |
 | Modificare le note | clic per selezionare · trascina per spostare · bordo destro per la durata · doppio clic per aggiungere · `Canc` per eliminare · `↑`/`↓` per un semitono · `Shift` per muoversi senza griglia |
