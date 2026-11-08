@@ -153,7 +153,8 @@ function renderFxPanel() {
           <input type="range" min="0" max="1000" step="1" data-k="${c.k}" value="${c.to(fx[c.k])}">
           <output>${esc(c.fmt(fx[c.k]))}</output></label>`)).join('')}</div>
     <div class="fx-foot">
-      <button class="fx-remove" ${t.fx ? '' : 'disabled'} title="Riporta tutti i controlli a zero: la traccia torna senza effetti">Azzera</button>
+      <button class="fx-reset" ${t.fx ? '' : 'disabled'} title="Riporta tutti i controlli a zero (gli effetti restano sulla traccia)">Azzera</button>
+      <button class="fx-remove" ${t.fx ? '' : 'disabled'} title="Toglie gli effetti dalla traccia (sparisce il pulsante FX)">Rimuovi effetti</button>
     </div>`;
   panel.querySelector('.fx-close').addEventListener('click', closeFxPanel);
   panel.querySelector('.fx-on input').addEventListener('change', (e) => {
@@ -180,6 +181,7 @@ function renderFxPanel() {
       on.disabled = !t.fx;
       panel.classList.remove('bypass');
       panel.querySelector('.fx-remove').disabled = !t.fx;
+      panel.querySelector('.fx-reset').disabled = !t.fx;
     });
     // le frecce regolano il cursore senza spostare la riproduzione; doppio clic = zero
     inp.addEventListener('keydown', (e) => { if (e.code.startsWith('Arrow')) e.stopPropagation(); });
@@ -187,6 +189,9 @@ function renderFxPanel() {
       inp.value = c.to(FX_DEFAULT[c.k]);
       inp.dispatchEvent(new Event('input'));
     });
+  });
+  panel.querySelector('.fx-reset').addEventListener('click', () => {
+    if (fxStep(() => setTrackFx(t, { ...FX_DEFAULT }))) renderFxPanel();
   });
   panel.querySelector('.fx-remove').addEventListener('click', () => {
     fxStep(() => setTrackFx(t, null));
