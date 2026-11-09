@@ -38,6 +38,9 @@ pub struct PTrack {
     /// linea del volume della traccia
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env: Option<Vec<crate::env::EnvPoint>>,
+    /// solo un canale del brano: "L" (sinistro) o "R" (destro), per le tracce divise
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ch: Option<String>,
 }
 
 /// Sezione salvata del progetto (es. "Assolo"): intervallo da riascoltare in loop.
@@ -298,6 +301,7 @@ pub async fn put_state(
         .map(|mut t| {
             t.fx = t.fx.map(crate::fx::Fx::clamped);
             t.env = crate::env::clean(t.env);
+            t.ch = t.ch.take().filter(|c| c == "L" || c == "R");
             t
         })
         .collect();
@@ -307,6 +311,7 @@ pub async fn put_state(
         .map(|mut g| {
             g.name = g.name.chars().take(120).collect();
             g.env = crate::env::clean(g.env.take());
+            g.pan = if g.pan.is_finite() { g.pan.clamp(-1.0, 1.0) } else { 0.0 };
             g
         })
         .collect();
@@ -406,7 +411,7 @@ pub async fn export(
         } else {
             render_file(&st, &dir.join("render"), &t.part, &src, pitch, tempo).await?
         };
-        items.push(MixInput { path, clips: t.clips.clone(), gain: e.gain, fx: t.fx.clone(), envs: track_envs(&p, t) });
+        items.push(MixInput { path, clips: t.clips.clone(), gain: e.gain, fx: t.fx.clone(), envs: track_envs(&p, t), mix: crate::clean_mix(e.mix) });
     }
     let work = st.0.data_dir.join("projects").join(&pid).join("exports");
     run_export(&work, items, &req, &p.name).await
@@ -453,7 +458,7 @@ pub fn migrate(st: &AppState) {
             let clips = layout.stem_clips.get(stem).cloned().unwrap_or_else(|| {
                 vec![Clip { id: format!("{stem}-0"), start: 0.0, offset: 0.0, duration, link: None }]
             });
-            tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false, fx: None, env: None });
+            tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false, fx: None, env: None, ch: None });
         }
         for ut in &song.user_tracks {
             let tname = format!("user:{}", ut.id);
@@ -488,7 +493,7 @@ pub fn migrate(st: &AppState) {
             ns.created_at = now_secs();
             st.0.songs.write().unwrap().insert(new_id.clone(), ns.clone());
             let _ = st.save_meta(&ns);
-            tracks.push(PTrack { name: tname, label: ut.name.clone(), song: new_id, part: "original".into(), clips: ut.clips.clone(), rec: false, fx: None, env: None });
+            tracks.push(PTrack { name: tname, label: ut.name.clone(), song: new_id, part: "original".into(), clips: ut.clips.clone(), rec: false, fx: None, env: None, ch: None });
         }
         if !layout.order.is_empty() {
             let pos = |n: &String| layout.order.iter().position(|x| x == n).unwrap_or(usize::MAX);
@@ -507,6 +512,8 @@ pub fn migrate(st: &AppState) {
                 solo: false,
                 volume: 1.0,
                 env: None,
+                pan: 0.0,
+                lr: false,
             }]
         } else {
             layout.groups.clone()

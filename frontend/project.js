@@ -317,7 +317,7 @@ async function loadProjectTracks(p) {
       const audio = await decodeToArrays(data);
       decoded++;
       report();
-      return { name: t.name, song: t.song, part: t.part, label: t.label, clips: t.clips, rec: !!t.rec, fx: t.fx, env: t.env, ...audio };
+      return { name: t.name, song: t.song, part: t.part, label: t.label, clips: t.clips, rec: !!t.rec, fx: t.fx, env: t.env, ch: t.ch, ...audio };
     }));
     if (seq !== state.loadSeq) return;
     const pending = state.pending;
@@ -362,7 +362,7 @@ function fitTitle() {
 function projectState() {
   return {
     name: (state.current && state.current.name) || 'Progetto',
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, ...(t.fx ? { fx: t.fx } : {}), ...(t.env ? { env: t.env } : {}) })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, ...(t.fx ? { fx: t.fx } : {}), ...(t.env ? { env: t.env } : {}), ...(t.ch ? { ch: t.ch } : {}) })),
     groups: deep(state.groups),
     markers: state.markers || [],
     regions: state.regions || [],
@@ -526,11 +526,12 @@ async function duplicateTrack(t) {
       audio = await decodeToArrays(await r.arrayBuffer());
     }
     pushUndo('Duplica traccia');
-    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part, rec: t.rec, fx: t.fx ? { ...t.fx } : null, env: t.env ? t.env.map((p) => ({ ...p })) : null,
+    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part, rec: t.rec, ch: t.ch, fx: t.fx ? { ...t.fx } : null, env: t.env ? t.env.map((p) => ({ ...p })) : null,
       label: tr(`${trackTitle(t)} (copia)`), clips: t.clips.map((c) => ({ ...c, id: newClipId() })), ...audio });
     engine.tracks.splice(engine.tracks.indexOf(copy), 1);
     engine.tracks.splice(engine.tracks.indexOf(t) + 1, 0, copy);
-    Object.assign(copy, { muted: t.muted, solo: t.solo, volume: t.volume });
+    Object.assign(copy, { muted: t.muted, solo: t.solo, volume: t.volume, pan: t.pan });
+    engine.updateGains();
     selectTracks([copy.name]);
     saveProject();
     buildTracks();

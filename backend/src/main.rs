@@ -167,10 +167,29 @@ struct TrackGroup {
     solo: bool,
     #[serde(default = "unit_volume")]
     volume: f32,
+    /// pan del gruppo (-1 = tutto a sinistra, 1 = tutto a destra)
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pan: f32,
+    /// gruppo nato dalla divisione di una traccia in sinistro e destro
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    lr: bool,
 }
 
 fn unit_volume() -> f32 {
     1.0
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
+/// Matrice dei canali [Sx→Sx, Dx→Sx, Sx→Dx, Dx→Dx] (pan e canale scelto, calcolata dall'editor
+/// in frontend/pan.js); identità se assente o non valida.
+pub(crate) fn clean_mix(m: Option<[f32; 4]>) -> [f32; 4] {
+    match m {
+        Some(m) if m.iter().all(|x| x.is_finite()) => m.map(|x| x.clamp(-1.5, 1.5)),
+        _ => [1.0, 0.0, 0.0, 1.0],
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -1515,6 +1534,9 @@ async fn stem_path(
 struct ExportStem {
     name: String,
     gain: f32,
+    /// matrice dei canali (pan), vedi clean_mix
+    #[serde(default)]
+    mix: Option<[f32; 4]>,
 }
 
 #[derive(Deserialize)]
@@ -1617,6 +1639,18 @@ struct MixInput {
     fx: Option<fx::Fx>,
     /// linee del volume (della traccia e del suo gruppo), da moltiplicare
     envs: Vec<Vec<env::EnvPoint>>,
+    /// matrice dei canali (pan, canale scelto), applicata prima degli effetti come nell'editor
+    mix: [f32; 4],
+}
+
+/// Numero di canali di un file audio (2 se non si riesce a leggerlo).
+async fn probe_channels(path: &Path) -> u32 {
+    let out = Command::new("ffprobe")
+        .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels", "-of", "csv=p=0"])
+        .arg(path)
+        .output()
+        .await;
+    out.ok().and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok()).unwrap_or(2)
 }
 
 /// Mixa le sorgenti con ffmpeg e restituisce il contenuto del file (scaricato dal browser).
@@ -1699,8 +1733,18 @@ async fn mix_to_file(
         } else {
             filter += &format!("anull[p{k}];");
         }
-        // effetti della traccia, linea del volume, volume (come nell'editor) e mandata al riverbero
+        // canali e pan: come nel motore dell'editor, che legge un file mono su entrambi i lati
+        // (senza, ffmpeg porterebbe il mono a stereo con -3 dB per lato)
         let mut cur = format!("p{k}");
+        let [a, b, c, d] = it.mix;
+        if probe_channels(&it.path).await == 1 {
+            filter += &format!("[{cur}]pan=stereo|c0={:.6}*c0|c1={:.6}*c0[pm{k}];", a + b, c + d);
+            cur = format!("pm{k}");
+        } else if it.mix != [1.0, 0.0, 0.0, 1.0] {
+            filter += &format!("[{cur}]pan=stereo|c0={a:.6}*c0+{b:.6}*c1|c1={c:.6}*c0+{d:.6}*c1[pm{k}];");
+            cur = format!("pm{k}");
+        }
+        // effetti della traccia, linea del volume, volume (come nell'editor) e mandata al riverbero
         if let Some(g) = it.fx.as_ref().and_then(|f| f.graph(&cur, &format!("q{k}"), k)) {
             filter += &g;
             cur = format!("q{k}");

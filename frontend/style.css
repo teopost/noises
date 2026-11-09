@@ -170,6 +170,13 @@ input[type=range] { accent-color: var(--accent); }
 .track-btns .m.on { background: var(--danger); border-color: var(--danger); }
 .track-btns .s.on { background: #f5c542; border-color: #f5c542; color: #111; }
 .track-btns input[type=range] { width: 90px; }
+.track-btns input.pan {
+  -webkit-appearance: none; appearance: none; width: 42px; height: 14px; margin: 0; cursor: ew-resize; background:
+    linear-gradient(var(--muted), var(--muted)) center / 1px 10px no-repeat,
+    linear-gradient(var(--border), var(--border)) center / 100% 3px no-repeat;
+}
+.track-btns input.pan::-webkit-slider-thumb { -webkit-appearance: none; width: 8px; height: 12px; border-radius: 3px; background: var(--accent); border: 0; }
+.track-btns input.pan::-moz-range-thumb { width: 8px; height: 12px; border-radius: 3px; background: var(--accent); border: 0; }
 .track-btns a { color: var(--muted); text-decoration: none; padding: 0 4px; }
 .track-btns a:hover { color: var(--text); }
 .wave { cursor: pointer; }
@@ -185,6 +192,7 @@ input[type=range] { accent-color: var(--accent); }
   #sidebar { width: auto; border-right: 0; border-bottom: 1px solid var(--border); max-height: 45vh; }
   :root { --head-w: 140px; }
   .track-btns input[type=range] { width: 50px; }
+  .track-btns input.pan { width: 30px; }
 }
 
 /* ---- import YouTube ---- */

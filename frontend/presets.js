@@ -9,8 +9,9 @@ const newPresetId = () => Math.random().toString(36).slice(2, 10);
 function folderSettings() {
   const out = {};
   for (const g of state.groups || []) {
-    if (g.folder && (g.muted || g.solo || (g.volume ?? 1) !== 1)) {
+    if (g.folder && (g.muted || g.solo || (g.volume ?? 1) !== 1 || r3(g.pan || 0))) {
       out[g.id] = { muted: !!g.muted, solo: !!g.solo, volume: r3(g.volume ?? 1) };
+      if (r3(g.pan || 0)) out[g.id].pan = r3(g.pan);
     }
   }
   return out;
@@ -141,6 +142,7 @@ function applyPresetSettings(p) {
     t.muted = !!(s && s.muted);
     t.solo = !!(s && s.solo);
     t.volume = s && s.volume != null ? s.volume : 1;
+    t.pan = clampPan(s && s.pan);
   }
   for (const g of state.groups || []) {
     if (!g.folder) continue;
@@ -148,6 +150,7 @@ function applyPresetSettings(p) {
     g.muted = !!(s && s.muted);
     g.solo = !!(s && s.solo);
     g.volume = s && s.volume != null ? s.volume : 1;
+    g.pan = clampPan(s && s.pan);
   }
   engine.updateGains();
   buildTracks();
@@ -326,7 +329,7 @@ function presetGains(c) {
   return engine.tracks.map((t) => {
     const g = gr(t.name);
     const audible = anySolo ? solo(t.name) : !(tr(t.name).muted || (g && g.muted));
-    return { name: t.name, gain: audible ? (tr(t.name).volume ?? 1) * (g ? g.volume ?? 1 : 1) : 0 };
+    return { name: t.name, gain: audible ? (tr(t.name).volume ?? 1) * (g ? g.volume ?? 1 : 1) : 0, mix: panMatrix(t.ch, tr(t.name).pan, g ? g.pan : 0) };
   }).filter((x) => x.gain > 0);
 }
 

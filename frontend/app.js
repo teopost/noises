@@ -103,7 +103,7 @@ const engine = {
     this.origDuration = 0;
     this.post({
       type: 'load', length: 0,
-      stems: list.map((t, i) => ({ name: t.name, l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), clips: this.clipSamples(t.clips) })),
+      stems: list.map((t, i) => ({ name: t.name, l: t.l, r: t.r, gain: this.gainOf(this.tracks[i]), mat: this.matOf(this.tracks[i]), clips: this.clipSamples(t.clips) })),
     }, list.flatMap((t) => (t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer])));
     this.updateLength(true);
     for (const t of this.tracks) if (t.fx) this.applyFx(t);
@@ -111,10 +111,15 @@ const engine = {
   },
 
   trackObject(t, p) {
+    // picchi dei due canali separati, per le tracce divise in sinistro e destro (pan.js)
+    const both = t.peaks || new Float32Array(0);
+    const peakSet = t.r && t.r !== t.l ? { S: both, L: computePeaks(t.l), R: computePeaks(t.r) } : { S: both, L: both, R: both };
+    const ch = t.ch === 'L' || t.ch === 'R' ? t.ch : null;
     return {
-      name: t.name, song: t.song, part: t.part, label: t.label || '', peaks: t.peaks, rec: !!t.rec,
+      name: t.name, song: t.song, part: t.part, label: t.label || '', peaks: peakSet[ch || 'S'], peakSet, rec: !!t.rec,
       clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr, fx: normFx(t.fx), env: normEnv(t.env),
-      muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1,
+      ch,
+      muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1, pan: clampPan(p && p.pan),
     };
   },
 
@@ -136,7 +141,7 @@ const engine = {
   addTrack(t) {
     const o = this.trackObject(t, null);
     this.tracks.push(o);
-    this.post({ type: 'add', name: o.name, l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o) },
+    this.post({ type: 'add', name: o.name, l: t.l, r: t.r, clips: this.clipSamples(o.clips), gain: this.gainOf(o), mat: this.matOf(o) },
       t.r && t.r !== t.l ? [t.l.buffer, t.r.buffer] : [t.l.buffer]);
     this.updateLength();
     if (o.fx) this.applyFx(o);
@@ -287,18 +292,25 @@ const engine = {
     return this.isAudible(t) ? this.volumeOf(t) : 0;
   },
 
+  /** Matrice dei canali (pan della traccia e del gruppo, canale scelto), vedi pan.js. */
+  matOf(t) {
+    const f = typeof folderOf === 'function' ? folderOf(t.name) : null;
+    return panMatrix(t.ch, t.pan, f ? f.pan : 0);
+  },
+
   updateGains() {
     if (!this.node) return;
     // le tracce con effetti entrano nella catena a livello pieno: il volume si applica dopo gli
     // effetti (come un fader dopo gli insert), così non cambia quanto lavora il compressore
-    const gains = {};
+    const gains = {}, mats = {};
     for (const t of this.tracks) {
+      mats[t.name] = this.matOf(t);
       const slot = this.fxSlots.get(t.name);
       if (!slot) { gains[t.name] = this.gainOf(t); continue; }
       gains[t.name] = this.isAudible(t) ? 1 : 0;
       slot.post.gain.setTargetAtTime(this.volumeOf(t), this.ctx.currentTime, 0.01);
     }
-    this.post({ type: 'gains', gains });
+    this.post({ type: 'gains', gains, mats });
   },
 
   /** Linee del volume al motore: per ogni traccia la sua e quella del suo gruppo, in campioni. */
@@ -1118,6 +1130,7 @@ function buildTracks() {
     }
     row.querySelector('.s').addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
     row.querySelector('.vol').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
+    row.querySelector('.vol').after(panControl(() => t.pan || 0, (v) => { t.pan = v; engine.updateGains(); }, t.ch ? `Pan (solo canale ${t.ch === 'L' ? 'sinistro' : 'destro'})` : 'Pan'));
     const name = row.querySelector('.tname');
     let renaming = false;
     name.addEventListener('focus', () => { renaming = false; });
@@ -1587,8 +1600,9 @@ const r3 = (x) => Math.round(x * 1000) / 1000;
 function normalizeSettings(c) {
   const tracks = {};
   for (const [name, t] of Object.entries(c.tracks || {})) {
-    if (t.muted || t.solo || (t.volume ?? 1) !== 1) {
+    if (t.muted || t.solo || (t.volume ?? 1) !== 1 || r3(t.pan || 0)) {
       tracks[name] = { muted: !!t.muted, solo: !!t.solo, volume: r3(t.volume ?? 1) };
+      if (r3(t.pan || 0)) tracks[name].pan = r3(t.pan);
     }
   }
   const sel = c.selection;
@@ -1606,7 +1620,7 @@ function normalizeSettings(c) {
 function currentSettings() {
   const tracks = {};
   if (engine.tracks.length) {
-    for (const t of engine.tracks) tracks[t.name] = { muted: t.muted, solo: t.solo, volume: t.volume };
+    for (const t of engine.tracks) tracks[t.name] = { muted: t.muted, solo: t.solo, volume: t.volume, pan: t.pan };
   } else if (state.pending && state.pending.tracks) {
     Object.assign(tracks, state.pending.tracks);
   }
@@ -1687,7 +1701,7 @@ async function resetSettings() {
   clearTimeout(autosaveTimer);
   autosaveTimer = null;
   state.ab = 'custom';
-  for (const t of engine.tracks) Object.assign(t, { muted: false, solo: false, volume: 1 });
+  for (const t of engine.tracks) Object.assign(t, { muted: false, solo: false, volume: 1, pan: t.ch === 'L' ? -1 : t.ch === 'R' ? 1 : 0 });
   if (engine.tracks.length) buildTracks();
   state.pending = null;
   setMaster(1);
@@ -1767,7 +1781,7 @@ async function doExport() {
   if (clickOpts.click) clickOpts.click.samples = await renderClickSamples();
   const body = {
     ...clickOpts,
-    stems: activeStems().map((t) => ({ name: t.name, gain: t.volume })),
+    stems: activeStems().map((t) => ({ name: t.name, gain: engine.volumeOf(t), mix: engine.matOf(t) })),
     pitch: state.pitch,
     tempo: engine.tempo,
     master: Number($('#master').value),

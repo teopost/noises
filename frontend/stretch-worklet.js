@@ -14,6 +14,9 @@
  * sua (1…MAX_BUS-1), già con velocità e tonalità applicate, verso la propria catena di effetti.
  * Il WSOLA cerca l'allineamento sul mix completo e lo applica uguale a tutte le uscite.
  *
+ * Pan e canali: ogni traccia ha una matrice 2×2 [Sx→Sx, Dx→Sx, Sx→Dx, Dx→Dx] (pan.js) applicata
+ * alla lettura, prima degli effetti: pan, bilanciamento e tracce di un solo canale.
+ *
  * Linea del volume (automazione): punti { s: campione, v: dB } con rampe lineari in dB, calcolata
  * per ogni campione alla sua posizione nel brano (segue velocità, loop e salti da sola). Per le
  * tracce nel mix si applica qui; per quelle con effetti esce come terzo canale della loro uscita
@@ -24,6 +27,8 @@ const FIFO = 1 << 15;
 const MAX_BUS = 17;
 const ENV_MIN_DB = -60;
 const DB = Math.LN10 / 20;
+const ID = [1, 0, 0, 1];
+const mat = (m) => (Array.isArray(m) && m.length === 4 && m.every(Number.isFinite) ? m.slice() : ID.slice());
 
 /** Guadagno di una linea del volume alla posizione `p` (campioni). */
 function envAt(e, p) {
@@ -120,14 +125,14 @@ class StretchPlayer extends AudioWorkletProcessor {
   onMessage(m) {
     switch (m.type) {
       case 'load':
-        this.stems = m.stems.map((s) => ({ name: s.name, l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, clips: s.clips || null, bus: s.bus || 0 }));
+        this.stems = m.stems.map((s) => ({ name: s.name, l: s.l, r: s.r || s.l, gain: s.gain, target: s.gain, m: mat(s.mat), mt: mat(s.mat), clips: s.clips || null, bus: s.bus || 0 }));
         this.len = m.length;
         this.playing = false;
         this.updateActive();
         break;
       case 'add':
         this.stems = this.stems.filter((s) => s.name !== m.name);
-        this.stems.push({ name: m.name, l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, clips: m.clips || [], bus: m.bus || 0 });
+        this.stems.push({ name: m.name, l: m.l, r: m.r || m.l, gain: m.gain, target: m.gain, m: mat(m.mat), mt: mat(m.mat), clips: m.clips || [], bus: m.bus || 0 });
         this.updateActive();
         break;
       case 'remove':
@@ -158,7 +163,10 @@ class StretchPlayer extends AudioWorkletProcessor {
         }
         break;
       case 'gains':
-        for (const s of this.stems) if (s.name in m.gains) s.target = m.gains[s.name];
+        for (const s of this.stems) {
+          if (s.name in m.gains) s.target = m.gains[s.name];
+          if (m.mats && s.name in m.mats) s.mt = mat(m.mats[s.name]);
+        }
         break;
       case 'play':
         this.playing = true;
@@ -214,6 +222,7 @@ class StretchPlayer extends AudioWorkletProcessor {
     for (const s of this.stems) {
       if (s.gain === 0 || (bus >= 0 && s.bus !== bus)) continue;
       const g = s.gain, l = s.l, r = s.r;
+      const [a, b, c, d] = s.m;
       const env = s.envs && s.bus === 0; // le tracce con effetti hanno la linea dopo gli effetti
       for (let i = 0; i < n; i++) {
         const p = this.wrap(pos + i);
@@ -221,8 +230,9 @@ class StretchPlayer extends AudioWorkletProcessor {
         const q = StretchPlayer.index(s, p);
         if (q < 0) continue;
         const gg = env ? g * envGain(s, p) : g;
-        outL[i] += l[q] * gg;
-        outR[i] += r[q] * gg;
+        const x = l[q], y = r[q];
+        outL[i] += (a * x + b * y) * gg;
+        outR[i] += (c * x + d * y) * gg;
       }
     }
   }
@@ -311,7 +321,10 @@ class StretchPlayer extends AudioWorkletProcessor {
     }
     const n = outputs[0][0].length;
     // guadagni: avvicinamento graduale al valore richiesto (niente click)
-    for (const s of this.stems) s.gain += (s.target - s.gain) * 0.25;
+    for (const s of this.stems) {
+      s.gain += (s.target - s.gain) * 0.25;
+      for (let j = 0; j < 4; j++) s.m[j] += (s.mt[j] - s.m[j]) * 0.25;
+    }
     if (!this.playing || !this.stems.length) return true;
 
     let i = 0;
@@ -333,8 +346,9 @@ class StretchPlayer extends AudioWorkletProcessor {
           const q = s.clips ? StretchPlayer.index(s, p) : (p < s.l.length ? p : -1);
           if (q < 0) continue;
           const g = s.bus === 0 && s.envs ? s.gain * envGain(s, p) : s.gain;
-          o[0][i] += s.l[q] * g;
-          (o[1] || o[0])[i] += s.r[q] * g;
+          const x = s.l[q], y = s.r[q], M = s.m;
+          o[0][i] += (M[0] * x + M[1] * y) * g;
+          (o[1] || o[0])[i] += (M[2] * x + M[3] * y) * g;
         }
         p++;
         if (this.loop && p >= this.loop.e) p = this.loop.s;

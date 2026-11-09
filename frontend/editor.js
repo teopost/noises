@@ -51,7 +51,7 @@ function toast(msg) {
 
 /** Prepara gruppi, selezione e cronologia all'apertura di un progetto. */
 function initLayout(project) {
-  state.groups = deep(project.groups || []).map((g) => ({ muted: false, solo: false, volume: 1, ...g, anchored: false }));
+  state.groups = deep(project.groups || []).map((g) => ({ muted: false, solo: false, volume: 1, pan: 0, ...g, anchored: false }));
   // ogni gruppo ha la sua traccia di gruppo (cartella), anche quelli creati prima
   for (const g of state.groups) {
     g.folder = true;
@@ -83,7 +83,7 @@ function saveLayout() {
 
 function snapshot() {
   return JSON.stringify({
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null, env: t.env || null })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null, env: t.env || null, ch: t.ch || null, pan: t.pan || 0 })),
     groups: state.groups, markers: state.markers || [], regions: state.regions || [],
   }, plain);
 }
@@ -128,6 +128,8 @@ async function restoreSnapshot(json) {
     t.rec = isEmptyTrack(st) || !!st.rec;
     engine.setClips(t);
     t.env = normEnv(st.env);
+    // pan: solo se cambia il canale o la traccia è stata ricreata (altrimenti resta quello del mixer)
+    if ((t.ch || null) !== (st.ch || null) || missing.includes(st)) { setTrackCh(t, st.ch); t.pan = st.pan || 0; }
     if (JSON.stringify(t.fx || null) !== JSON.stringify(st.fx || null)) {
       t.fx = normFx(st.fx);
       engine.applyFx(t);
@@ -818,7 +820,7 @@ function openTrackMenu(t, anchor, isRefStem, song) {
   const menu = $('#track-menu');
   const waiting = state.pendingSplits.has(t.name);
   const items = [];
-  if (t.part === 'original') {
+  if (t.part === 'original' && !t.ch) {
     items.push({ icon: '⑂', label: waiting ? 'Separazione in corso…' : 'Separa traccia', disabled: waiting || !song, run: () => splitTrack(t) });
   }
   if (isRefStem) {
@@ -831,6 +833,8 @@ function openTrackMenu(t, anchor, isRefStem, song) {
     items.push({ icon: '⏺', label: t.rec ? 'Non usare per registrare' : 'Usa per registrare', disabled: rec.active || rec.busy, run: () => setRecTrack(t, !t.rec) });
   }
   items.push({ icon: '🎛', label: t.fx ? 'Effetti…' : 'Aggiungi effetti…', run: () => openFxPanel(t, anchor) });
+  if (t.ch) items.push({ icon: '⇆', label: 'Riunisci in stereo', run: () => joinStereo(t) });
+  else if (!isEmptyTrack(t)) items.push({ icon: '⇆', label: 'Dividi sinistro/destro', run: () => splitStereo(t) });
   items.push({ icon: '✎', label: 'Rinomina', run: () => { const n = t.row.querySelector('.tname'); n.focus(); n.select(); } });
   items.push({ icon: '⧉', label: 'Duplica traccia', run: () => duplicateTrack(t) });
   const sel = state.selClip && state.selClip.name === t.name && !state.selClip.folder;
@@ -891,6 +895,7 @@ function buildFolderRow(g, kids) {
   row.querySelector('.m').addEventListener('click', () => { g.muted = !g.muted; syncTrackButtons(); saveProject(); });
   row.querySelector('.s').addEventListener('click', () => { g.solo = !g.solo; syncTrackButtons(); saveProject(); });
   row.querySelector('.vol').addEventListener('input', (e) => { g.volume = Number(e.target.value); engine.updateGains(); saveProject(); });
+  row.querySelector('.vol').after(panControl(() => g.pan || 0, (v) => { g.pan = v; engine.updateGains(); saveProject(); }, 'Pan del gruppo'));
   const name = row.querySelector('.tname');
   let renaming = false;
   name.addEventListener('focus', () => { renaming = false; });

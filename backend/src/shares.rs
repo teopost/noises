@@ -39,6 +39,9 @@ pub struct ShareTrack {
     /// linee del volume (della traccia e del suo gruppo)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     envs: Vec<Vec<crate::env::EnvPoint>>,
+    /// matrice dei canali (pan), vedi clean_mix
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mix: Option<[f32; 4]>,
 }
 
 /// Un mix condiviso: tracce con il loro volume, tonalità, velocità, master e loop.
@@ -226,7 +229,7 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
         } else {
             render_file(st, &sdir.join("render"), &t.part, &src, pitch, tempo).await?
         };
-        items.push(MixInput { path, clips: t.clips.clone(), gain: t.gain, fx: t.fx.clone(), envs: t.envs.clone() });
+        items.push(MixInput { path, clips: t.clips.clone(), gain: t.gain, fx: t.fx.clone(), envs: t.envs.clone(), mix: crate::clean_mix(t.mix) });
     }
     let req = ExportRequest {
         stems: vec![],
@@ -470,6 +473,8 @@ pub async fn list(State(st): State<AppState>, UrlPath(pid): UrlPath<String>) -> 
 pub struct StemGain {
     name: String,
     gain: f32,
+    #[serde(default)]
+    mix: Option<[f32; 4]>,
 }
 
 /// Mix inviato dal browser: volumi effettivi delle tracce e impostazioni del salvataggio.
@@ -518,7 +523,7 @@ fn build_mix(st: &AppState, p: &crate::projects::Project, b: &MixBody) -> Result
         if t.song.is_empty() || t.clips.is_empty() {
             continue;
         }
-        tracks.push(ShareTrack { song: t.song.clone(), part: t.part.clone(), clips: t.clips.clone(), gain: e.gain.min(2.0), fx: t.fx.clone(), envs: crate::projects::track_envs(&p, t) });
+        tracks.push(ShareTrack { song: t.song.clone(), part: t.part.clone(), clips: t.clips.clone(), gain: e.gain.min(2.0), fx: t.fx.clone(), envs: crate::projects::track_envs(&p, t), mix: Some(crate::clean_mix(e.mix)).filter(|m| *m != [1.0, 0.0, 0.0, 1.0]) });
     }
     if tracks.is_empty() {
         return Err(bad_request("nessuna traccia udibile da condividere"));
