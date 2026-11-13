@@ -199,6 +199,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Annullare selezione / chiudere i menu | `Esc` |
 | Tagliare le clip selezionate alla testina | `X` o ✂ |
 | Ripetere un pezzo: copia subito dopo di sé (la copia copre quello che c'era sotto) | clic sul pezzo, poi `Ctrl+D` (ancora per altre ripetizioni) |
+| Spostare più tracce insieme | `Shift` (o `Ctrl`) + clic sulle tracce o sui gruppi per selezionarle, poi trascina una di quelle selezionate: si spostano tutte, con tutti i loro pezzi |
 | Fissare i pezzi di una traccia, per spostarli tutti trascinandone uno | 🔗 nella barra, oppure ⋯ della traccia → *Fissa i pezzi* |
 | Eliminare la clip selezionata | `Canc` |
 | Annulla / ripeti | `Ctrl+Z` / `Ctrl+Y` |

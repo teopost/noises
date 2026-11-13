@@ -613,7 +613,14 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
     if (!hit.c) return; // spazio vuoto: selezione dell'intervallo / posizionamento (timeline)
     e.stopPropagation();
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-    if (folder) selectFolder(folder, additive);
+    // tracce (o cartella) su cui si è cliccato
+    const own = folder ? folderKids(folder) : peersOf(t);
+    const ownSelected = own.every((x) => state.selTracks.has(x.name));
+    // trascinando una traccia già selezionata insieme ad altre, la selezione resta: si spostano tutte
+    // (un clic senza trascinare, invece, lascia selezionata solo questa)
+    const keep = !additive && ownSelected && state.selTracks.size > own.length;
+    if (keep) { /* selezione invariata */ }
+    else if (folder) selectFolder(folder, additive);
     else if (!additive || !state.selTracks.has(t.name)) selectTrack(t, additive);
     state.selClip = { name: t.name, cid: hit.c.id, folder: folder ? folder.id : null };
     let linked = hit.mode === 'move' ? alignedClips(t, hit.c, peers) : alignedClips(t, hit.c, peers).filter((v) =>
@@ -622,10 +629,14 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
       // pezzi fissati: si spostano tutti, ognuno con i corrispondenti del suo gruppo
       const fixedItems = linkedClips(hit.c);
       for (const f of fixedItems) linked.push(f, ...alignedClips(f.t, f.c, peers));
+      // più tracce selezionate (Shift o Ctrl + clic): si spostano tutte, con tutti i loro pezzi
+      const multi = own.every((x) => state.selTracks.has(x.name)) && engine.tracks.some((x) => state.selTracks.has(x.name) && !own.includes(x));
+      if (multi) for (const x of engine.tracks) if (state.selTracks.has(x.name)) for (const c of x.clips) linked.push({ t: x, c });
       const seen = new Set([hit.c]);
       linked = linked.filter((v) => !seen.has(v.c) && seen.add(v.c));
     }
-    drag = { mode: hit.mode, t0: hit.time, items: [{ t, c: hit.c }, ...linked].map((v) => ({ ...v, orig: { ...v.c } })), moved: false, undone: false };
+    drag = { mode: hit.mode, t0: hit.time, items: [{ t, c: hit.c }, ...linked].map((v) => ({ ...v, orig: { ...v.c } })), moved: false, undone: false,
+      collapse: keep ? () => { if (folder) selectFolder(folder, false); else selectTrack(t, false); } : null };
     updateEditUI();
     canvas.setPointerCapture(e.pointerId);
     requestRedraw();
@@ -668,6 +679,7 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
     const d = drag;
     drag = null;
     if (d.moved) clipsChanged(d.items.map((v) => v.t));
+    else if (d.collapse) { d.collapse(); requestRedraw(); }
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
