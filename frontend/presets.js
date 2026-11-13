@@ -355,7 +355,7 @@ function presetMix(p) {
  * Crea o aggiorna il link del salvataggio `p`. `extra`: id di altri salvataggi da poter scegliere
  * nella pagina (se omesso restano quelli già inclusi).
  */
-async function sharePreset(p, { silent = false, extra = null, stems = null } = {}) {
+async function sharePreset(p, { silent = false, extra = null, stems = null, loops = null } = {}) {
   const proj = state.current;
   if (!proj) return null;
   const mix = presetMix(p);
@@ -363,6 +363,7 @@ async function sharePreset(p, { silent = false, extra = null, stems = null } = {
   const ids = extra ?? ((shareOf(p) || {}).extra || []);
   // pulsanti delle tracce separate nella pagina: accesi se non si è scelto altrimenti
   const stemButtons = stems ?? ((shareOf(p) || {}).stem_buttons ?? true);
+  const loopButtons = loops ?? ((shareOf(p) || {}).loop_buttons ?? true);
   const extras = ids
     .map((id) => (state.presets || []).find((x) => x.id === id && x.id !== p.id))
     .filter(Boolean)
@@ -372,7 +373,7 @@ async function sharePreset(p, { silent = false, extra = null, stems = null } = {
     await saveProjectNow(); // il link usa le clip salvate del progetto
     const sh = await api(`/api/projects/${proj.id}/shares`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preset: p.id, subtitle: p.name, ...mix, extra: extras, stem_buttons: stemButtons }),
+      body: JSON.stringify({ preset: p.id, subtitle: p.name, ...mix, extra: extras, stem_buttons: stemButtons, loop_buttons: loopButtons }),
     });
     if (state.current !== proj) return null;
     state.shares = [...(state.shares || []).filter((x) => x.token !== sh.token), sh];
@@ -419,6 +420,8 @@ function openShareDialog(p, sh) {
   $('#share-stems-row').classList.toggle('hidden', !engine.tracks.some((t) => t.song && t.part !== 'original'));
   $('#share-stems').checked = !!sh.stem_buttons;
   $('#share-stems').disabled = false;
+  $('#share-loops').checked = !!sh.loop_buttons;
+  $('#share-loops').disabled = false;
   renderShareExtras(p, sh);
   $('#share-url').value = url;
   const enc = encodeURIComponent;
@@ -459,15 +462,18 @@ function setupPresets() {
   });
   document.addEventListener('keydown', (e) => { if (e.code === 'Escape') closePresetsMenu(); });
   $('#share-copy').addEventListener('click', copyShareUrl);
-  $('#share-stems').addEventListener('change', async () => {
-    const p = shareDlgPreset, cb = $('#share-stems');
-    if (!p) return;
-    const want = cb.checked;
-    cb.disabled = true;
-    const res = await sharePreset(p, { silent: true, stems: want });
-    if (shareDlgPreset === p) cb.checked = !!(res || shareOf(p) || { stem_buttons: !want }).stem_buttons;
-    cb.disabled = false;
-  });
+  // opzioni della pagina: pulsanti delle tracce separate, scelta dei loop
+  for (const [sel, opt, field] of [['#share-stems', 'stems', 'stem_buttons'], ['#share-loops', 'loops', 'loop_buttons']]) {
+    $(sel).addEventListener('change', async () => {
+      const p = shareDlgPreset, cb = $(sel);
+      if (!p) return;
+      const want = cb.checked;
+      cb.disabled = true;
+      const res = await sharePreset(p, { silent: true, [opt]: want });
+      if (shareDlgPreset === p) cb.checked = !!(res || shareOf(p) || { [field]: !want })[field];
+      cb.disabled = false;
+    });
+  }
   $('#share-open').addEventListener('click', () => window.open($('#share-url').value, '_blank', 'noopener'));
   $('#share-native').addEventListener('click', () => {
     navigator.share({ title: $('#share-what').textContent, url: $('#share-url').value }).catch(() => {});

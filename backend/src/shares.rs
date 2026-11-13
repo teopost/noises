@@ -94,6 +94,14 @@ pub struct Share {
     /// la pagina offre i pulsanti per accendere e spegnere le tracce separate (un file per traccia)
     #[serde(default)]
     stem_toggles: bool,
+    /// la pagina offre l'elenco dei loop tra cui scegliere (le sezioni del progetto);
+    /// i link creati prima di questa opzione lo mostravano sempre
+    #[serde(default = "yes")]
+    loop_choice: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Tracce udibili di un mix raggruppate per i pulsanti della pagina: un gruppo per tipo di traccia
@@ -478,6 +486,8 @@ pub struct ShareSummary {
     updated_at: u64,
     /// pulsanti delle tracce separate nella pagina
     stem_buttons: bool,
+    /// elenco dei loop (sezioni) tra cui scegliere nella pagina
+    loop_buttons: bool,
 }
 
 impl From<&Share> for ShareSummary {
@@ -491,6 +501,7 @@ impl From<&Share> for ShareSummary {
             created_at: s.created_at,
             updated_at: s.updated_at,
             stem_buttons: s.stem_toggles,
+            loop_buttons: s.loop_choice,
         }
     }
 }
@@ -557,6 +568,9 @@ pub struct CreateBody {
     /// già, accesi per un link nuovo
     #[serde(default)]
     stem_buttons: Option<bool>,
+    /// elenco dei loop (sezioni) tra cui scegliere nella pagina; se manca, come `stem_buttons`
+    #[serde(default)]
+    loop_buttons: Option<bool>,
 }
 
 /// Fotografa le tracce del progetto con i volumi del salvataggio.
@@ -634,8 +648,9 @@ pub async fn create(
         regions: p.regions.iter().map(|r| Named { name: r.name.clone(), start: r.start, end: Some(r.end) }).collect(),
         markers: p.markers.iter().map(|m| Named { name: m.name.clone(), start: m.t, end: None }).collect(),
         stem_toggles: b.stem_buttons.unwrap_or(true),
+        loop_choice: b.loop_buttons.unwrap_or(true),
     };
-    let stem_buttons = b.stem_buttons;
+    let (stem_buttons, loop_buttons) = (b.stem_buttons, b.loop_buttons);
     // lo stesso salvataggio ricondiviso tiene il suo link
     let sh = edit(&st, |all| {
         if let Some(old) = sh.preset.as_ref().and_then(|id| all.iter_mut().find(|x| x.project == pid && x.preset.as_ref() == Some(id))) {
@@ -643,6 +658,7 @@ pub async fn create(
             sh.created_at = old.created_at;
             sh.updated_at = now.max(old.updated_at + 1);
             sh.stem_toggles = stem_buttons.unwrap_or(old.stem_toggles);
+            sh.loop_choice = loop_buttons.unwrap_or(old.loop_choice);
             *old = sh.clone();
         } else {
             all.push(sh.clone());
@@ -729,7 +745,8 @@ fn public_variant(sh: &Share, name: &str, m: &Mix) -> PublicVariant {
         tempo: m.tempo,
         selection: m.selection.map(|s| Span { start: s.start * k, end: s.end * k }),
         loop_on: m.loop_on,
-        regions: sh.regions.iter().map(scale).collect(),
+        // senza la scelta dei loop la pagina ha solo il loop del salvataggio
+        regions: if sh.loop_choice { sh.regions.iter().map(scale).collect() } else { vec![] },
         markers: sh.markers.iter().map(scale).collect(),
         stems: toggle_groups(sh, m).into_iter().map(|(k, _)| k).collect(),
     }

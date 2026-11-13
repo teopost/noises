@@ -279,6 +279,8 @@
   function renderVariant() {
     const title = info.title || 'Noises';
     document.title = `${v.name ? `${title} · ${v.name}` : title} — Noises`;
+    // nome del salvataggio come sottotitolo
+    $('#subtitle').textContent = v.name && v.name !== title ? v.name : '';
     $('#songs').textContent = (v.songs || []).filter((s) => s !== title).join(' · ');
     const facts = [];
     if (v.selection && v.loop_on) facts.push(`⟳ ${L.loop} ${fmt(v.selection.start)} – ${fmt(v.selection.end)}`);
