@@ -967,6 +967,8 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .preset-item .rg-time:empty { display: none; }
 .preset-item .ps-over.ph { visibility: hidden; }
 .presets-menu .ps-new { width: 100%; color: var(--accent-2); }
+.regions-menu .rg-new { width: 100%; color: var(--accent-2); }
+.regions-menu .rg-new:disabled { color: var(--muted); opacity: .6; cursor: default; }
 .share-dlg { width: min(520px, calc(100vw - 32px)); }
 .share-what { margin: -6px 0 0; color: var(--accent-2); font-weight: 600; }
 .share-row { display: flex; gap: 8px; }

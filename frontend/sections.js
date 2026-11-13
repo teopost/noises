@@ -107,7 +107,13 @@ function renderRegionsMenu() {
         <button class="rg-ren ghost" title="Rinomina">✎</button>
         <button class="rg-del ghost" title="Elimina">🗑</button>
       </div>`).join('')
-    : '<div class="menu-empty">Nessuna sezione: trascina sulla timeline per selezionare una porzione, poi premi “Salva sezione”.</div>');
+    : '<div class="menu-empty">Nessuna sezione: trascina sulla timeline per selezionare una porzione, poi salvala da qui con un nome.</div>')
+    // come nel menu dei salvataggi: l'ultima voce salva ciò che c'è ora (qui, la selezione)
+    + '<div class="menu-sep"></div>'
+    + (cur ? `<div class="menu-hint">${esc(T('La selezione è già la sezione'))} "${esc(cur.name)}"</div>`
+      : !state.sel && list.length ? '<div class="menu-hint">Per salvare una sezione seleziona prima un tratto trascinando sulla timeline</div>' : '')
+    + `<button class="menu-item rg-new" ${state.sel && !cur ? '' : 'disabled'}>＋ Salva la selezione come sezione…</button>`;
+  menu.querySelector('.rg-new').addEventListener('click', () => { closeRegionsMenu(); saveSelectionAsRegion(); });
   menu.querySelectorAll('.region-item').forEach((row) => {
     const r = list.find((x) => x.id === row.dataset.id);
     row.querySelector('.rg-go').addEventListener('click', () => { closeRegionsMenu(); goRegion(r); });
@@ -131,10 +137,6 @@ function closeRegionsMenu() {
 
 /** Aggiorna i comandi delle sezioni (chiamata da updateSelectionUI). */
 function updateRegionsUI(reg) {
-  const save = $('#sel-save');
-  // una sezione già salvata si rinomina dall'elenco ☰ Sezioni
-  save.classList.toggle('hidden', !state.sel || !!reg);
-  save.title = 'Salva la selezione come sezione con un nome, da richiamare in seguito';
   $('#sel-nudge').classList.toggle('hidden', !state.sel);
   const grid = typeof hasGrid === 'function' && hasGrid();
   document.querySelectorAll('#sel-nudge .beat').forEach((b) => {
@@ -230,7 +232,6 @@ function setupNudgeButtons() {
 function setupSections() {
   setupNudgeButtons();
   state.regions = [];
-  $('#sel-save').addEventListener('click', saveSelectionAsRegion);
   $('#regions-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     const reg = regionOfSelection();
