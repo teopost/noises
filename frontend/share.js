@@ -19,7 +19,7 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semitone${Math.abs(n) === 1 ? '' : 's'}`, speed: (n) => `${n}% speed`,
     made: 'Made with', tagline: 'separated tracks, loops and speed control for practice', saves: 'Saves',
     restart: 'From the start', play: 'Play / pause (space)', loopT: 'Loop (L)', wave: 'Waveform: click to seek',
-    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`, speedL: 'Speed', speedReset: (n) => `Back to ${n}%`,
+    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`, speedL: 'Speed', speedReset: (n) => `Back to ${n}%`, metro: 'Metronome: on / off (M)',
     parts: { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano', other: 'Other', rest: 'Rest of the mix' },
   } : {
     preparing: "Preparazione dell'audio…", loading: 'Caricamento', gone: 'Questo link non è più attivo.',
@@ -27,12 +27,14 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semiton${Math.abs(n) === 1 ? 'o' : 'i'}`, speed: (n) => `velocità ${n}%`,
     made: 'Creato con', tagline: 'tracce separate, loop e velocità per esercitarsi', saves: 'Salvataggi',
     restart: "Dall'inizio", play: 'Play / pausa (spazio)', loopT: 'Ripeti in loop (L)', wave: "Forma d'onda: clic per spostarsi",
-    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`, speedL: 'Velocità', speedReset: (n) => `Torna a ${n}%`,
+    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`, speedL: 'Velocità', speedReset: (n) => `Torna a ${n}%`, metro: 'Metronomo: acceso / spento (M)',
     parts: { vocals: 'Voce', drums: 'Batteria', bass: 'Basso', guitar: 'Chitarra', piano: 'Piano', other: 'Altro', rest: 'Resto del mix' },
   };
   const PART_COLORS = { vocals: '#ff8a95', drums: '#ffd166', bass: '#5fe0a8', guitar: '#6cc4ff', piano: '#c79bff', other: '#b9bcc8', rest: '#8f93a3' };
   $('#sections .sec-label').textContent = L.sections;
   $('#speed-label').textContent = L.speedL;
+  $('#metro').title = L.metro;
+  $('#metro').setAttribute('aria-label', L.metro);
   if (EN) {
     document.documentElement.lang = 'en';
     $('#loader-text').textContent = L.preparing;
@@ -99,6 +101,88 @@
 
   const stemsOf = (i) => (info.variants[i] && info.variants[i].stems) || [];
 
+  // ------------------------------------------------------------------ metronomo
+  // I battiti arrivano col link (analisi del ritmo del brano). Il click non è nel file audio: lo suona
+  // la pagina, programmando poco per volta i battiti dei prossimi istanti alla posizione e alla
+  // velocità correnti; a ogni salto (play, pausa, spostamento, loop, velocità) si ricomincia.
+  let metroOn = false, metroAt = 0;      // metroAt: istante (orologio audio) fino a cui è programmato
+  const metroNodes = [], metroDone = new Map();
+
+  function metroReset() {
+    for (const o of metroNodes.splice(0)) { try { o.stop(); } catch {} }
+    metroDone.clear();
+    metroAt = 0;
+    if (metroOn) setTimeout(metroTick, 0);
+  }
+
+  function metroClick(when, accent) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = accent ? 1760 : 1175;
+    const peak = accent ? 0.5 : 0.33;
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(peak, when + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.06);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(when);
+    o.stop(when + 0.07);
+    metroNodes.push(o);
+    o.onended = () => { const i = metroNodes.indexOf(o); if (i >= 0) metroNodes.splice(i, 1); g.disconnect(); };
+  }
+
+  function metroTick() {
+    const c = v && v.click;
+    if (!metroOn || !playing || !c || !ctx || !buf) return;
+    const now = ctx.currentTime, r = wk ? rate : 1;
+    const lead = Math.max(0, startedAt - now);        // la riproduzione parte tra un istante
+    const p = position();
+    const AHEAD = 1.5;                                 // secondi programmati in anticipo (regge anche una scheda in secondo piano)
+    const from = Math.max(0, metroAt - now - lead - 0.03), to = AHEAD; // intervallo di tempo reale da coprire
+    const L2 = loopOn && loop && p < loop.end ? loop : null;
+    // si percorre il brano dalla posizione attuale, rientrando nel loop quando finisce
+    let seg = p, elapsed = 0, guard = 0;               // elapsed: secondi di brano già percorsi
+    while (elapsed / r < to && guard++ < 400) {
+      const end = L2 ? L2.end : buf.duration;
+      const span = Math.min(end - seg, to * r - elapsed);
+      // primo battito da seg in poi (ricerca binaria)
+      let lo = 0, hi = c.times.length;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (c.times[m] < seg - 1e-6) lo = m + 1; else hi = m; }
+      for (let i = lo; i < c.times.length && c.times[i] < seg + span; i++) {
+        const real = (elapsed + c.times[i] - seg) / r;
+        if (real < from) continue;
+        const when = now + lead + real, was = metroDone.get(i);
+        if (was !== undefined && Math.abs(was - when) < 0.12) continue; // già programmato
+        metroDone.set(i, when);
+        metroClick(Math.max(now, when), c.accents[i]);
+      }
+      elapsed += span;
+      if (!L2 || span <= 0) break;
+      seg = L2.start;
+    }
+    metroAt = now + lead + to;
+    if (metroDone.size > 400) for (const [i, w] of metroDone) if (w < now - 1) metroDone.delete(i);
+  }
+  setInterval(metroTick, 250);
+
+  function setMetro(on) {
+    metroOn = !!on && !!(v && v.click);
+    $('#metro').setAttribute('aria-pressed', String(metroOn));
+    metroReset();
+  }
+
+  /** Il pulsante c'è solo se il link ha i battiti; sta accanto alla velocità, o tra i comandi senza. */
+  function renderMetro(ready) {
+    const b = $('#metro'), has = !!(v && v.click && v.click.times && v.click.times.length);
+    b.classList.toggle('hidden', !has);
+    b.disabled = !ready;
+    const inSpeed = !$('#speed').classList.contains('hidden');
+    const home = inSpeed ? $('.speed-row') : $('.controls');
+    if (b.parentElement !== home) home.appendChild(b);
+    b.classList.toggle('sec', inSpeed);
+    b.classList.toggle('ctl', !inSpeed);
+    if (!has && metroOn) setMetro(false);
+  }
+
   async function setupWorklet() {
     if (wk || wkFailed || !canSpeed()) return;
     if (!ctx.audioWorklet) { wkFailed = true; return; }
@@ -138,6 +222,7 @@
     rate = speed / v.tempo;
     wk.port.postMessage({ type: 'rate', rate, pitch: 1 });
     if (playing) { startOffset = p; startedAt = ctx.currentTime; rep = null; repMin = Math.round(ctx.currentTime * ctx.sampleRate); }
+    metroReset();
   }
 
   /** Comando della velocità: c'è da subito (la pagina non si sposta quando l'audio arriva), ma si può
@@ -274,6 +359,7 @@
     renderVariant();
     renderStems();
     renderSpeed(false);
+    renderMetro(false);
     document.querySelectorAll('.variant').forEach((b) => {
       const on = Number(b.dataset.i) === i;
       b.classList.toggle('on', on);
@@ -309,6 +395,7 @@
       if (stemsOf(i).length) cache.delete(i);
     }
     renderSpeed(!!wk);
+    renderMetro(true);
     updatePeaks();
     $('#dur').textContent = fmt(buf.duration);
     loop = null;
@@ -415,6 +502,7 @@
   }
 
   function startSource(from) {
+    metroReset(); // la riproduzione riparte da un altro punto: i click si riprogrammano
     if (wk) {
       const sr = ctx.sampleRate, at = ctx.currentTime + 0.05;
       wk.port.postMessage({ type: 'loop', loop: loopOn && loop ? { s: Math.round(loop.start * sr), e: Math.round(loop.end * sr) } : null });
@@ -461,6 +549,7 @@
   }
 
   function stopSource() {
+    metroReset();
     if (!src) return;
     if (wk) {
       wk.port.postMessage({ type: 'pause' });
@@ -528,6 +617,7 @@
   }
 
   function updatePlayUI() {
+    metroReset(); // play, pausa, fine del brano: i click già programmati non valgono più
     $('#play').classList.toggle('playing', playing);
     $('#play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
     if (navigator.mediaSession) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
@@ -535,6 +625,7 @@
   }
 
   function updateLoopUI() {
+    metroReset();
     $('#loop').setAttribute('aria-pressed', String(loopOn));
     document.querySelectorAll('#sec-list .sec').forEach((b) => b.classList.toggle('on', loopOn && Number(b.dataset.i) === activeSec));
     draw();
@@ -631,6 +722,7 @@
   $('#speed-down').addEventListener('click', () => setSpeed(speed - 5));
   $('#speed-up').addEventListener('click', () => setSpeed(speed + 5));
   $('#speed-reset').addEventListener('click', () => setSpeed(v.tempo));
+  $('#metro').addEventListener('click', () => setMetro(!metroOn));
   let dragging = false;
   const seekAt = (e) => {
     if (!buf) return;
@@ -644,6 +736,7 @@
     if (!buf || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
     else if (e.code === 'KeyL') toggleLoop();
+    else if (e.code === 'KeyM' && v && v.click) setMetro(!metroOn);
     else if (e.code === 'ArrowLeft') seek(position() - 5);
     else if (e.code === 'ArrowRight') seek(position() + 5);
     else if (/^Digit[1-9]$/.test(e.code) && info && info.variants.length > 1) {

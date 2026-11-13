@@ -366,12 +366,35 @@ async function loadShares() {
   } catch {}
 }
 
+/** Battiti del metronomo per la pagina condivisa (secondi alla velocità originale), come nel click
+ *  dell'export; null se il ritmo del brano non è stato analizzato o non è caricato. */
+function shareClick() {
+  if (!(typeof hasGrid === 'function' && hasGrid())) return null;
+  const savedAnchor = state.fixedAnchor;
+  try {
+    setFixedAnchor(0);
+    const k = rk(), n = clickNudge();
+    const times = [], accents = [];
+    for (const b of clickTimes(0, engine.duration)) {
+      const t = (b.t + n) / k;
+      if (t >= 0) { times.push(+t.toFixed(4)); accents.push(!!b.accent); }
+    }
+    return times.length ? { times, accents } : null;
+  } catch (e) {
+    console.warn(e);
+    return null;
+  } finally {
+    state.fixedAnchor = savedAnchor;
+    fixedCache = null;
+  }
+}
+
 /** Mix di un salvataggio come lo vuole il server (null se non ha tracce udibili). */
 function presetMix(p) {
   const c = p.settings || {};
   const stems = presetGains(c);
   if (!stems.length) return null;
-  return { stems, pitch: c.pitch || 0, tempo: c.tempo || 100, master: c.master ?? 1, selection: c.selection || null, loop: !!c.loop };
+  return { stems, pitch: c.pitch || 0, tempo: c.tempo || 100, master: c.master ?? 1, selection: c.selection || null, loop: !!c.loop, click: shareClick() };
 }
 
 /**

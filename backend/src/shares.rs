@@ -58,6 +58,17 @@ pub struct Mix {
     loop_on: bool,
     #[serde(default)]
     songs: Vec<String>,
+    /// battiti del metronomo (dall'analisi del ritmo), se il browser li conosceva alla condivisione
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    click: Option<ClickBeats>,
+}
+
+/// Battiti per il metronomo della pagina: istanti in secondi alla velocità originale e accenti
+/// (primo tempo della battuta).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClickBeats {
+    times: Vec<f64>,
+    accents: Vec<bool>,
 }
 
 /// Salvataggio in più incluso nel link.
@@ -553,6 +564,10 @@ pub struct MixBody {
     selection: Option<Span>,
     #[serde(default)]
     r#loop: bool,
+    /// battiti del metronomo; se mancano (ritmo non analizzato o non caricato in quel momento)
+    /// un link che esiste già tiene quelli che aveva
+    #[serde(default)]
+    click: Option<ClickBeats>,
 }
 
 #[derive(Deserialize)]
@@ -633,6 +648,12 @@ fn build_mix(st: &AppState, p: &crate::projects::Project, b: &MixBody) -> Result
         selection,
         loop_on: b.r#loop && selection.is_some(),
         songs,
+        click: b.click.clone().filter(|c| {
+            !c.times.is_empty()
+                && c.times.len() <= 20_000
+                && c.accents.len() == c.times.len()
+                && c.times.iter().all(|t| t.is_finite() && (0.0..=7200.0).contains(t))
+        }),
     })
 }
 
@@ -687,6 +708,19 @@ pub async fn create(
             sh.updated_at = now.max(old.updated_at + 1);
             sh.stem_toggles = stem_buttons.unwrap_or(old.stem_toggles);
             sh.loop_choice = loop_buttons.unwrap_or(old.loop_choice);
+            // metronomo: senza battiti nuovi restano quelli di prima, salvataggio per salvataggio
+            let before = |preset: Option<&str>| {
+                if old.preset.as_deref() == preset {
+                    return old.mix.click.clone();
+                }
+                old.extra.iter().find(|v| Some(v.preset.as_str()) == preset).and_then(|v| v.mix.click.clone())
+            };
+            if sh.mix.click.is_none() {
+                sh.mix.click = before(sh.preset.as_deref());
+            }
+            for v in sh.extra.iter_mut().filter(|v| v.mix.click.is_none()) {
+                v.mix.click = before(Some(v.preset.as_str()));
+            }
             sh.speed_choice = speed_buttons.unwrap_or(old.speed_choice);
             *old = sh.clone();
         } else {
@@ -754,6 +788,9 @@ pub struct PublicVariant {
     /// ognuna si chiede con `stem` = posizione in questo elenco. Vuoto = un solo mix.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     stems: Vec<String>,
+    /// battiti del metronomo, in secondi nel file audio (già adattati alla velocità)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    click: Option<ClickBeats>,
 }
 
 #[derive(Serialize)]
@@ -780,6 +817,7 @@ fn public_variant(sh: &Share, name: &str, m: &Mix, regions: &[Named]) -> PublicV
         regions: if sh.loop_choice { regions.iter().map(scale).collect() } else { vec![] },
         markers: sh.markers.iter().map(scale).collect(),
         stems: toggle_groups(sh, m).into_iter().map(|(k, _)| k).collect(),
+        click: m.click.as_ref().map(|c| ClickBeats { times: c.times.iter().map(|t| t * k).collect(), accents: c.accents.clone() }),
     }
 }
 
