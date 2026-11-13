@@ -970,6 +970,7 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 }
 .share-nets a:hover, .share-nets button:hover { border-color: var(--accent); }
 .share-dlg menu { align-items: center; }
+.share-dlg .share-stems { margin: 4px 0 12px; cursor: pointer; }
 .share-dlg menu .spacer { flex: 1; }
 .danger-text { color: var(--danger); }
 

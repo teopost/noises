@@ -483,6 +483,8 @@ const EN = {
   'Elenco dei salvataggi': 'List of saves',
   'Nel salvataggio non ci sono tracce udibili da condividere': 'The save has no audible tracks to share',
   'Link pubblico aggiornato': 'Public link updated',
+  'Pulsanti per accendere e spegnere le tracce separate': 'Buttons to turn the split tracks on and off',
+  'Chi apre il link può ascoltare o togliere le singole tracce separate udibili nel salvataggio (voce, batteria, basso…)': 'Whoever opens the link can listen to or remove each split track audible in the save (vocals, drums, bass…)',
   'Condivisione non riuscita: {…}': 'Sharing failed: {…}',
   'Link pubblico disattivato': 'Public link turned off',
   'Operazione non riuscita: {…}': 'Operation failed: {…}',

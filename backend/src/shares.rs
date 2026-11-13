@@ -91,6 +91,37 @@ pub struct Share {
     regions: Vec<Named>,
     #[serde(default)]
     markers: Vec<Named>,
+    /// la pagina offre i pulsanti per accendere e spegnere le tracce separate (un file per traccia)
+    #[serde(default)]
+    stem_toggles: bool,
+}
+
+/// Tracce udibili di un mix raggruppate per i pulsanti della pagina: un gruppo per tipo di traccia
+/// separata (voce, batteria…, nell'ordine solito) e in fondo "rest", tutto ciò che non è separato.
+fn stem_groups(m: &Mix) -> Vec<(String, Vec<&ShareTrack>)> {
+    let mut out: Vec<(String, Vec<&ShareTrack>)> = vec![];
+    for t in m.tracks.iter().filter(|t| t.gain > 0.0 && !t.clips.is_empty()) {
+        let key = if t.part == "original" { "rest" } else { t.part.as_str() };
+        match out.iter_mut().find(|(k, _)| k == key) {
+            Some((_, v)) => v.push(t),
+            None => out.push((key.to_owned(), vec![t])),
+        }
+    }
+    out.sort_by_key(|(k, _)| match k.as_str() {
+        "rest" => usize::MAX,
+        k => crate::STEM_ORDER.iter().position(|o| *o == k).unwrap_or(usize::MAX - 1),
+    });
+    out
+}
+
+/// Gruppi con un pulsante nella pagina; vuoto = mix unico (opzione spenta, o niente da scegliere).
+fn toggle_groups<'a>(sh: &Share, m: &'a Mix) -> Vec<(String, Vec<&'a ShareTrack>)> {
+    if !sh.stem_toggles {
+        return vec![];
+    }
+    let g = stem_groups(m);
+    // servono almeno due gruppi, di cui uno di tracce separate ("rest" è al massimo uno)
+    if g.len() < 2 { vec![] } else { g }
 }
 
 impl Share {
@@ -200,11 +231,18 @@ fn new_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b)
 }
 
-/// Mix numero `i` del link (MP3), preparato una volta sola e poi riusato.
-async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, AppError> {
+/// Mix numero `i` del link (MP3), preparato una volta sola e poi riusato. Con `stem` solo il gruppo
+/// di tracce numero `stem` (vedi toggle_groups): la pagina li somma e li accende o spegne.
+async fn ensure_audio(st: &AppState, sh: &Share, i: usize, stem: Option<usize>) -> Result<PathBuf, AppError> {
     let m = sh.mix(i).ok_or_else(not_found)?;
     let dir = audio_dir(st);
-    let out = dir.join(format!("{}-{}-{i}.mp3", sh.token, sh.updated_at));
+    let (tracks, out, format): (Vec<&ShareTrack>, PathBuf, &str) = match stem {
+        None => (m.tracks.iter().collect(), dir.join(format!("{}-{}-{i}.mp3", sh.token, sh.updated_at)), "mp3"),
+        Some(k) => {
+            let (_, tracks) = toggle_groups(sh, m).into_iter().nth(k).ok_or_else(not_found)?;
+            (tracks, dir.join(format!("{}-{}-{i}-s{k}.mp3", sh.token, sh.updated_at)), "mp3-192")
+        }
+    };
     let lock = st.render_lock(&out);
     let _guard = lock.lock().await;
     if out.exists() {
@@ -213,7 +251,7 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
     let pitch = m.pitch.clamp(-12, 12);
     let tempo = m.tempo.clamp(25, 200);
     let mut items = vec![];
-    for t in m.tracks.iter().filter(|t| t.gain > 0.0 && !t.clips.is_empty()) {
+    for t in tracks.into_iter().filter(|t| t.gain > 0.0 && !t.clips.is_empty()) {
         let song = st.get(&t.song).ok_or_else(not_found)?;
         let sdir = st.song_dir(&t.song);
         let src = if t.part == "original" {
@@ -238,11 +276,15 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
         start: None,
         end: None,
         master: Some(m.master),
-        format: "mp3".into(),
+        format: format.into(),
         pre_roll: None,
         click: None,
     };
-    let (tmp, _) = mix_to_file(&dir.join("tmp"), items, &req, &format!("link {} #{i}", sh.title)).await?;
+    let label = match stem {
+        None => format!("link {} #{i}", sh.title),
+        Some(k) => format!("link {} #{i} traccia {k}", sh.title),
+    };
+    let (tmp, _) = mix_to_file(&dir.join("tmp"), items, &req, &label).await?;
     tokio::fs::rename(&tmp, &out).await?;
     drop_older_audio(st, &sh.token, sh.updated_at);
     Ok(out)
@@ -285,7 +327,7 @@ async fn ensure_og(st: &AppState, sh: &Share) -> Result<PathBuf, AppError> {
     if out.exists() {
         return Ok(out);
     }
-    let audio = ensure_audio(st, sh, 0).await?;
+    let audio = ensure_audio(st, sh, 0, None).await?;
     let probe = Command::new("ffprobe")
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
         .arg(&audio)
@@ -434,6 +476,8 @@ pub struct ShareSummary {
     subtitle: String,
     created_at: u64,
     updated_at: u64,
+    /// pulsanti delle tracce separate nella pagina
+    stem_buttons: bool,
 }
 
 impl From<&Share> for ShareSummary {
@@ -446,6 +490,7 @@ impl From<&Share> for ShareSummary {
             subtitle: s.subtitle.clone(),
             created_at: s.created_at,
             updated_at: s.updated_at,
+            stem_buttons: s.stem_toggles,
         }
     }
 }
@@ -508,6 +553,10 @@ pub struct CreateBody {
     mix: MixBody,
     #[serde(default)]
     extra: Vec<ExtraBody>,
+    /// pulsanti delle tracce separate nella pagina; se manca: come prima per un link che esiste
+    /// già, accesi per un link nuovo
+    #[serde(default)]
+    stem_buttons: Option<bool>,
 }
 
 /// Fotografa le tracce del progetto con i volumi del salvataggio.
@@ -584,13 +633,16 @@ pub async fn create(
         extra,
         regions: p.regions.iter().map(|r| Named { name: r.name.clone(), start: r.start, end: Some(r.end) }).collect(),
         markers: p.markers.iter().map(|m| Named { name: m.name.clone(), start: m.t, end: None }).collect(),
+        stem_toggles: b.stem_buttons.unwrap_or(true),
     };
+    let stem_buttons = b.stem_buttons;
     // lo stesso salvataggio ricondiviso tiene il suo link
     let sh = edit(&st, |all| {
         if let Some(old) = sh.preset.as_ref().and_then(|id| all.iter_mut().find(|x| x.project == pid && x.preset.as_ref() == Some(id))) {
             sh.token = old.token.clone();
             sh.created_at = old.created_at;
             sh.updated_at = now.max(old.updated_at + 1);
+            sh.stem_toggles = stem_buttons.unwrap_or(old.stem_toggles);
             *old = sh.clone();
         } else {
             all.push(sh.clone());
@@ -602,12 +654,21 @@ pub async fn create(
     let (st2, sh2) = (st.clone(), sh.clone());
     tokio::spawn(async move {
         for i in 0..=sh2.extra.len() {
-            if let Err(e) = ensure_audio(&st2, &sh2, i).await {
+            if let Err(e) = ensure_audio(&st2, &sh2, i, None).await {
                 warn!("preparazione del link {} (#{i}) non riuscita: {}", sh2.token, e.1);
             }
             if i == 0 {
                 if let Err(e) = ensure_og(&st2, &sh2).await {
                     warn!("anteprima del link {}: {}", sh2.token, e.1);
+                }
+            }
+        }
+        // poi le tracce separate per i pulsanti della pagina
+        for i in 0..=sh2.extra.len() {
+            let n = sh2.mix(i).map_or(0, |m| toggle_groups(&sh2, m).len());
+            for k in 0..n {
+                if let Err(e) = ensure_audio(&st2, &sh2, i, Some(k)).await {
+                    warn!("preparazione del link {} (#{i}, traccia {k}) non riuscita: {}", sh2.token, e.1);
                 }
             }
         }
@@ -644,6 +705,10 @@ pub struct PublicVariant {
     loop_on: bool,
     regions: Vec<Named>,
     markers: Vec<Named>,
+    /// tracce da accendere e spegnere (vocals, drums…, "rest" = il resto del mix): l'audio di
+    /// ognuna si chiede con `stem` = posizione in questo elenco. Vuoto = un solo mix.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    stems: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -666,6 +731,7 @@ fn public_variant(sh: &Share, name: &str, m: &Mix) -> PublicVariant {
         loop_on: m.loop_on,
         regions: sh.regions.iter().map(scale).collect(),
         markers: sh.markers.iter().map(scale).collect(),
+        stems: toggle_groups(sh, m).into_iter().map(|(k, _)| k).collect(),
     }
 }
 
@@ -680,6 +746,9 @@ pub async fn public_info(State(st): State<AppState>, UrlPath(token): UrlPath<Str
 pub struct AudioQuery {
     #[serde(default)]
     mix: usize,
+    /// traccia separata numero… (vedi PublicVariant::stems); senza, il mix intero
+    #[serde(default)]
+    stem: Option<usize>,
 }
 
 pub async fn public_audio(
@@ -689,7 +758,7 @@ pub async fn public_audio(
     req: Request,
 ) -> Result<Response, AppError> {
     let sh = find(&st, &token).ok_or_else(not_found)?;
-    let path = ensure_audio(&st, &sh, q.mix).await?;
+    let path = ensure_audio(&st, &sh, q.mix, q.stem).await?;
     let mut res = tower_http::services::ServeFile::new(path)
         .oneshot(req)
         .await

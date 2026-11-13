@@ -1706,6 +1706,8 @@ async fn mix_to_file(
 ) -> Result<(PathBuf, &'static str), AppError> {
     let (ext, content_type, codec): (&str, &str, &[&str]) = match req.format.as_str() {
         "mp3" => ("mp3", "audio/mpeg", &["-c:a", "libmp3lame", "-b:a", "320k"]),
+        // tracce separate dei link pubblici: più file da scaricare insieme, quindi più leggeri
+        "mp3-192" => ("mp3", "audio/mpeg", &["-c:a", "libmp3lame", "-b:a", "192k"]),
         "wav" => ("wav", "audio/wav", &["-c:a", "pcm_s16le"]),
         "flac" => ("flac", "audio/flac", &["-c:a", "flac"]),
         f => return Err(bad_request(format!("formato non valido: {f}"))),

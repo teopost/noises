@@ -19,13 +19,18 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semitone${Math.abs(n) === 1 ? '' : 's'}`, speed: (n) => `${n}% speed`,
     made: 'Made with', tagline: 'separated tracks, loops and speed control for practice', saves: 'Saves',
     restart: 'From the start', play: 'Play / pause (space)', loopT: 'Loop (L)', wave: 'Waveform: click to seek',
+    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`,
+    parts: { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano', other: 'Other', rest: 'Rest of the mix' },
   } : {
     preparing: "Preparazione dell'audio…", loading: 'Caricamento', gone: 'Questo link non è più attivo.',
     failed: "Non è stato possibile caricare l'audio. Riprova tra poco.", sections: 'Sezioni', loop: 'Loop', full: 'Mix completo',
     semis: (n) => `${n > 0 ? '+' : ''}${n} semiton${Math.abs(n) === 1 ? 'o' : 'i'}`, speed: (n) => `velocità ${n}%`,
     made: 'Creato con', tagline: 'tracce separate, loop e velocità per esercitarsi', saves: 'Salvataggi',
     restart: "Dall'inizio", play: 'Play / pausa (spazio)', loopT: 'Ripeti in loop (L)', wave: "Forma d'onda: clic per spostarsi",
+    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`,
+    parts: { vocals: 'Voce', drums: 'Batteria', bass: 'Basso', guitar: 'Chitarra', piano: 'Piano', other: 'Altro', rest: 'Resto del mix' },
   };
+  const PART_COLORS = { vocals: '#ff8a95', drums: '#ffd166', bass: '#5fe0a8', guitar: '#6cc4ff', piano: '#c79bff', other: '#b9bcc8', rest: '#8f93a3' };
   if (EN) {
     document.documentElement.lang = 'en';
     $('#loader-text').textContent = L.preparing;
@@ -36,6 +41,7 @@
     $('#loop').title = L.loopT;
     $('#wave').setAttribute('aria-label', L.wave);
     $('#variants').setAttribute('aria-label', L.saves);
+    $('#stems').setAttribute('aria-label', L.tracks);
   }
 
   const token = decodeURIComponent(location.pathname.split('/').filter(Boolean)[1] || '');
@@ -44,8 +50,13 @@
 
   let info = null, ctx = null;
   let vi = 0, v = null;            // salvataggio scelto
-  const cache = new Map();         // indice → Promise<{ buf, peaks }>
-  let buf = null, peaks = null;
+  const cache = new Map();         // indice → Promise<{ bufs, energy }>
+  // Un salvataggio è un solo file (il mix) oppure, con i pulsanti delle tracce, un file per traccia
+  // separata: suonano insieme, ognuno col suo volume (1 = accesa, 0 = spenta).
+  let bufs = [], energy = [];      // audio ed energia (per la forma d'onda) di ogni file
+  let buf = null, peaks = null;    // buf: il primo file (tutti hanno la stessa durata)
+  const stemOff = new Set();       // tracce spente (vocals, drums…): vale per tutti i salvataggi
+  let srcs = [], gains = [];
   let src = null, playing = false, startedAt = 0, startOffset = 0, pos = 0;
   let loopOn = false, loop = null; // { start, end } in secondi del file
   let activeSec = -1, loadSeq = 0;
@@ -75,13 +86,30 @@
     setupMediaSession();
   }
 
+  const stemsOf = (i) => (info.variants[i] && info.variants[i].stems) || [];
+
   function audioOf(i) {
     if (!cache.has(i)) {
       const p = (async () => {
-        const data = await fetchAudio(`/api/public/${encodeURIComponent(token)}/audio?mix=${i}&v=${info.updated_at}`, i);
+        const base = `/api/public/${encodeURIComponent(token)}/audio?mix=${i}&v=${info.updated_at}`;
+        const urls = stemsOf(i).length ? stemsOf(i).map((_, k) => `${base}&stem=${k}`) : [base];
+        // avanzamento: somma di tutti i file
+        const prog = urls.map(() => ({ got: 0, total: 0 }));
+        const report = () => {
+          if (i !== vi) return;
+          const got = prog.reduce((a, x) => a + x.got, 0), total = prog.reduce((a, x) => a + x.total, 0);
+          if (!total) return;
+          $('#loader-text').textContent = `${L.loading}…`;
+          $('#progress-fill').style.width = `${Math.min(100, (got / total) * 100)}%`;
+        };
+        const datas = await Promise.all(urls.map((u, k) => fetchAudio(u, (got, total) => { prog[k] = { got, total }; report(); })));
         if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const b = await new Promise((ok, ko) => ctx.decodeAudioData(data, ok, ko));
-        return { buf: b, peaks: computePeaks(b, 1400) };
+        let list = [];
+        for (const d of datas) list.push(await new Promise((ok, ko) => ctx.decodeAudioData(d, ok, ko)));
+        // stessa durata per tutti: il loop deve chiudersi nello stesso punto in ogni file
+        const len = Math.max(...list.map((b) => b.length));
+        list = list.map((b) => (b.length === len ? b : padded(b, len)));
+        return { bufs: list, energy: list.map((b) => computeEnergy(b, 1400)) };
       })();
       p.catch(() => cache.delete(i)); // al prossimo tentativo si riprova
       cache.set(i, p);
@@ -89,13 +117,19 @@
     return cache.get(i);
   }
 
-  async function fetchAudio(url, i) {
+  function padded(b, len) {
+    const out = ctx.createBuffer(b.numberOfChannels, len, b.sampleRate);
+    for (let c = 0; c < b.numberOfChannels; c++) out.copyToChannel(b.getChannelData(c), c);
+    return out;
+  }
+
+  async function fetchAudio(url, onProgress) {
     // il mix può essere ancora in preparazione: il server risponde quando è pronto
     const r = await fetch(url);
     if (!r.ok) throw new Error(r.statusText);
     const total = Number(r.headers.get('content-length')) || 0;
     if (!r.body || !total) return r.arrayBuffer();
-    if (i === vi) $('#loader-text').textContent = `${L.loading}…`;
+    onProgress(0, total);
     const reader = r.body.getReader();
     const out = new Uint8Array(total);
     let got = 0;
@@ -104,24 +138,58 @@
       if (done) break;
       out.set(value, got);
       got += value.length;
-      if (i === vi) $('#progress-fill').style.width = `${Math.min(100, (got / total) * 100)}%`;
+      onProgress(got, total);
     }
     return out.buffer;
   }
 
-  function computePeaks(b, n) {
+  /** Energia media (quadrato del segnale) di un file in `n` punti: le forme d'onda si sommano così. */
+  function computeEnergy(b, n) {
     const chans = Array.from({ length: b.numberOfChannels }, (_, i) => b.getChannelData(i));
     const len = b.length, step = len / n, out = new Float32Array(n);
-    let max = 0;
     for (let i = 0; i < n; i++) {
       const a = Math.floor(i * step), z = Math.min(len, Math.floor((i + 1) * step));
       let s = 0, cnt = 0;
       for (let j = a; j < z; j += 16) for (const c of chans) { s += c[j] * c[j]; cnt++; }
-      out[i] = Math.sqrt(s / Math.max(1, cnt));
+      out[i] = s / Math.max(1, cnt);
+    }
+    return out;
+  }
+
+  const stemIsOn = (k) => !stemOff.has((v.stems || [])[k]);
+
+  /** Forma d'onda di ciò che si sente: la somma delle tracce accese. */
+  function updatePeaks() {
+    if (!energy.length) { peaks = null; return; }
+    const n = energy[0].length, out = new Float32Array(n);
+    let max = 0;
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      for (let k = 0; k < energy.length; k++) if (stemIsOn(k)) s += energy[k][i];
+      out[i] = Math.sqrt(s);
       if (out[i] > max) max = out[i];
     }
     for (let i = 0; i < n; i++) out[i] = max ? Math.pow(out[i] / max, 0.8) : 0;
-    return out;
+    peaks = out;
+  }
+
+  function renderStems() {
+    const keys = v.stems || [];
+    const box = $('#stems');
+    box.classList.toggle('hidden', !keys.length);
+    box.innerHTML = keys.map((key, k) => {
+      const name = L.parts[key] || key;
+      return `<button class="stem" data-k="${k}" style="--c:${PART_COLORS[key] || '#aaa'}" aria-pressed="${!stemOff.has(key)}" title="${esc(L.stemT(name))}">${esc(name)}</button>`;
+    }).join('');
+    box.querySelectorAll('.stem').forEach((b) => b.addEventListener('click', () => {
+      const k = Number(b.dataset.k), key = keys[k];
+      if (stemOff.has(key)) stemOff.delete(key); else stemOff.add(key);
+      b.setAttribute('aria-pressed', String(!stemOff.has(key)));
+      // dissolvenza breve, per non sentire uno scatto
+      if (gains[k]) gains[k].gain.setTargetAtTime(stemOff.has(key) ? 0 : 1, ctx.currentTime, 0.02);
+      updatePeaks();
+      draw();
+    }));
   }
 
   /** Passa a un altro salvataggio: stessa posizione se possibile, loop del salvataggio. */
@@ -133,7 +201,10 @@
     if (playing) pause();
     vi = i;
     v = info.variants[i];
+    // le tracce separate occupano molta memoria: si tiene pronto un solo salvataggio che le usa
+    if (stemsOf(i).length) for (const j of [...cache.keys()]) if (j !== i && stemsOf(j).length) cache.delete(j);
     renderVariant();
+    renderStems();
     document.querySelectorAll('.variant').forEach((b) => {
       const on = Number(b.dataset.i) === i;
       b.classList.toggle('on', on);
@@ -152,8 +223,10 @@
     try { a = await audioOf(i); } catch { if (seq === loadSeq) fail(L.failed); markLoading(i, false); return; }
     markLoading(i, false);
     if (seq !== loadSeq) return;
-    buf = a.buf;
-    peaks = a.peaks;
+    bufs = a.bufs;
+    energy = a.energy;
+    buf = bufs[0];
+    updatePeaks();
     $('#dur').textContent = fmt(buf.duration);
     loop = null;
     if (v.selection) {
@@ -173,7 +246,8 @@
     if (wasPlaying && keepPlaying) play();
     else draw();
     // gli altri salvataggi si caricano in sottofondo, così il cambio è immediato
-    (async () => { for (let j = 0; j < info.variants.length; j++) if (j !== i) await audioOf(j).catch(() => {}); })();
+    // (non quelli con le tracce separate: troppi file e troppa memoria)
+    (async () => { for (let j = 0; j < info.variants.length; j++) if (j !== i && !stemsOf(j).length) await audioOf(j).catch(() => {}); })();
   }
 
   function markLoading(i, on) {
@@ -230,7 +304,7 @@
 
   function position() {
     if (!playing) return pos;
-    let p = startOffset + (ctx.currentTime - startedAt);
+    let p = startOffset + Math.max(0, ctx.currentTime - startedAt);
     if (loopOn && loop && startOffset < loop.end && p >= loop.end) {
       p = loop.start + ((p - loop.end) % (loop.end - loop.start));
     }
@@ -238,14 +312,25 @@
   }
 
   function startSource(from) {
-    src = ctx.createBufferSource();
-    src.buffer = buf;
-    if (loopOn && loop) {
-      src.loop = true;
-      src.loopStart = loop.start;
-      src.loopEnd = loop.end;
-    }
-    src.connect(ctx.destination);
+    // un lettore per file, avviati nello stesso istante: restano allineati al campione
+    srcs = bufs.map((b) => {
+      const s = ctx.createBufferSource();
+      s.buffer = b;
+      if (loopOn && loop) {
+        s.loop = true;
+        s.loopStart = loop.start;
+        s.loopEnd = loop.end;
+      }
+      return s;
+    });
+    gains = srcs.map((s, k) => {
+      const g = ctx.createGain();
+      g.gain.value = stemIsOn(k) ? 1 : 0;
+      s.connect(g);
+      g.connect(ctx.destination);
+      return g;
+    });
+    src = srcs[0];
     const me = src;
     src.onended = () => {
       if (src !== me) return;
@@ -255,15 +340,19 @@
     };
     startOffset = from;
     startedAt = ctx.currentTime;
-    src.start(0, from);
+    const when = srcs.length > 1 ? ctx.currentTime + 0.03 : 0;
+    if (when) startedAt = when;
+    for (const s of srcs) s.start(when, from);
   }
 
   function stopSource() {
     if (!src) return;
-    const s = src;
+    const old = srcs, oldGains = gains;
     src = null;
-    try { s.stop(); } catch {}
-    s.disconnect();
+    srcs = [];
+    gains = [];
+    for (const s of old) { try { s.stop(); } catch {} s.disconnect(); }
+    for (const g of oldGains) g.disconnect();
   }
 
   function play() {
