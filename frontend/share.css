@@ -196,16 +196,16 @@ button { font: inherit; color: inherit; }
   .stage { min-height: calc(100dvh - 50px); padding: 4px 12px 16px; gap: 12px; justify-content: flex-start; }
   .card { border-radius: 22px; padding: 18px; }
   .subtitle { margin: 4px 0 2px; }
-  .stems { margin-top: 14px; gap: 6px; }
+  .stems { margin-top: 22px; gap: 6px; }
   .stem { padding: 6px 11px; }
-  .variants { margin-top: 14px; }
-  .wave-wrap { margin-top: 14px; height: 92px; }
+  .variants { margin-top: 22px; }
+  .wave-wrap { margin-top: 22px; height: 92px; }
   .times { margin-top: 4px; }
   .controls { gap: 18px; margin-top: 8px; }
   .ctl { width: 42px; height: 42px; }
   .play { width: 64px; height: 64px; }
-  .speed, .sections { margin-top: 14px; padding-top: 12px; }
-  .speed + .sections { margin-top: 12px; }
+  .speed, .sections { margin-top: 22px; padding-top: 14px; }
+  .speed + .sections { margin-top: 14px; }
   .sec-label { margin-bottom: 6px; }
   .speed-row input[type="range"] { height: 24px; }
 }
