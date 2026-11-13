@@ -930,7 +930,9 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .region-item:not(.active):hover { background: var(--panel); } /* tutta la riga, fino al bordo destro */
 .region-item .rg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .region-item .rg-time { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.region-item .rg-ren, .region-item .rg-del { padding: 2px 6px; border: 0; font-size: 12px; }
+.region-item .rg-ren, .region-item .rg-del, .region-item .rg-all { padding: 2px 6px; border: 0; font-size: 12px; }
+.region-item .rg-all { opacity: .3; filter: grayscale(1); }
+.region-item .rg-all.on { opacity: 1; filter: none; }
 .region-item .rg-del:hover { color: var(--danger); }
 .sel-nudge { display: inline-flex; align-items: center; gap: 1px; }
 .sel-nudge .lbl { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin: 0 3px 0 6px; }

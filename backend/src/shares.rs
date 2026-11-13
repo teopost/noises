@@ -67,6 +67,9 @@ pub struct Variant {
     name: String,
     #[serde(flatten)]
     mix: Mix,
+    /// sezioni (loop) di questo salvataggio; assente nei link di prima: valgono quelle del link
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    regions: Option<Vec<Named>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -582,6 +585,15 @@ pub struct CreateBody {
     speed_buttons: Option<bool>,
 }
 
+/// Sezioni (loop) che si vedono nel salvataggio `preset`: le sue e quelle comuni a tutti.
+fn regions_of(p: &crate::projects::Project, preset: Option<&str>) -> Vec<Named> {
+    p.regions
+        .iter()
+        .filter(|r| r.visible_in(preset))
+        .map(|r| Named { name: r.name.clone(), start: r.start, end: Some(r.end) })
+        .collect()
+}
+
 /// Fotografa le tracce del progetto con i volumi del salvataggio.
 fn build_mix(st: &AppState, p: &crate::projects::Project, b: &MixBody) -> Result<Mix, AppError> {
     if b.stems.len() > 200 || !(-12..=12).contains(&b.pitch) || !(25..=200).contains(&b.tempo) || !b.master.is_finite() {
@@ -640,9 +652,15 @@ pub async fn create(
         if e.preset.is_empty() || e.preset.len() > 32 || Some(&e.preset) == b.preset.as_ref() {
             continue;
         }
-        extra.push(Variant { preset: e.preset.clone(), name: e.name.trim().chars().take(60).collect(), mix: build_mix(&st, &p, &e.mix)? });
+        extra.push(Variant {
+            preset: e.preset.clone(),
+            name: e.name.trim().chars().take(60).collect(),
+            mix: build_mix(&st, &p, &e.mix)?,
+            regions: Some(regions_of(&p, Some(&e.preset))),
+        });
     }
     let now = now_secs();
+    let main_regions = regions_of(&p, b.preset.as_deref());
     let mut sh = Share {
         token: new_token(),
         owner: user.id.clone(),
@@ -654,7 +672,7 @@ pub async fn create(
         updated_at: now,
         mix,
         extra,
-        regions: p.regions.iter().map(|r| Named { name: r.name.clone(), start: r.start, end: Some(r.end) }).collect(),
+        regions: main_regions,
         markers: p.markers.iter().map(|m| Named { name: m.name.clone(), start: m.t, end: None }).collect(),
         stem_toggles: b.stem_buttons.unwrap_or(true),
         loop_choice: b.loop_buttons.unwrap_or(true),
@@ -748,7 +766,7 @@ pub struct PublicInfo {
     speed: bool,
 }
 
-fn public_variant(sh: &Share, name: &str, m: &Mix) -> PublicVariant {
+fn public_variant(sh: &Share, name: &str, m: &Mix, regions: &[Named]) -> PublicVariant {
     let k = 100.0 / m.tempo.clamp(25, 200) as f64;
     let scale = |n: &Named| Named { name: n.name.clone(), start: n.start * k, end: n.end.map(|e| e * k) };
     PublicVariant {
@@ -759,7 +777,7 @@ fn public_variant(sh: &Share, name: &str, m: &Mix) -> PublicVariant {
         selection: m.selection.map(|s| Span { start: s.start * k, end: s.end * k }),
         loop_on: m.loop_on,
         // senza la scelta dei loop la pagina ha solo il loop del salvataggio
-        regions: if sh.loop_choice { sh.regions.iter().map(scale).collect() } else { vec![] },
+        regions: if sh.loop_choice { regions.iter().map(scale).collect() } else { vec![] },
         markers: sh.markers.iter().map(scale).collect(),
         stems: toggle_groups(sh, m).into_iter().map(|(k, _)| k).collect(),
     }
@@ -767,8 +785,8 @@ fn public_variant(sh: &Share, name: &str, m: &Mix) -> PublicVariant {
 
 pub async fn public_info(State(st): State<AppState>, UrlPath(token): UrlPath<String>) -> Result<Json<PublicInfo>, AppError> {
     let sh = find(&st, &token).ok_or_else(not_found)?;
-    let mut variants = vec![public_variant(&sh, &sh.subtitle, &sh.mix)];
-    variants.extend(sh.extra.iter().map(|v| public_variant(&sh, &v.name, &v.mix)));
+    let mut variants = vec![public_variant(&sh, &sh.subtitle, &sh.mix, &sh.regions)];
+    variants.extend(sh.extra.iter().map(|v| public_variant(&sh, &v.name, &v.mix, v.regions.as_deref().unwrap_or(&sh.regions))));
     Ok(Json(PublicInfo { title: sh.title.clone(), variants, updated_at: sh.updated_at, speed: sh.speed_choice }))
 }
 

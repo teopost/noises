@@ -1,6 +1,13 @@
 'use strict';
 // Sezioni salvate: porzioni del progetto con un nome (es. "Assolo 1") da richiamare e ripetere in loop
 // per esercitarsi. Inizio e fine in secondi originali, come i segnalibri: restano giuste a ogni velocità.
+// Ogni salvataggio ha le sue sezioni: una sezione appartiene al salvataggio in uso quando viene creata
+// (`preset`; null = nessun salvataggio in uso) e si vede solo lì, a meno che sia segnata 📌 "in tutti
+// i salvataggi" (`all`).
+
+const regionVisible = (r) => !!r.all || (r.preset || null) === (state.presetId || null);
+/** Sezioni del salvataggio in uso, più quelle comuni a tutti. */
+const visibleRegions = () => (state.regions || []).filter(regionVisible);
 
 const rk = () => 100 / engine.tempo; // secondi originali → timeline corrente
 const newRegionId = () => Math.random().toString(36).slice(2, 10);
@@ -10,7 +17,7 @@ function regionOfSelection() {
   const s = state.sel;
   if (!s || !state.regions) return null;
   const k = rk();
-  return state.regions.find((r) => Math.abs(r.start * k - s.start) < 0.02 && Math.abs(Math.min(r.end * k, engine.duration) - s.end) < 0.02) || null;
+  return visibleRegions().find((r) => Math.abs(r.start * k - s.start) < 0.02 && Math.abs(Math.min(r.end * k, engine.duration) - s.end) < 0.02) || null;
 }
 
 async function askRegionName(def, title = 'Nome della sezione') {
@@ -23,12 +30,12 @@ async function saveSelectionAsRegion() {
   if (!s0 || !state.current) return;
   const cur = regionOfSelection();
   if (cur) { renameRegion(cur); return; }
-  const name = await askRegionName(`${T('Sezione')} ${state.regions.length + 1}`);
+  const name = await askRegionName(`${T('Sezione')} ${visibleRegions().length + 1}`);
   const s = state.sel;
   if (!name || !s) return;
   pushUndo('Salva sezione');
   const k = rk();
-  state.regions.push({ id: newRegionId(), name, start: +(s.start / k).toFixed(3), end: +(s.end / k).toFixed(3) });
+  state.regions.push({ id: newRegionId(), name, start: +(s.start / k).toFixed(3), end: +(s.end / k).toFixed(3), preset: state.presetId || null, all: false });
   state.regions.sort((a, b) => a.start - b.start);
   regionsChanged();
   toast(`Sezione "${name}" salvata`);
@@ -49,8 +56,24 @@ function deleteRegion(r) {
   toast(`Sezione "${r.name}" eliminata (Ctrl+Z per annullare)`);
 }
 
+/** 📌: la sezione si vede in tutti i salvataggi, oppure torna solo di quello in uso. */
+function toggleRegionAll(r) {
+  pushUndo('Sezione in tutti i salvataggi');
+  r.all = !r.all;
+  if (!r.all) r.preset = state.presetId || null;
+  regionsChanged();
+  toast(r.all ? `Sezione "${r.name}" visibile in tutti i salvataggi` : `Sezione "${r.name}" solo in questo salvataggio`);
+}
+
+/** Cambio del salvataggio in uso: cambiano le sezioni che si vedono. */
+function regionsPresetChanged() {
+  updateRegionsUI(regionOfSelection());
+  if (!$('#regions-menu').classList.contains('hidden')) renderRegionsMenu();
+}
+
 function regionsChanged() {
   saveProject();
+  if (typeof scheduleSharesRefresh === 'function') scheduleSharesRefresh(); // i link pubblici mostrano le sezioni
   updateSelectionUI();
   if (!$('#regions-menu').classList.contains('hidden')) renderRegionsMenu();
 }
@@ -71,14 +94,16 @@ function goRegion(r) {
 function renderRegionsMenu() {
   const menu = $('#regions-menu');
   const k = rk(), cur = regionOfSelection();
-  const list = state.regions || [];
-  menu.innerHTML = `<div class="menu-title">Sezioni salvate</div>` + (list.length
+  const list = visibleRegions();
+  const save = typeof activePreset === 'function' ? activePreset() : null;
+  menu.innerHTML = `<div class="menu-title">${esc(save ? `${T('Sezioni di')} "${save.name}"` : T('Sezioni salvate'))}</div>` + (list.length
     ? list.map((r) => `
       <div class="region-item ${r === cur ? 'active' : ''}" data-id="${r.id}">
         <button class="rg-go" title="Seleziona la sezione e ripetila in loop">
           <span class="rg-name">${esc(r.name)}</span>
           <span class="rg-time">${fmtPrecise(r.start * k)} – ${fmtPrecise(r.end * k)}</span>
         </button>
+        <button class="rg-all ghost ${r.all ? 'on' : ''}" title="${r.all ? 'Visibile in tutti i salvataggi: clic per tenerla solo in questo' : 'Solo in questo salvataggio: clic per mostrarla in tutti'}" aria-pressed="${!!r.all}">📌</button>
         <button class="rg-ren ghost" title="Rinomina">✎</button>
         <button class="rg-del ghost" title="Elimina">🗑</button>
       </div>`).join('')
@@ -86,6 +111,7 @@ function renderRegionsMenu() {
   menu.querySelectorAll('.region-item').forEach((row) => {
     const r = list.find((x) => x.id === row.dataset.id);
     row.querySelector('.rg-go').addEventListener('click', () => { closeRegionsMenu(); goRegion(r); });
+    row.querySelector('.rg-all').addEventListener('click', () => toggleRegionAll(r));
     row.querySelector('.rg-ren').addEventListener('click', () => renameRegion(r));
     row.querySelector('.rg-del').addEventListener('click', () => deleteRegion(r));
   });
@@ -116,7 +142,7 @@ function updateRegionsUI(reg) {
     b.title = grid ? b.title.replace(/ \(.*\)$/, '') : `${b.title.replace(/ \(.*\)$/, '')} (serve l'analisi del ritmo)`;
   });
   // il pulsante mostra la sezione in uso; ▾ apre l'elenco
-  const n = (state.regions || []).length, btn = $('#regions-btn');
+  const n = visibleRegions().length, btn = $('#regions-btn');
   btn.textContent = reg ? reg.name : n ? `☰ Sezioni (${n})` : '☰ Sezioni';
   btn.classList.toggle('on', !!reg);
   btn.title = reg ? `Sezione "${reg.name}": clic per ricominciare dall'inizio` : 'Sezioni salvate: richiamale per ripeterle in loop';
@@ -169,6 +195,7 @@ function nudgeSelection(edge, dir, mode) {
     reg.start = +(next.start / k).toFixed(3);
     reg.end = +(next.end / k).toFixed(3);
     saveProject();
+    if (typeof scheduleSharesRefresh === 'function') scheduleSharesRefresh();
   }
   const pos = engine.position();
   state.sel = next;

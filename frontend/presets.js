@@ -214,9 +214,26 @@ async function deletePreset(p) {
   if (!(await uiConfirm(msg, { title: 'Elimina salvataggio', ok: 'Elimina', danger: true }))) return;
   if (sh) await unshare(sh, true);
   state.presets = state.presets.filter((x) => x !== p);
+  // le sue sezioni non si perdono: restano visibili quando non c'è nessun salvataggio in uso
+  for (const r of state.regions || []) if (r.preset === p.id) r.preset = null;
   if (state.presetId === p.id) setActivePreset(null);
   presetsChanged();
   refreshSharesWith(p); // sparisce dai link in cui era incluso
+}
+
+/** Le sezioni sono cambiate: i link pubblici del progetto si aggiornano quando le modifiche si fermano. */
+let regionShareTimer = null;
+function scheduleSharesRefresh() {
+  clearTimeout(regionShareTimer);
+  if (!(state.shares || []).length) return;
+  const proj = state.current;
+  regionShareTimer = setTimeout(() => {
+    if (state.current !== proj) return;
+    for (const sh of [...(state.shares || [])]) {
+      const main = (state.presets || []).find((x) => x.id === sh.preset);
+      if (main) sharePreset(main, { silent: true, extra: sh.extra || [] });
+    }
+  }, 4000);
 }
 
 /** Ricondivide i link che contengono il salvataggio `p` (come principale o incluso). */
@@ -310,6 +327,7 @@ function updatePresetsUI() {
   const key = `${cur ? cur.id + cur.name : ''}|${n}`;
   if (key === presetsUiKey) return;
   presetsUiKey = key;
+  if (typeof regionsPresetChanged === 'function') regionsPresetChanged(); // ogni salvataggio ha le sue sezioni
   btn.textContent = cur ? `💾 ${cur.name}` : n ? `💾 ${T('Salvataggi')} (${n})` : `💾 ${T('Salvataggi')}`;
   btn.classList.toggle('on', !!cur);
   btn.title = cur ? `In uso il salvataggio "${cur.name}": le modifiche vengono salvate qui. Clic per tornare all'inizio del suo loop, ▾ per l'elenco` : 'Salvataggi: stati del progetto con un nome da richiamare (loop, solo voce…)';

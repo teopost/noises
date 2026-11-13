@@ -61,6 +61,7 @@ click intelligente ed esportazione di basi.
 - **Zoom** in pixel al secondo (slider, `Ctrl` + rotella o pinch) e **panoramica** del progetto con un riquadro da trascinare.
 
 ### Pratica e registrazione
+- **Sezioni per salvataggio**: ogni salvataggio ha le sue sezioni (quelle create mentre è in uso); con 📌 una sezione si vede in tutti i salvataggi. I link pubblici mostrano i loop del loro salvataggio.
 - **Sezioni salvate**: dai un nome a una porzione del brano (per esempio "Assolo 1") e richiamala con un clic dal pulsante **Sezioni ▾**: viene selezionata con il loop già attivo e la testina all'inizio. Le sezioni sono salvate nel progetto e restano al loro posto a ogni velocità.
 - **Loop al volo**: durante l'ascolto `I` fissa l'inizio (l'area verde cresce mentre il brano va avanti) e `O` la fine, con il loop già attivo; gli stessi comandi sono nella barra (**[ I**, **O ]**).
 - **Regolazione fine del loop**: i bordi si trascinano con il mouse (con `Ctrl` si agganciano al click), oppure si spostano di 0,1 s (`Shift`: 0,01 s, tenendo premuto scorrono) o al **click precedente o successivo**, anche mentre suona.

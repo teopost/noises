@@ -51,6 +51,19 @@ pub struct Region {
     pub name: String,
     pub start: f64,
     pub end: f64,
+    /// salvataggio a cui appartiene la sezione (None = creata senza un salvataggio in uso)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+    /// visibile in tutti i salvataggi; assente = sezione di quando erano tutte comuni (vale come sì)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all: Option<bool>,
+}
+
+impl Region {
+    /// La sezione si vede nel salvataggio `preset`: è la sua, oppure è comune a tutti.
+    pub fn visible_in(&self, preset: Option<&str>) -> bool {
+        self.all.unwrap_or(self.preset.is_none()) || self.preset.as_deref() == preset
+    }
 }
 
 /// Salvataggio con un nome (es. "Assolo in loop", "Solo voce"): una fotografia delle impostazioni
@@ -292,7 +305,7 @@ pub async fn put_state(
     if !b.markers.iter().all(|m| m.t.is_finite() && m.t >= 0.0) {
         return Err(bad_request("segnalibri non validi"));
     }
-    if !b.regions.iter().all(|r| r.start.is_finite() && r.end.is_finite() && r.start >= 0.0 && r.end > r.start && r.id.len() <= 32) {
+    if !b.regions.iter().all(|r| r.start.is_finite() && r.end.is_finite() && r.start >= 0.0 && r.end > r.start && r.id.len() <= 32 && r.preset.as_ref().map_or(true, |p| p.len() <= 32)) {
         return Err(bad_request("sezioni non valide"));
     }
     p.name = clean_name(&b.name)?;

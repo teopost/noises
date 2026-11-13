@@ -262,7 +262,8 @@ async function openProject(id, force) {
   $('#chord-song').textContent = '';
   initLayout(p);
   state.markers = (p.markers || []).map((m) => ({ ...m }));
-  state.regions = (p.regions || []).map((r) => ({ ...r }));
+  // le sezioni di quando erano tutte comuni restano comuni a tutti i salvataggi (📌)
+  state.regions = (p.regions || []).map((r) => ({ ...r, preset: r.preset || null, all: r.all ?? !r.preset }));
   state.presets = (p.presets || []).map((x) => ({ ...x }));
   state.presetId = null;
   try { state.presetRestore = localStorage.getItem(presetStoreKey(p.id)); } catch { state.presetRestore = null; }
