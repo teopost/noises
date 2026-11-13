@@ -19,7 +19,7 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semitone${Math.abs(n) === 1 ? '' : 's'}`, speed: (n) => `${n}% speed`,
     made: 'Made with', tagline: 'separated tracks, loops and speed control for practice', saves: 'Saves',
     restart: 'From the start', play: 'Play / pause (space)', loopT: 'Loop (L)', wave: 'Waveform: click to seek',
-    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`,
+    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`, speedL: 'Speed', speedReset: (n) => `Back to ${n}%`,
     parts: { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano', other: 'Other', rest: 'Rest of the mix' },
   } : {
     preparing: "Preparazione dell'audio…", loading: 'Caricamento', gone: 'Questo link non è più attivo.',
@@ -27,11 +27,12 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semiton${Math.abs(n) === 1 ? 'o' : 'i'}`, speed: (n) => `velocità ${n}%`,
     made: 'Creato con', tagline: 'tracce separate, loop e velocità per esercitarsi', saves: 'Salvataggi',
     restart: "Dall'inizio", play: 'Play / pausa (spazio)', loopT: 'Ripeti in loop (L)', wave: "Forma d'onda: clic per spostarsi",
-    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`,
+    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`, speedL: 'Velocità', speedReset: (n) => `Torna a ${n}%`,
     parts: { vocals: 'Voce', drums: 'Batteria', bass: 'Basso', guitar: 'Chitarra', piano: 'Piano', other: 'Altro', rest: 'Resto del mix' },
   };
   const PART_COLORS = { vocals: '#ff8a95', drums: '#ffd166', bass: '#5fe0a8', guitar: '#6cc4ff', piano: '#c79bff', other: '#b9bcc8', rest: '#8f93a3' };
-  $('.sec-label').textContent = L.sections;
+  $('#sections .sec-label').textContent = L.sections;
+  $('#speed-label').textContent = L.speedL;
   if (EN) {
     document.documentElement.lang = 'en';
     $('#loader-text').textContent = L.preparing;
@@ -57,6 +58,13 @@
   let buf = null, peaks = null;    // buf: il primo file (tutti hanno la stessa durata)
   const stemOff = new Set();       // tracce spente (vocals, drums…): vale per tutti i salvataggi
   let srcs = [], gains = [];
+  // Velocità regolabile: al posto dei lettori del browser suona il motore dell'app (stretch-worklet.js),
+  // che cambia la velocità mentre suona senza toccare la tonalità. Solo se il link lo prevede e il
+  // browser lo permette (HTTPS); altrimenti la pagina resta quella di sempre, senza il comando.
+  const canSpeed = () => !!(info && info.speed) && window.isSecureContext && typeof AudioWorkletNode !== 'undefined';
+  let wk = null, wkOn = false;     // motore e stato (sta suonando)
+  let rate = 1, speed = 100;       // rate: rispetto al file del mix; speed: % rispetto al brano originale
+  let rep = null, repMin = 0;      // ultima posizione comunicata dal motore
   let src = null, playing = false, startedAt = 0, startOffset = 0, pos = 0;
   let loopOn = false, loop = null; // { start, end } in secondi del file
   // loop tra cui scegliere: quello del salvataggio e le sezioni del progetto; activeSec = quello in uso
@@ -88,6 +96,56 @@
   }
 
   const stemsOf = (i) => (info.variants[i] && info.variants[i].stems) || [];
+
+  async function setupWorklet() {
+    if (wk || !canSpeed() || !ctx.audioWorklet) return;
+    try {
+      await ctx.audioWorklet.addModule('/stretch-worklet.js');
+      const node = new AudioWorkletNode(ctx, 'stretch-player', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      node.connect(ctx.destination);
+      node.port.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'pos') { if (wkOn && m.frame >= repMin) rep = m; }
+        else if (m.type === 'ended' && wkOn) { wkOn = false; src = null; playing = false; pos = 0; updatePlayUI(); }
+      };
+      wk = node;
+    } catch (e) { console.warn(e); }
+  }
+
+  /** Passa l'audio al motore (una copia per canale, ceduta al motore). */
+  function loadWorklet(list) {
+    const stems = list.map((b, k) => {
+      const l = b.getChannelData(0).slice();
+      const r = b.numberOfChannels > 1 ? b.getChannelData(1).slice() : l;
+      return { name: `s${k}`, l, r, gain: stemIsOn(k) ? 1 : 0 };
+    });
+    wkOn = false;
+    wk.port.postMessage({ type: 'load', length: list[0].length, stems }, stems.flatMap((s) => (s.r !== s.l ? [s.l.buffer, s.r.buffer] : [s.l.buffer])));
+  }
+
+  /** Velocità in % rispetto al brano originale (il file del mix è già a quella del salvataggio). */
+  function setSpeed(val) {
+    const r = $('#speed-range');
+    speed = Math.max(Number(r.min), Math.min(Number(r.max), Math.round(val)));
+    r.value = speed;
+    $('#speed-val').textContent = `${speed}%`;
+    $('#speed-reset').disabled = speed === v.tempo;
+    if (!wk) return;
+    const p = position(); // con la velocità di prima
+    rate = speed / v.tempo;
+    wk.port.postMessage({ type: 'rate', rate, pitch: 1 });
+    if (playing) { startOffset = p; startedAt = ctx.currentTime; rep = null; repMin = Math.round(ctx.currentTime * ctx.sampleRate); }
+  }
+
+  function renderSpeed() {
+    $('#speed').classList.toggle('hidden', !wk);
+    if (!wk) return;
+    const r = $('#speed-range');
+    r.min = Math.min(50, v.tempo);
+    r.max = Math.max(150, v.tempo);
+    $('#speed-reset').title = L.speedReset(v.tempo);
+    setSpeed(v.tempo);
+  }
 
   function audioOf(i) {
     if (!cache.has(i)) {
@@ -188,6 +246,7 @@
       b.setAttribute('aria-pressed', String(!stemOff.has(key)));
       // dissolvenza breve, per non sentire uno scatto
       if (gains[k]) gains[k].gain.setTargetAtTime(stemOff.has(key) ? 0 : 1, ctx.currentTime, 0.02);
+      if (wk) wk.port.postMessage({ type: 'gains', gains: { [`s${k}`]: stemOff.has(key) ? 0 : 1 } });
       updatePeaks();
       draw();
     }));
@@ -224,9 +283,19 @@
     try { a = await audioOf(i); } catch { if (seq === loadSeq) fail(L.failed); markLoading(i, false); return; }
     markLoading(i, false);
     if (seq !== loadSeq) return;
+    await setupWorklet();
+    if (seq !== loadSeq) return;
     bufs = a.bufs;
     energy = a.energy;
     buf = bufs[0];
+    if (wk) {
+      loadWorklet(bufs);
+      // l'audio ora è nel motore: con le tracce separate (pesanti) non se ne tiene una seconda copia
+      buf = { duration: bufs[0].duration };
+      bufs = [];
+      if (stemsOf(i).length) cache.delete(i);
+    }
+    renderSpeed();
     updatePeaks();
     $('#dur').textContent = fmt(buf.duration);
     loop = null;
@@ -285,7 +354,7 @@
     const facts = [];
     if (v.selection && v.loop_on) facts.push(`⟳ ${L.loop} ${fmt(v.selection.start)} – ${fmt(v.selection.end)}`);
     if (v.pitch) facts.push(L.semis(v.pitch));
-    if (v.tempo && v.tempo !== 100) facts.push(L.speed(v.tempo));
+    if (v.tempo && v.tempo !== 100 && !canSpeed()) facts.push(L.speed(v.tempo)); // con il comando della velocità si legge lì
     $('#facts').innerHTML = facts.map((f) => `<span class="fact">${esc(f)}</span>`).join('');
     // loop tra cui scegliere: quello del salvataggio (se non è già una sezione) e le sezioni del progetto;
     // l'elenco compare solo se ce n'è più di uno, oppure se sono sezioni (il salvataggio non ha un loop suo)
@@ -297,7 +366,7 @@
     $('#sections').classList.toggle('hidden', !(regs.length > 1 || (regs.length === 1 && !own)));
     $('#sec-list').innerHTML = regs.map((r, i) =>
       `<button class="sec" data-i="${i}">${esc(r.name)} <small>${fmt(r.start)}–${fmt(r.end)}</small></button>`).join('');
-    document.querySelectorAll('.sec').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('#sec-list .sec').forEach((b) => b.addEventListener('click', () => {
       if (!buf) return;
       const r = regs[Number(b.dataset.i)];
       loop = { start: r.start, end: Math.min(buf.duration, r.end) };
@@ -314,6 +383,12 @@
 
   function position() {
     if (!playing) return pos;
+    if (wk) {
+      const now = ctx.currentTime, sr = ctx.sampleRate;
+      let p = rep ? rep.src / sr + Math.max(0, now - rep.frame / sr) * rate : startOffset + Math.max(0, now - startedAt) * rate;
+      if (loopOn && loop && p >= loop.end) p = loop.start + ((p - loop.start) % (loop.end - loop.start));
+      return Math.max(0, Math.min(p, buf.duration));
+    }
     let p = startOffset + Math.max(0, ctx.currentTime - startedAt);
     if (loopOn && loop && startOffset < loop.end && p >= loop.end) {
       p = loop.start + ((p - loop.end) % (loop.end - loop.start));
@@ -322,6 +397,18 @@
   }
 
   function startSource(from) {
+    if (wk) {
+      const sr = ctx.sampleRate, at = ctx.currentTime + 0.05;
+      wk.port.postMessage({ type: 'loop', loop: loopOn && loop ? { s: Math.round(loop.start * sr), e: Math.round(loop.end * sr) } : null });
+      wk.port.postMessage({ type: 'play', at, pos: Math.round(from * sr) });
+      startOffset = from;
+      startedAt = at;
+      rep = null;
+      repMin = Math.round(at * sr);
+      wkOn = true;
+      src = wk;
+      return;
+    }
     // un lettore per file, avviati nello stesso istante: restano allineati al campione
     srcs = bufs.map((b) => {
       const s = ctx.createBufferSource();
@@ -357,6 +444,12 @@
 
   function stopSource() {
     if (!src) return;
+    if (wk) {
+      wk.port.postMessage({ type: 'pause' });
+      wkOn = false;
+      src = null;
+      return;
+    }
     const old = srcs, oldGains = gains;
     src = null;
     srcs = [];
@@ -413,7 +506,7 @@
 
   function updateLoopUI() {
     $('#loop').setAttribute('aria-pressed', String(loopOn));
-    document.querySelectorAll('.sec').forEach((b) => b.classList.toggle('on', loopOn && Number(b.dataset.i) === activeSec));
+    document.querySelectorAll('#sec-list .sec').forEach((b) => b.classList.toggle('on', loopOn && Number(b.dataset.i) === activeSec));
     draw();
   }
 
@@ -504,6 +597,10 @@
   $('#play').addEventListener('click', () => (playing ? pause() : play()));
   $('#restart').addEventListener('click', () => seek(loopOn && loop ? loop.start : 0));
   $('#loop').addEventListener('click', toggleLoop);
+  $('#speed-range').addEventListener('input', (e) => setSpeed(Number(e.target.value)));
+  $('#speed-down').addEventListener('click', () => setSpeed(speed - 5));
+  $('#speed-up').addEventListener('click', () => setSpeed(speed + 5));
+  $('#speed-reset').addEventListener('click', () => setSpeed(v.tempo));
   let dragging = false;
   const seekAt = (e) => {
     if (!buf) return;

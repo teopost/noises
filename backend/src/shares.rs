@@ -98,6 +98,9 @@ pub struct Share {
     /// i link creati prima di questa opzione lo mostravano sempre
     #[serde(default = "yes")]
     loop_choice: bool,
+    /// la pagina offre il comando per cambiare la velocità (in tempo reale, nel browser)
+    #[serde(default)]
+    speed_choice: bool,
 }
 
 fn yes() -> bool {
@@ -488,6 +491,8 @@ pub struct ShareSummary {
     stem_buttons: bool,
     /// elenco dei loop (sezioni) tra cui scegliere nella pagina
     loop_buttons: bool,
+    /// comando della velocità nella pagina
+    speed_buttons: bool,
 }
 
 impl From<&Share> for ShareSummary {
@@ -502,6 +507,7 @@ impl From<&Share> for ShareSummary {
             updated_at: s.updated_at,
             stem_buttons: s.stem_toggles,
             loop_buttons: s.loop_choice,
+            speed_buttons: s.speed_choice,
         }
     }
 }
@@ -571,6 +577,9 @@ pub struct CreateBody {
     /// elenco dei loop (sezioni) tra cui scegliere nella pagina; se manca, come `stem_buttons`
     #[serde(default)]
     loop_buttons: Option<bool>,
+    /// comando della velocità nella pagina; se manca, come `stem_buttons`
+    #[serde(default)]
+    speed_buttons: Option<bool>,
 }
 
 /// Fotografa le tracce del progetto con i volumi del salvataggio.
@@ -649,8 +658,9 @@ pub async fn create(
         markers: p.markers.iter().map(|m| Named { name: m.name.clone(), start: m.t, end: None }).collect(),
         stem_toggles: b.stem_buttons.unwrap_or(true),
         loop_choice: b.loop_buttons.unwrap_or(true),
+        speed_choice: b.speed_buttons.unwrap_or(true),
     };
-    let (stem_buttons, loop_buttons) = (b.stem_buttons, b.loop_buttons);
+    let (stem_buttons, loop_buttons, speed_buttons) = (b.stem_buttons, b.loop_buttons, b.speed_buttons);
     // lo stesso salvataggio ricondiviso tiene il suo link
     let sh = edit(&st, |all| {
         if let Some(old) = sh.preset.as_ref().and_then(|id| all.iter_mut().find(|x| x.project == pid && x.preset.as_ref() == Some(id))) {
@@ -659,6 +669,7 @@ pub async fn create(
             sh.updated_at = now.max(old.updated_at + 1);
             sh.stem_toggles = stem_buttons.unwrap_or(old.stem_toggles);
             sh.loop_choice = loop_buttons.unwrap_or(old.loop_choice);
+            sh.speed_choice = speed_buttons.unwrap_or(old.speed_choice);
             *old = sh.clone();
         } else {
             all.push(sh.clone());
@@ -733,6 +744,8 @@ pub struct PublicInfo {
     /// il primo è il salvataggio condiviso, gli altri sono quelli inclusi in più
     variants: Vec<PublicVariant>,
     updated_at: u64,
+    /// la pagina può offrire il comando della velocità
+    speed: bool,
 }
 
 fn public_variant(sh: &Share, name: &str, m: &Mix) -> PublicVariant {
@@ -756,7 +769,7 @@ pub async fn public_info(State(st): State<AppState>, UrlPath(token): UrlPath<Str
     let sh = find(&st, &token).ok_or_else(not_found)?;
     let mut variants = vec![public_variant(&sh, &sh.subtitle, &sh.mix)];
     variants.extend(sh.extra.iter().map(|v| public_variant(&sh, &v.name, &v.mix)));
-    Ok(Json(PublicInfo { title: sh.title.clone(), variants, updated_at: sh.updated_at }))
+    Ok(Json(PublicInfo { title: sh.title.clone(), variants, updated_at: sh.updated_at, speed: sh.speed_choice }))
 }
 
 #[derive(Deserialize)]

@@ -66,6 +66,17 @@
         </button>
       </div>
 
+      <div id="speed" class="speed hidden">
+        <span class="sec-label" id="speed-label">Velocità</span>
+        <div class="speed-row">
+          <button id="speed-down" class="sec" type="button" aria-label="−5%">−</button>
+          <input id="speed-range" type="range" min="50" max="150" step="5" value="100" aria-labelledby="speed-label">
+          <button id="speed-up" class="sec" type="button" aria-label="+5%">+</button>
+          <output id="speed-val" for="speed-range">100%</output>
+          <button id="speed-reset" class="sec" type="button">↺</button>
+        </div>
+      </div>
+
       <div id="sections" class="sections hidden">
         <span class="sec-label">Loop</span>
         <div id="sec-list" class="sec-list"></div>

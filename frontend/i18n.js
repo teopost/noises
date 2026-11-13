@@ -493,6 +493,8 @@ const EN = {
   'Link pubblico aggiornato': 'Public link updated',
   'Pulsanti per accendere e spegnere le tracce separate': 'Buttons to turn the split tracks on and off',
   'Scelta dei loop nella pagina (le sezioni del progetto)': "Loop choice on the page (the project's sections)",
+  'Regolazione della velocità nella pagina': 'Speed control on the page',
+  'Chi apre il link può rallentare o accelerare il brano mentre lo ascolta, senza cambiarne la tonalità': 'Whoever opens the link can slow the song down or speed it up while listening, without changing its key',
   "Chi apre il link trova l'elenco dei loop: quello del salvataggio e le sezioni del progetto (☰ Sezioni), e può passare dall'uno all'altro": "Whoever opens the link finds the list of loops: the save's own and the project's sections (☰ Sections), and can switch between them",
   'Chi apre il link può ascoltare o togliere le singole tracce separate udibili nel salvataggio (voce, batteria, basso…)': 'Whoever opens the link can listen to or remove each split track audible in the save (vocals, drums, bass…)',
   'Condivisione non riuscita: {…}': 'Sharing failed: {…}',
