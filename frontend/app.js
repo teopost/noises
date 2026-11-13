@@ -1241,7 +1241,8 @@ function setZoom(z, anchorTime) {
   state.zoom = z;
   try { localStorage.setItem('noises.zoom', String(z)); } catch {}
   $('#zoom').value = Math.round(Math.log(z / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN) * 1000);
-  $('#zoom-val').textContent = `${z < 10 ? z.toFixed(1) : Math.round(z)} px/s`;
+  // il valore (px/s) non si mostra più, per tenere la barra su una riga: resta nel suggerimento del cursore
+  $('#zoom').title = `${z < 10 ? z.toFixed(1) : Math.round(z)} px/s`;
   layoutTimeline();
   tl.scrollLeft = Math.max(0, t * z - screenX);
 }
