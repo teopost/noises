@@ -341,6 +341,9 @@ struct Inner {
     queue: mpsc::UnboundedSender<String>,
     render_locks: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
     render_sem: Semaphore,
+    /// separazioni in corso che l'utente ha chiesto di annullare (le guarda il worker)
+    cancel: Mutex<std::collections::HashSet<String>>,
+    cancel_notify: tokio::sync::Notify,
 }
 
 #[derive(Clone)]
@@ -770,6 +773,89 @@ async fn start_processing(
     st.0.queue.send(id).map_err(|_| anyhow!("coda chiusa"))?;
     info!("elaborazione richiesta per '{}' ({})", song.name, song.model);
     Ok(Json(song))
+}
+
+/// Riporta il brano a com'era prima di una separazione annullata: non separato, oppure (nuova
+/// separazione di un brano già separato) separato come prima. Non fa nulla se non è in elaborazione.
+fn reset_cancelled(s: &mut Song) {
+    if !matches!(s.status, Status::Queued | Status::Processing) {
+        return;
+    }
+    s.phase = None;
+    s.error = None;
+    if let Some(prev) = s.resplit_from.take() {
+        s.model = prev;
+        s.status = Status::Ready;
+        s.progress = 1.0;
+    } else {
+        s.status = Status::New;
+        s.progress = 0.0;
+        s.stems.clear();
+    }
+}
+
+/// Elimina i file parziali di una separazione annullata (le tracce già pronte di prima restano).
+async fn clean_cancelled(st: &AppState, id: &str) {
+    let dir = st.song_dir(id);
+    let keep_stems = st.get(id).is_some_and(|s| s.status == Status::Ready);
+    for sub in ["sep", "stems.new"] {
+        let _ = tokio::fs::remove_dir_all(dir.join(sub)).await;
+    }
+    if !keep_stems {
+        let _ = tokio::fs::remove_dir_all(dir.join("stems")).await;
+    }
+}
+
+/// Annulla la separazione in coda o in corso di un brano.
+async fn cancel_processing(
+    State(st): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Song>, AppError> {
+    // prima la richiesta al worker, poi il controllo dello stato: se nel frattempo ha finito, si ritira
+    st.0.cancel.lock().unwrap().insert(id.clone());
+    let song = st.get(&id);
+    match song.as_ref().map(|s| s.status) {
+        Some(Status::Queued) => {
+            // non ancora iniziata: il worker la salterà quando arriva il suo turno
+            st.0.cancel.lock().unwrap().remove(&id);
+            st.update(&id, true, reset_cancelled);
+            clean_cancelled(&st, &id).await;
+        }
+        Some(Status::Processing) => {
+            st.0.cancel_notify.notify_waiters();
+            // il worker ferma il processo e ripristina il brano: di solito è questione di un istante
+            for _ in 0..40 {
+                if !st.get(&id).is_some_and(|s| s.status == Status::Processing) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        }
+        _ => {
+            st.0.cancel.lock().unwrap().remove(&id);
+            return Err(match song {
+                Some(_) => AppError(StatusCode::CONFLICT, "nessuna separazione in corso".into()),
+                None => not_found(),
+            });
+        }
+    }
+    let song = st.get(&id).ok_or_else(not_found)?;
+    info!("separazione annullata per '{}'", song.name);
+    Ok(Json(song))
+}
+
+/// Termina quando l'utente chiede di annullare la separazione del brano.
+async fn cancel_requested(st: &AppState, id: &str) {
+    loop {
+        let wait = st.0.cancel_notify.notified();
+        tokio::pin!(wait);
+        // registrato prima del controllo: una richiesta che arriva nel mezzo non va persa
+        wait.as_mut().enable();
+        if st.0.cancel.lock().unwrap().contains(id) {
+            return;
+        }
+        wait.await;
+    }
 }
 
 /// Errore "analisi non eseguita": l'interfaccia mostra il pulsante per avviarla.
@@ -1961,11 +2047,25 @@ async fn render_file(
 
 async fn worker(st: AppState, mut rx: mpsc::UnboundedReceiver<String>) {
     while let Some(id) = rx.recv().await {
-        if st.get(&id).is_none() {
+        // solo i brani ancora in coda: una separazione annullata prima di iniziare si salta
+        if !st.get(&id).is_some_and(|s| s.status == Status::Queued) {
             continue;
         }
+        st.0.cancel.lock().unwrap().remove(&id);
         let resplit = st.get(&id).is_some_and(|s| s.resplit_from.is_some());
-        let done = match separate(&st, &id).await {
+        // annullando si abbandona `separate`: i processi di Demucs e RoFormer vengono terminati
+        let sep = tokio::select! {
+            r = separate(&st, &id) => Some(r),
+            _ = cancel_requested(&st, &id) => None,
+        };
+        let Some(sep) = sep else {
+            st.update(&id, true, reset_cancelled);
+            clean_cancelled(&st, &id).await;
+            st.0.cancel.lock().unwrap().remove(&id);
+            info!("separazione {id} annullata");
+            continue;
+        };
+        let done = match sep {
             Ok(stems) if resplit => replace_stems(&st, &id, &stems).await.map(|()| stems),
             other => other,
         };
@@ -2015,6 +2115,8 @@ async fn worker(st: AppState, mut rx: mpsc::UnboundedReceiver<String>) {
                 }
             }
         }
+        // una richiesta di annullamento arrivata a separazione ormai finita non vale per la prossima
+        st.0.cancel.lock().unwrap().remove(&id);
     }
 }
 
@@ -2393,6 +2495,8 @@ async fn main() -> anyhow::Result<()> {
         queue: tx,
         render_locks: Mutex::default(),
         render_sem: Semaphore::new(render_jobs),
+        cancel: Mutex::default(),
+        cancel_notify: tokio::sync::Notify::new(),
     }));
 
     // Rimette in coda i lavori interrotti da un riavvio.
@@ -2408,6 +2512,8 @@ async fn main() -> anyhow::Result<()> {
     pending.sort_by_key(|s| s.created_at);
     for s in pending {
         info!("rimetto in coda {}", s.id);
+        // il worker elabora solo i brani "in coda"
+        st.update(&s.id, false, |x| x.status = Status::Queued);
         st.0.queue.send(s.id)?;
     }
     let downloads: Vec<String> = st
@@ -2451,7 +2557,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/import", axum::routing::post(import_url))
         .route("/api/songs/:id", get(get_song).patch(rename_song).delete(delete_song))
         .route("/api/songs/:id/stems/:stem", get(get_stem))
-        .route("/api/songs/:id/process", axum::routing::post(start_processing))
+        .route("/api/songs/:id/process", axum::routing::post(start_processing).delete(cancel_processing))
         .route("/api/songs/:id/original", get(get_original))
         .route("/api/setlists", get(setlists::list).post(setlists::create))
         .route("/api/setlists/:id", axum::routing::put(setlists::update).delete(setlists::delete))

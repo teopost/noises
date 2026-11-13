@@ -825,7 +825,9 @@ function openTrackMenu(t, anchor, isRefStem, song) {
   }
   // brano già separato: nuova separazione con un altro tipo
   const cur = songById(t.song);
+  const splitting = cur && ['queued', 'processing'].includes(cur.status);
   if (cur && !t.ch && cur.resplit_from && t.part !== 'original') items.push({ icon: '⑂', label: 'Nuova separazione in corso…', disabled: true });
+  if (splitting && !t.ch) items.push({ icon: '⏹', label: 'Annulla la separazione', run: () => cancelSplit(cur) });
   else if (cur && !t.ch && cur.status === 'ready' && !waiting) {
     items.push({ icon: '⑂', label: 'Separa di nuovo…', run: () => resplitSong(cur, t.part === 'original' ? t : null) });
   }
@@ -1002,8 +1004,8 @@ function openFolderMenu(g, anchor) {
     ...[...new Set(kids.filter((k) => k.part !== 'original').map((k) => k.song))].map((id, _, all) => {
       const song = songById(id);
       if (!song || !(song.status === 'ready' || song.resplit_from)) return null;
-      return { icon: '⑂', label: song.resplit_from ? 'Nuova separazione in corso…' : all.length > 1 ? `Separa di nuovo: ${song.name}` : 'Separa di nuovo…',
-        disabled: !!song.resplit_from, run: () => resplitSong(song) };
+      if (song.resplit_from) return { icon: '⏹', label: all.length > 1 ? `Annulla la separazione: ${song.name}` : 'Annulla la separazione', run: () => cancelSplit(song) };
+      return { icon: '⑂', label: all.length > 1 ? `Separa di nuovo: ${song.name}` : 'Separa di nuovo…', run: () => resplitSong(song) };
     }).filter(Boolean),
     { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
     { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },

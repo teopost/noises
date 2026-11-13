@@ -482,6 +482,26 @@ function resplitSong(song, t) {
   });
 }
 
+/** Annulla la separazione in coda o in corso: il brano torna com'era (non separato, o separato come prima). */
+async function cancelSplit(song) {
+  song = songById(song.id) || song;
+  if (!['queued', 'processing'].includes(song.status)) return;
+  const sure = await uiDialog({ title: 'Annulla la separazione', message: `Annullare la separazione di "${song.name}"?`,
+    okLabel: 'Annulla la separazione', cancelLabel: 'Continua', danger: true });
+  if (!sure.ok) return;
+  // niente sostituzione delle tracce né ricaricamento del progetto al termine
+  state.resplits.delete(song.id);
+  for (const t of engine.tracks) if (t.song === song.id) state.pendingSplits.delete(t.name);
+  try {
+    await api(`/api/songs/${song.id}/process`, { method: 'DELETE' });
+    toast(`Separazione di "${song.name}" annullata`);
+  } catch (e) {
+    toast(`Annullamento non riuscito: ${e.message}`);
+  }
+  await refreshSongs();
+  updateSplitBadges();
+}
+
 /** Nuova separazione terminata: il progetto aperto ricarica le tracce separate del brano. */
 async function reloadAfterResplit(song) {
   if (!state.current || state.pending) return;

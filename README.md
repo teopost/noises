@@ -176,6 +176,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 2. Aggiungi un brano con **＋ Aggiungi traccia** (libreria, computer o YouTube), oppure trascinalo dalla **Libreria** o dal computer nella timeline.
 3. Per separare le tracce usa il menu **⋯** della traccia → **Separa traccia**, scegli il tipo di separazione e le analisi da eseguire (accordi; ritmo e note).
    Per ripetere la separazione di un brano già separato con un altro tipo (per esempio da 4 a 6 tracce, o con RoFormer) usa **Separa di nuovo…** nel menu **⋯** del brano in libreria, della traccia o del gruppo: le tracce attuali restano utilizzabili fino al termine, poi vengono sostituite in tutti i progetti che usano quel brano.
+   Una separazione in coda o in corso si ferma con **Annulla la separazione**, negli stessi menu: il brano torna com'era prima.
 4. Per suonare più progetti di fila crea una **Scaletta** dalla barra a sinistra.
 
 | Azione | Come |

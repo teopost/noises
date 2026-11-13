@@ -704,6 +704,7 @@ function openSongMenu(song, anchor) {
     if (song.status === 'new') items.push({ icon: '⑂', label: T('Separa le tracce…'), act: () => { close(); openProcess([song]); } });
     if (song.status === 'error') items.push({ icon: '↻', label: T('Riprova la separazione…'), act: () => { close(); openProcess([song]); } });
     if (song.status === 'ready') items.push({ icon: '⑂', label: T('Separa di nuovo…'), act: () => { close(); resplitSong(song); } });
+    if (['queued', 'processing'].includes(song.status)) items.push({ icon: '⏹', label: T('Annulla la separazione'), act: () => { close(); cancelSplit(song); } });
     const n = state.playlists.filter((p) => p.songs.includes(song.id)).length;
     items.push({ icon: '♫', label: T('Aggiungi a playlist'), extra: `${n ? `<span class="mi-count">${n}</span>` : ''}<span class="mi-sub">›</span>`, act: playlists });
     if (song.status !== 'downloading') items.push({ icon: '✎', label: T('Rinomina…'), act: () => { close(); renameSong(song); } });
