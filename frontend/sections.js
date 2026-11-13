@@ -96,7 +96,7 @@ function renderRegionsMenu() {
   const k = rk(), cur = regionOfSelection();
   const list = visibleRegions();
   const save = typeof activePreset === 'function' ? activePreset() : null;
-  menu.innerHTML = `<div class="menu-title">${esc(save ? `${T('Sezioni di')} "${save.name}"` : T('Sezioni salvate'))}</div>` + (list.length
+  menu.innerHTML = `<div class="menu-title">${esc(save ? `${T('Sezioni di')} "${save.name}"` : T('Sezioni salvate'))}${list.length ? ` (${list.length})` : ''}</div>` + (list.length
     ? list.map((r) => `
       <div class="region-item ${r === cur ? 'active' : ''}" data-id="${r.id}">
         <button class="rg-go" title="Seleziona la sezione e ripetila in loop">
@@ -141,11 +141,13 @@ function updateRegionsUI(reg) {
     b.disabled = !grid;
     b.title = grid ? b.title.replace(/ \(.*\)$/, '') : `${b.title.replace(/ \(.*\)$/, '')} (serve l'analisi del ritmo)`;
   });
-  // il pulsante mostra la sezione in uso; ▾ apre l'elenco
-  const n = visibleRegions().length, btn = $('#regions-btn');
-  btn.textContent = reg ? reg.name : n ? `☰ Sezioni (${n})` : '☰ Sezioni';
+  // il pulsante è un campo col suo valore: la sezione in uso, oppure "nessuna" (in grigio); ▾ apre
+  // l'elenco, e il numero delle sezioni sta nel titolo dell'elenco
+  const btn = $('#regions-btn');
+  btn.textContent = reg ? `${T('Sezione')}: ${reg.name}` : T('Sezione: nessuna');
   btn.classList.toggle('on', !!reg);
-  btn.title = reg ? `Sezione "${reg.name}": clic per ricominciare dall'inizio` : 'Sezioni salvate: richiamale per ripeterle in loop';
+  btn.classList.toggle('none', !reg);
+  btn.title = reg ? `Sezione "${reg.name}": clic per ricominciare dall'inizio` : 'Nessuna sezione in uso: clic per scegliere una sezione salvata e ripeterla in loop';
   $('#selection').dataset.name = reg ? reg.name : '';
 }
 

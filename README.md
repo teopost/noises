@@ -62,7 +62,7 @@ click intelligente ed esportazione di basi.
 
 ### Pratica e registrazione
 - **Sezioni per salvataggio**: ogni salvataggio ha le sue sezioni (quelle create mentre è in uso); con 📌 una sezione si vede in tutti i salvataggi. I link pubblici mostrano i loop del loro salvataggio.
-- **Sezioni salvate**: dai un nome a una porzione del brano (per esempio "Assolo 1") e richiamala con un clic dal pulsante **Sezioni ▾**: viene selezionata con il loop già attivo e la testina all'inizio. Le sezioni sono salvate nel progetto e restano al loro posto a ogni velocità.
+- **Sezioni salvate**: dai un nome a una porzione del brano (per esempio "Assolo 1") e richiamala con un clic dal pulsante **Sezione: … ▾** (mostra la sezione in uso, oppure «nessuna»): viene selezionata con il loop già attivo e la testina all'inizio. Le sezioni sono salvate nel progetto e restano al loro posto a ogni velocità.
 - **Loop al volo**: durante l'ascolto `I` fissa l'inizio (l'area verde cresce mentre il brano va avanti) e `O` la fine, con il loop già attivo; gli stessi comandi sono nella barra (**[ I**, **O ]**).
 - **Regolazione fine del loop**: i bordi si trascinano con il mouse (con `Ctrl` si agganciano al click), oppure si spostano di 0,1 s (`Shift`: 0,01 s, tenendo premuto scorrono) o al **click precedente o successivo**, anche mentre suona.
 - **Linee delle battute** nella timeline, che seguono il tempo del click (casella **Battute**).
@@ -193,7 +193,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Backup di un progetto | **Progetti** → ⤓ accanto al progetto: scarica `Nome.noises.zip` |
 | Ripristino (anche su un'altra installazione) | **Progetti** → ⤒ e scegli lo zip: i brani entrano nella libreria (quelli già presenti si riusano), il progetto si apre; se il nome esiste già diventa *Nome (2)* |
 | Link pubblico da condividere | **🔗 Condividi** (o 🔗 accanto a un salvataggio): pagina senza accesso che riproduce il mix con il suo loop; nella finestra si possono includere altri salvataggi da scegliere nella pagina e, se nel salvataggio si sentono più tracce separate, lasciare accese le opzioni *Scelta dei loop nella pagina* (l'elenco con il loop del salvataggio e le sezioni del progetto), *Regolazione della velocità nella pagina* (chi ascolta rallenta o accelera il brano senza cambiarne la tonalità) e *Pulsanti per accendere e spegnere le tracce separate* (accese in partenza): chi apre il link può togliere o ascoltare da sole voce, batteria, basso…; *Disattiva link* per revocarlo |
-| Salvare la selezione come sezione / richiamarla | **＋ Salva sezione** · **Sezioni ▾** |
+| Salvare la selezione come sezione / richiamarla | **＋ Salva sezione** · **Sezione: … ▾** |
 | Regolare inizio e fine del loop | trascina i bordi della selezione (`Ctrl`: aggancio al click) · ‹ › (0,1 s, `Shift`: 0,01 s) · « » (click precedente/successivo) |
 | Registrare una traccia | traccia vuota da **＋ Aggiungi traccia → ⏺ Registra**, poi `R` o ⏺ nel trasporto; pausa o stop per fermare |
 | Annullare selezione / chiudere i menu | `Esc` |

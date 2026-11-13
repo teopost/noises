@@ -537,6 +537,8 @@ const EN = {
   'Salva la selezione come sezione con un nome, da richiamare in seguito': 'Save the selection as a named section to recall later',
   '☰ Sezioni': '☰ Sections',
   '☰ Sezioni ({…})': '☰ Sections ({…})',
+  'Sezione: nessuna': 'Section: none',
+  'Nessuna sezione in uso: clic per scegliere una sezione salvata e ripeterla in loop': 'No section in use: click to pick a saved section and loop it',
   'Sezioni salvate': 'Saved sections',
   'Sezioni salvate: richiamale per ripeterle in loop': 'Saved sections: recall them to loop them',
   'Elenco delle sezioni salvate': 'List of saved sections',

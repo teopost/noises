@@ -234,6 +234,9 @@ input[type=range] { accent-color: var(--accent); }
 button.primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .selbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .selbar #loop.on { background: #2bd47d; border-color: #2bd47d; color: #0b1a12; font-weight: 700; }
+/* il loop acceso è in grassetto: il pulsante tiene sempre quella larghezza, così gli strumenti dopo non si spostano */
+.selbar #loop { display: inline-grid; }
+.selbar #loop::after { content: '⟳ Loop'; font-weight: 700; height: 0; visibility: hidden; overflow: hidden; }
 .sel-info { color: var(--muted); font-variant-numeric: tabular-nums; }
 .selection {
   position: absolute; top: 0; bottom: 0; pointer-events: none;
@@ -944,8 +947,9 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .loop-marks { display: inline-flex; gap: 2px; }
 .loop-marks button { font-family: ui-monospace, monospace; font-weight: 700; padding-left: 8px; padding-right: 8px; }
 .loop-marks button.on { background: #2bd47d; border-color: #2bd47d; color: #0b1a12; }
-.regions-btn { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.regions-btn { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .regions-btn.on { color: var(--accent-2); font-weight: 600; }
+.regions-btn.none { color: var(--muted); }
 
 /* ---- salvataggi e link pubblici ---- */
 .presets-btn { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
