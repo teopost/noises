@@ -286,6 +286,10 @@
       $('#loader-text').textContent = L.preparing;
       $('#loader').classList.remove('gone');
       $('#error').classList.add('hidden');
+      // sotto l'animazione di caricamento non resta la forma d'onda del salvataggio di prima
+      peaks = null;
+      energy = [];
+      draw();
     }
     markLoading(i, true);
     let a;
