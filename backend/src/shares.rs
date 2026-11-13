@@ -801,6 +801,8 @@ pub struct PublicInfo {
     updated_at: u64,
     /// la pagina può offrire il comando della velocità
     speed: bool,
+    /// la pagina offre l'elenco dei loop tra cui scegliere (opzione del link)
+    loops: bool,
 }
 
 fn public_variant(sh: &Share, name: &str, m: &Mix, regions: &[Named]) -> PublicVariant {
@@ -825,7 +827,7 @@ pub async fn public_info(State(st): State<AppState>, UrlPath(token): UrlPath<Str
     let sh = find(&st, &token).ok_or_else(not_found)?;
     let mut variants = vec![public_variant(&sh, &sh.subtitle, &sh.mix, &sh.regions)];
     variants.extend(sh.extra.iter().map(|v| public_variant(&sh, &v.name, &v.mix, v.regions.as_deref().unwrap_or(&sh.regions))));
-    Ok(Json(PublicInfo { title: sh.title.clone(), variants, updated_at: sh.updated_at, speed: sh.speed_choice }))
+    Ok(Json(PublicInfo { title: sh.title.clone(), variants, updated_at: sh.updated_at, speed: sh.speed_choice, loops: sh.loop_choice }))
 }
 
 #[derive(Deserialize)]

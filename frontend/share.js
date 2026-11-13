@@ -452,20 +452,21 @@
     $('#subtitle').textContent = v.name && v.name !== title ? v.name : '';
     $('#songs').textContent = (v.songs || []).filter((s) => s !== title).join(' · ');
     const facts = [];
-    const hasSecs = (v.regions || []).some((r) => r.end > r.start);
-    if (v.selection && v.loop_on && !hasSecs) facts.push(`⟳ ${L.loop} ${fmt(v.selection.start)} – ${fmt(v.selection.end)}`);
+    // il loop del salvataggio si legge nell'elenco dei loop; qui solo se il link non offre l'elenco
+    if (v.selection && v.loop_on && info.loops === false) facts.push(`⟳ ${L.loop} ${fmt(v.selection.start)} – ${fmt(v.selection.end)}`);
     if (v.pitch) facts.push(L.semis(v.pitch));
     if (v.tempo && v.tempo !== 100 && !canSpeed()) facts.push(L.speed(v.tempo)); // con il comando della velocità si legge lì
     $('#facts').innerHTML = facts.map((f) => `<span class="fact">${esc(f)}</span>`).join('');
-    // loop tra cui scegliere, ognuno col suo nome: le sezioni del progetto, più il loop del salvataggio
-    // se non è già una di loro. L'elenco compare se c'è almeno una sezione, e all'inizio nessuno è scelto;
-    // senza sezioni resta solo il loop del salvataggio, acceso o spento come nel salvataggio
+    // loop tra cui scegliere, ognuno col suo nome: le sezioni del salvataggio, più il suo loop se non è
+    // già una di loro (anche da solo). L'elenco compare se c'è almeno un loop, e all'inizio nessuno è
+    // scelto. Se il link non offre la scelta dei loop resta solo quello del salvataggio, acceso o spento
+    // come nel salvataggio
     const secs = (v.regions || []).filter((r) => r.end > r.start);
     const own = v.selection && v.selection.end > v.selection.start ? v.selection : null;
     const same = (r) => own && Math.abs(r.start - own.start) < 0.05 && Math.abs(r.end - own.end) < 0.05;
     const regs = own && !secs.some(same) ? [{ name: L.loop, start: own.start, end: own.end }, ...secs] : secs;
     loops = regs;
-    choosing = secs.length > 0;
+    choosing = info.loops !== false && regs.length > 0;
     $('#sections').classList.toggle('hidden', !choosing);
     $('#sec-list').innerHTML = regs.map((r, i) =>
       `<button class="sec" data-i="${i}">${esc(r.name)} <small>${fmt(r.start)}–${fmt(r.end)}</small></button>`).join('');
