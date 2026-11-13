@@ -70,6 +70,8 @@ h1 {
 .grad { background: linear-gradient(100deg, #fff 10%, var(--accent-2) 45%, var(--pink) 75%, var(--amber)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .lead { color: var(--text); opacity: .86; font-size: clamp(19px, 2.4vw, 23px); max-width: 720px; margin: 0 auto 32px; }
 .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.cta-note { margin: 16px auto 0; max-width: 640px; text-align: center; color: var(--muted); font-size: 15px; }
+.cta-note a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .meta { margin-top: 22px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
 .meta span { display: inline-flex; align-items: center; gap: 6px; }
 .meta span::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
