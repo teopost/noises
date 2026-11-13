@@ -144,7 +144,7 @@ function updateRegionsUI(reg) {
   // il pulsante è un campo col suo valore: la sezione in uso, oppure "nessuna" (in grigio); ▾ apre
   // l'elenco, e il numero delle sezioni sta nel titolo dell'elenco
   const btn = $('#regions-btn');
-  btn.textContent = reg ? `${T('Sezione')}: ${reg.name}` : T('Sezione: nessuna');
+  btn.textContent = reg ? reg.name : T('Sezione: nessuna');
   btn.classList.toggle('on', !!reg);
   btn.classList.toggle('none', !reg);
   btn.title = reg ? `Sezione "${reg.name}": clic per ricominciare dall'inizio` : 'Nessuna sezione in uso: clic per scegliere una sezione salvata e ripeterla in loop';
