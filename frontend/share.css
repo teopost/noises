@@ -172,10 +172,6 @@ button { font: inherit; color: inherit; }
   background: #ffffff08; border: 1px solid var(--line); transition: background .2s, border-color .2s;
 }
 .sec:hover { background: #ffffff12; }
-/* toglie il loop scelto (come ↺ della velocità) */
-.sec-reset { padding: 5px 12px; border-radius: 12px; cursor: pointer; font-weight: 700; background: #ffffff08; border: 1px solid var(--line); }
-.sec-reset:not(:disabled):hover { background: #ffffff12; }
-.sec-reset:disabled { opacity: .35; cursor: default; }
 .sec small { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .sec.on { border-color: var(--green); background: var(--green-soft); }
 
