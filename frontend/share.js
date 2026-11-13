@@ -19,7 +19,7 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semitone${Math.abs(n) === 1 ? '' : 's'}`, speed: (n) => `${n}% speed`,
     made: 'Made with', tagline: 'separated tracks, loops and speed control for practice', saves: 'Saves',
     restart: 'From the start', play: 'Play / pause (space)', loopT: 'Loop (L)', wave: 'Waveform: click to seek',
-    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`, speedL: 'Speed', speedReset: (n) => `Back to ${n}%`,
+    tracks: 'Tracks', stemT: (n) => `${n}: click to turn it on or off`, speedL: 'Speed', speedReset: (n) => `Back to ${n}%`, noLoop: 'No loop',
     parts: { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano', other: 'Other', rest: 'Rest of the mix' },
   } : {
     preparing: "Preparazione dell'audio…", loading: 'Caricamento', gone: 'Questo link non è più attivo.',
@@ -27,7 +27,7 @@
     semis: (n) => `${n > 0 ? '+' : ''}${n} semiton${Math.abs(n) === 1 ? 'o' : 'i'}`, speed: (n) => `velocità ${n}%`,
     made: 'Creato con', tagline: 'tracce separate, loop e velocità per esercitarsi', saves: 'Salvataggi',
     restart: "Dall'inizio", play: 'Play / pausa (spazio)', loopT: 'Ripeti in loop (L)', wave: "Forma d'onda: clic per spostarsi",
-    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`, speedL: 'Velocità', speedReset: (n) => `Torna a ${n}%`,
+    tracks: 'Tracce', stemT: (n) => `${n}: clic per accenderla o spegnerla`, speedL: 'Velocità', speedReset: (n) => `Torna a ${n}%`, noLoop: 'Nessun loop',
     parts: { vocals: 'Voce', drums: 'Batteria', bass: 'Basso', guitar: 'Chitarra', piano: 'Piano', other: 'Altro', rest: 'Resto del mix' },
   };
   const PART_COLORS = { vocals: '#ff8a95', drums: '#ffd166', bass: '#5fe0a8', guitar: '#6cc4ff', piano: '#c79bff', other: '#b9bcc8', rest: '#8f93a3' };
@@ -300,13 +300,13 @@
     updatePeaks();
     $('#dur').textContent = fmt(buf.duration);
     loop = null;
-    if (v.selection) {
+    if (v.selection && !choosing) { // con l'elenco dei loop si parte senza nessun loop scelto
       loop = { start: Math.max(0, v.selection.start), end: Math.min(buf.duration, v.selection.end) };
       if (!(loop.end - loop.start > 0.05)) loop = null;
     }
     loopOn = !!(loop && v.loop_on) && !choosing; // con l'elenco dei loop sceglie chi ascolta
     // il loop del salvataggio è il primo dell'elenco (o la sezione che gli corrisponde)
-    activeSec = loop ? loops.findIndex((r) => Math.abs(r.start - v.selection.start) < 0.05 && Math.abs(r.end - v.selection.end) < 0.05) : -1;
+    activeSec = loop && !choosing ? loops.findIndex((r) => Math.abs(r.start - v.selection.start) < 0.05 && Math.abs(r.end - v.selection.end) < 0.05) : -1;
     // stessa posizione nel brano anche se la velocità è diversa
     let p = prevTempo ? prevPos * (prevTempo / v.tempo) : 0;
     if (loopOn && (p < loop.start || p >= loop.end)) p = loop.start;
@@ -369,11 +369,13 @@
     choosing = secs.length > 0;
     $('#sections').classList.toggle('hidden', !choosing);
     $('#sec-list').innerHTML = regs.map((r, i) =>
-      `<button class="sec" data-i="${i}">${esc(r.name)} <small>${fmt(r.start)}–${fmt(r.end)}</small></button>`).join('');
+      `<button class="sec" data-i="${i}">${esc(r.name)} <small>${fmt(r.start)}–${fmt(r.end)}</small></button>`).join('')
+      + `<button id="loop-reset" class="sec-reset" type="button" title="${esc(L.noLoop)}" aria-label="${esc(L.noLoop)}" disabled>↺</button>`;
+    $('#loop-reset').addEventListener('click', clearLoop);
     document.querySelectorAll('#sec-list .sec').forEach((b) => b.addEventListener('click', () => {
       if (!buf) return;
-      // un secondo clic sul loop in uso lo spegne
-      if (loopOn && activeSec === Number(b.dataset.i)) { toggleLoop(); return; }
+      // un secondo clic sul loop in uso lo toglie
+      if (loopOn && activeSec === Number(b.dataset.i)) { clearLoop(); return; }
       const r = regs[Number(b.dataset.i)];
       loop = { start: r.start, end: Math.min(buf.duration, r.end) };
       loopOn = true;
@@ -503,6 +505,18 @@
     updateLoopUI();
   }
 
+  /** Toglie il loop scelto: si torna a "nessun loop", come all'apertura della pagina. */
+  function clearLoop() {
+    if (!loop) return;
+    const p = position();
+    loopOn = false;
+    loop = null;
+    activeSec = -1;
+    $('#loop').disabled = true;
+    if (playing) { stopSource(); startSource(p); }
+    updateLoopUI();
+  }
+
   function updatePlayUI() {
     $('#play').classList.toggle('playing', playing);
     $('#play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
@@ -513,6 +527,8 @@
   function updateLoopUI() {
     $('#loop').setAttribute('aria-pressed', String(loopOn));
     document.querySelectorAll('#sec-list .sec').forEach((b) => b.classList.toggle('on', loopOn && Number(b.dataset.i) === activeSec));
+    const reset = $('#loop-reset');
+    if (reset) reset.disabled = !loop;
     draw();
   }
 
