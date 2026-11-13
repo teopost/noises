@@ -15,7 +15,7 @@
   })();
   const L = EN ? {
     preparing: 'Preparing the audio…', loading: 'Loading', gone: 'This link is no longer active.',
-    failed: 'The audio could not be loaded. Try again in a moment.', sections: 'Sections', loop: 'Loop', full: 'Full mix',
+    failed: 'The audio could not be loaded. Try again in a moment.', sections: 'Loops', loop: 'Loop', full: 'Full mix',
     semis: (n) => `${n > 0 ? '+' : ''}${n} semitone${Math.abs(n) === 1 ? '' : 's'}`, speed: (n) => `${n}% speed`,
     made: 'Made with', tagline: 'separated tracks, loops and speed control for practice', saves: 'Saves',
     restart: 'From the start', play: 'Play / pause (space)', loopT: 'Loop (L)', wave: 'Waveform: click to seek',
@@ -23,7 +23,7 @@
     parts: { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano', other: 'Other', rest: 'Rest of the mix' },
   } : {
     preparing: "Preparazione dell'audio…", loading: 'Caricamento', gone: 'Questo link non è più attivo.',
-    failed: "Non è stato possibile caricare l'audio. Riprova tra poco.", sections: 'Sezioni', loop: 'Loop', full: 'Mix completo',
+    failed: "Non è stato possibile caricare l'audio. Riprova tra poco.", sections: 'Loop', loop: 'Loop', full: 'Mix completo',
     semis: (n) => `${n > 0 ? '+' : ''}${n} semiton${Math.abs(n) === 1 ? 'o' : 'i'}`, speed: (n) => `velocità ${n}%`,
     made: 'Creato con', tagline: 'tracce separate, loop e velocità per esercitarsi', saves: 'Salvataggi',
     restart: "Dall'inizio", play: 'Play / pausa (spazio)', loopT: 'Ripeti in loop (L)', wave: "Forma d'onda: clic per spostarsi",
@@ -31,10 +31,10 @@
     parts: { vocals: 'Voce', drums: 'Batteria', bass: 'Basso', guitar: 'Chitarra', piano: 'Piano', other: 'Altro', rest: 'Resto del mix' },
   };
   const PART_COLORS = { vocals: '#ff8a95', drums: '#ffd166', bass: '#5fe0a8', guitar: '#6cc4ff', piano: '#c79bff', other: '#b9bcc8', rest: '#8f93a3' };
+  $('.sec-label').textContent = L.sections;
   if (EN) {
     document.documentElement.lang = 'en';
     $('#loader-text').textContent = L.preparing;
-    $('.sec-label').textContent = L.sections;
     $('.foot span').innerHTML = `${L.made} <a href="/">Noises</a> · ${L.tagline}`;
     $('#restart').title = L.restart;
     $('#play').title = L.play;
@@ -59,7 +59,8 @@
   let srcs = [], gains = [];
   let src = null, playing = false, startedAt = 0, startOffset = 0, pos = 0;
   let loopOn = false, loop = null; // { start, end } in secondi del file
-  let activeSec = -1, loadSeq = 0;
+  // loop tra cui scegliere: quello del salvataggio e le sezioni del progetto; activeSec = quello in uso
+  let loops = [], activeSec = -1, loadSeq = 0;
 
   function fail(msg) {
     $('#loader').classList.add('gone');
@@ -234,7 +235,8 @@
       if (!(loop.end - loop.start > 0.05)) loop = null;
     }
     loopOn = !!(loop && v.loop_on);
-    activeSec = -1;
+    // il loop del salvataggio è il primo dell'elenco (o la sezione che gli corrisponde)
+    activeSec = loop ? loops.findIndex((r) => Math.abs(r.start - v.selection.start) < 0.05 && Math.abs(r.end - v.selection.end) < 0.05) : -1;
     // stessa posizione nel brano anche se la velocità è diversa
     let p = prevTempo ? prevPos * (prevTempo / v.tempo) : 0;
     if (loopOn && (p < loop.start || p >= loop.end)) p = loop.start;
@@ -261,8 +263,8 @@
   function renderVariants() {
     const vs = info.variants;
     const box = $('#variants');
-    // con un solo salvataggio resta visibile il suo nome (senza scelta)
-    const named = vs.length > 1 || !!vs[0].name;
+    // con un solo salvataggio non c'è niente da scegliere: il suo nome non serve
+    const named = vs.length > 1;
     box.classList.toggle('hidden', !named);
     box.classList.toggle('single', vs.length === 1);
     if (!named) return;
@@ -283,8 +285,14 @@
     if (v.pitch) facts.push(L.semis(v.pitch));
     if (v.tempo && v.tempo !== 100) facts.push(L.speed(v.tempo));
     $('#facts').innerHTML = facts.map((f) => `<span class="fact">${esc(f)}</span>`).join('');
-    const regs = (v.regions || []).filter((r) => r.end > r.start);
-    $('#sections').classList.toggle('hidden', !regs.length);
+    // loop tra cui scegliere: quello del salvataggio (se non è già una sezione) e le sezioni del progetto;
+    // l'elenco compare solo se ce n'è più di uno, oppure se sono sezioni (il salvataggio non ha un loop suo)
+    const secs = (v.regions || []).filter((r) => r.end > r.start);
+    const own = v.selection && v.selection.end > v.selection.start ? v.selection : null;
+    const same = (r) => own && Math.abs(r.start - own.start) < 0.05 && Math.abs(r.end - own.end) < 0.05;
+    const regs = own && !secs.some(same) ? [{ name: L.loop, start: own.start, end: own.end }, ...secs] : secs;
+    loops = regs;
+    $('#sections').classList.toggle('hidden', !(regs.length > 1 || (regs.length === 1 && !own)));
     $('#sec-list').innerHTML = regs.map((r, i) =>
       `<button class="sec" data-i="${i}">${esc(r.name)} <small>${fmt(r.start)}–${fmt(r.end)}</small></button>`).join('');
     document.querySelectorAll('.sec').forEach((b) => b.addEventListener('click', () => {
@@ -376,7 +384,7 @@
   function seek(t) {
     t = Math.max(0, Math.min(buf.duration - 0.01, t));
     // spostandosi fuori dal loop lo si lascia
-    if (loopOn && loop && (t < loop.start || t >= loop.end)) { loopOn = false; activeSec = -1; updateLoopUI(); }
+    if (loopOn && loop && (t < loop.start || t >= loop.end)) { loopOn = false; updateLoopUI(); }
     if (playing) { stopSource(); startSource(t); } else pos = t;
     draw();
   }
@@ -385,7 +393,6 @@
     if (!loop) return;
     const p = position();
     loopOn = !loopOn;
-    if (!loopOn) activeSec = -1;
     if (playing) {
       stopSource();
       startSource(loopOn && (p < loop.start || p >= loop.end) ? loop.start : p);
