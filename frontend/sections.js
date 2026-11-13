@@ -112,8 +112,11 @@ function renderRegionsMenu() {
     + '<div class="menu-sep"></div>'
     + (cur ? `<div class="menu-hint">${esc(T('La selezione è già la sezione'))} "${esc(cur.name)}"</div>`
       : !state.sel && list.length ? '<div class="menu-hint">Per salvare una sezione seleziona prima un tratto trascinando sulla timeline</div>' : '')
-    + `<button class="menu-item rg-new" ${state.sel && !cur ? '' : 'disabled'}>＋ Salva la selezione come sezione…</button>`;
+    + `<button class="menu-item rg-new" ${state.sel && !cur ? '' : 'disabled'}>＋ Salva la selezione come sezione…</button>`
+    // come "Esci dal salvataggio": toglie la selezione (e il loop); la sezione resta nell'elenco
+    + (state.sel ? `<button class="menu-item rg-leave" title="Toglie la selezione dalla timeline (Esc)">${cur ? 'Esci dalla sezione' : 'Togli la selezione'}</button>` : '');
   menu.querySelector('.rg-new').addEventListener('click', () => { closeRegionsMenu(); saveSelectionAsRegion(); });
+  menu.querySelector('.rg-leave')?.addEventListener('click', () => { closeRegionsMenu(); setSelection(null); });
   menu.querySelectorAll('.region-item').forEach((row) => {
     const r = list.find((x) => x.id === row.dataset.id);
     row.querySelector('.rg-go').addEventListener('click', () => { closeRegionsMenu(); goRegion(r); });

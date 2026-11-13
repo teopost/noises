@@ -1048,7 +1048,6 @@ function setupControls() {
   $('#loop-in').addEventListener('click', setLoopIn);
   $('#loop-out').addEventListener('click', setLoopOut);
   $('#play-sel').addEventListener('click', playSelection);
-  $('#sel-clear').addEventListener('click', () => setSelection(null));
   $('#export').addEventListener('click', () => openExport());
   $('#export-dlg').addEventListener('close', () => {
     if ($('#export-dlg').returnValue === 'ok') doExport();
@@ -1578,7 +1577,6 @@ function updateSelectionUI() {
   const sel = state.sel;
   $('#loop').disabled = !sel;
   $('#play-sel').disabled = !sel;
-  $('#sel-clear').classList.toggle('hidden', !sel);
   $('#loop').classList.toggle('on', state.loopOn);
   const reg = regionOfSelection();
   $('#sel-info').textContent = sel
