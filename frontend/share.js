@@ -504,15 +504,14 @@
   }
 
   /** Toglie il loop scelto (secondo clic sul suo nome): si torna a "nessun loop", come all'apertura
-   *  della pagina, e la sua zona sparisce dalla forma d'onda. */
+   *  della pagina, la sua zona sparisce dalla forma d'onda e la riproduzione si ferma. */
   function clearLoop() {
     if (!loop) return;
-    const p = position();
+    if (playing) pause(); // la riproduzione si ferma dov'è
     loopOn = false;
     loop = null;
     activeSec = -1;
     $('#loop').disabled = true;
-    if (playing) { stopSource(); startSource(p); }
     updateLoopUI();
   }
 
