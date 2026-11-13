@@ -68,7 +68,8 @@
   let src = null, playing = false, startedAt = 0, startOffset = 0, pos = 0;
   let loopOn = false, loop = null; // { start, end } in secondi del file
   // loop tra cui scegliere: quello del salvataggio e le sezioni del progetto; activeSec = quello in uso
-  let loops = [], activeSec = -1, loadSeq = 0;
+  // choosing: la pagina mostra l'elenco (il progetto ha sezioni) e parte senza nessun loop scelto
+  let loops = [], activeSec = -1, loadSeq = 0, choosing = false;
 
   function fail(msg) {
     $('#loader').classList.add('gone');
@@ -303,7 +304,7 @@
       loop = { start: Math.max(0, v.selection.start), end: Math.min(buf.duration, v.selection.end) };
       if (!(loop.end - loop.start > 0.05)) loop = null;
     }
-    loopOn = !!(loop && v.loop_on);
+    loopOn = !!(loop && v.loop_on) && !choosing; // con l'elenco dei loop sceglie chi ascolta
     // il loop del salvataggio è il primo dell'elenco (o la sezione che gli corrisponde)
     activeSec = loop ? loops.findIndex((r) => Math.abs(r.start - v.selection.start) < 0.05 && Math.abs(r.end - v.selection.end) < 0.05) : -1;
     // stessa posizione nel brano anche se la velocità è diversa
@@ -352,22 +353,27 @@
     $('#subtitle').textContent = v.name && v.name !== title ? v.name : '';
     $('#songs').textContent = (v.songs || []).filter((s) => s !== title).join(' · ');
     const facts = [];
-    if (v.selection && v.loop_on) facts.push(`⟳ ${L.loop} ${fmt(v.selection.start)} – ${fmt(v.selection.end)}`);
+    const hasSecs = (v.regions || []).some((r) => r.end > r.start);
+    if (v.selection && v.loop_on && !hasSecs) facts.push(`⟳ ${L.loop} ${fmt(v.selection.start)} – ${fmt(v.selection.end)}`);
     if (v.pitch) facts.push(L.semis(v.pitch));
     if (v.tempo && v.tempo !== 100 && !canSpeed()) facts.push(L.speed(v.tempo)); // con il comando della velocità si legge lì
     $('#facts').innerHTML = facts.map((f) => `<span class="fact">${esc(f)}</span>`).join('');
-    // loop tra cui scegliere: quello del salvataggio (se non è già una sezione) e le sezioni del progetto;
-    // l'elenco compare solo se ce n'è più di uno, oppure se sono sezioni (il salvataggio non ha un loop suo)
+    // loop tra cui scegliere, ognuno col suo nome: le sezioni del progetto, più il loop del salvataggio
+    // se non è già una di loro. L'elenco compare se c'è almeno una sezione, e all'inizio nessuno è scelto;
+    // senza sezioni resta solo il loop del salvataggio, acceso o spento come nel salvataggio
     const secs = (v.regions || []).filter((r) => r.end > r.start);
     const own = v.selection && v.selection.end > v.selection.start ? v.selection : null;
     const same = (r) => own && Math.abs(r.start - own.start) < 0.05 && Math.abs(r.end - own.end) < 0.05;
     const regs = own && !secs.some(same) ? [{ name: L.loop, start: own.start, end: own.end }, ...secs] : secs;
     loops = regs;
-    $('#sections').classList.toggle('hidden', !(regs.length > 1 || (regs.length === 1 && !own)));
+    choosing = secs.length > 0;
+    $('#sections').classList.toggle('hidden', !choosing);
     $('#sec-list').innerHTML = regs.map((r, i) =>
       `<button class="sec" data-i="${i}">${esc(r.name)} <small>${fmt(r.start)}–${fmt(r.end)}</small></button>`).join('');
     document.querySelectorAll('#sec-list .sec').forEach((b) => b.addEventListener('click', () => {
       if (!buf) return;
+      // un secondo clic sul loop in uso lo spegne
+      if (loopOn && activeSec === Number(b.dataset.i)) { toggleLoop(); return; }
       const r = regs[Number(b.dataset.i)];
       loop = { start: r.start, end: Math.min(buf.duration, r.end) };
       loopOn = true;
