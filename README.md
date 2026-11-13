@@ -186,6 +186,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Avanti / indietro 5 s | `→` / `←` |
 | Selezionare una porzione | trascina sulla timeline o sul righello |
 | Loop della selezione | `L` o ⟳ Loop |
+| Tornare all'inizio | `Home` o ⏮. Con il loop attivo la prima volta porta all'inizio del loop, la seconda all'inizio del brano: da lì Play suona fino al loop e poi ci gira dentro (vale anche cliccando la forma d'onda prima del loop) |
 | Creare un loop durante l'ascolto | `I` (o **[ I**) fissa l'inizio alla testina (l'area verde cresce mentre suona), `O` (o **O ]**) la fine e attiva il loop (a loop attivo spostano subito inizio e fine) |
 | Salvataggi (es. *Assolo in loop*, *Solo voce*) | **💾 Salvataggi** → *Salva lo stato attuale*: tonalità, velocità, volumi, muto/solo, selezione e loop; un clic sul nome lo richiama e lo rende *in uso*: da lì le modifiche (loop, sezioni, volumi, velocità…) vengono salvate dentro quel salvataggio, e i suoi link pubblici si aggiornano. *Esci dal salvataggio* per lavorare senza toccarne nessuno |
 | Backup di un progetto | **Progetti** → ⤓ accanto al progetto: scarica `Nome.noises.zip` |

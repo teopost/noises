@@ -333,6 +333,7 @@ const EN = {
 
   // ---------------------------------------------------------------- trasporto e controlli
   "Vai all'inizio (Home)": 'Go to start (Home)',
+  "Vai all'inizio (Home). Con il loop attivo: inizio del loop, premuto di nuovo inizio del brano": 'Go to start (Home). With the loop on: start of the loop, pressed again start of the song',
   'Indietro 5 s (←)': 'Back 5 s (←)',
   'Play/Pausa (spazio)': 'Play/Pause (space)',
   'Stop': 'Stop',

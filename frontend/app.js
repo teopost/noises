@@ -203,11 +203,12 @@ const engine = {
     }
   },
 
-  /** Posizione effettiva da cui partirà la riproduzione (inizio brano/loop se fuori). */
+  /** Posizione effettiva da cui partirà la riproduzione. Col loop attivo: da prima del loop si parte
+   *  da lì (il brano suona fino al loop e poi ci gira dentro), da dopo la sua fine dall'inizio del loop. */
   startOffset() {
     let o = this.offset >= this.duration - 0.05 ? 0 : this.offset;
     const L = this.loop;
-    if (L && (o < L.start || o >= L.end)) o = L.start;
+    if (L && o >= L.end) o = L.start;
     return o;
   },
 
@@ -1057,10 +1058,16 @@ function setupControls() {
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(layoutTimeline, 120); });
 }
 
-/** Torna all'inizio del brano (o del loop, se attivo) e riporta la vista all'inizio. */
+/** Torna all'inizio e riporta lì la vista. Col loop attivo: la prima volta all'inizio del loop, la
+ *  seconda (subito dopo, oppure da fermi già lì) all'inizio del brano, con il loop sempre acceso. */
+let lastLoopHome = 0;
 function goToStart() {
   engine.stopAt = null;
-  engine.seek(engine.loop ? engine.loop.start : 0);
+  const L = engine.loop, now = performance.now();
+  const again = L && (Math.abs(engine.position() - L.start) < 0.05 || now - lastLoopHome < 1500);
+  const target = L && !again ? L.start : 0;
+  lastLoopHome = target > 0 ? now : 0;
+  engine.seek(target);
   const tl = tlEl();
   tl.scrollLeft = Math.max(0, engine.position() * state.zoom - 40);
 }
