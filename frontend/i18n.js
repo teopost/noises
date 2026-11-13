@@ -315,6 +315,7 @@ const EN = {
   'Aggiungi brano': 'Add song',
   'Aggiunta di "{…}"…': 'Adding "{…}"…',
   'preparazione del brano': 'preparing the song',
+  '"{…}" aggiunto con le sue {…} tracce separate: apri il gruppo per vederle': '"{…}" added with its {…} split tracks: open the group to see them',
   'Impossibile aggiungere "{…}": {…}': 'Could not add "{…}": {…}',
   'Aggiunta al progetto…': 'Adding to the project…',
   'Preparazione del download…': 'Preparing download…',

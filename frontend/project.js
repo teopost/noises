@@ -420,7 +420,8 @@ function flushProject(keepalive) {
 
 // ---------------------------------------------------- brani nella timeline
 
-/** Aggiunge un brano della libreria come traccia intera, da `startDisplay` (null = testina). */
+/** Aggiunge un brano della libreria da `startDisplay` (null = testina): se è già separato entrano
+ *  subito le sue tracce separate, in un gruppo chiuso; altrimenti la traccia del brano intero. */
 async function addSongToProject(songId, startDisplay) {
   let song = songById(songId);
   if (!song) return;
@@ -434,6 +435,30 @@ async function addSongToProject(songId, startDisplay) {
   const start = +(Math.max(0, startDisplay ?? engine.position()) / (100 / engine.tempo)).toFixed(3);
   setLoader(`Aggiunta di "${song.name}"…`, 'preparazione del brano', null);
   try {
+    // brano già separato (anche mentre se ne prepara una nuova separazione): niente "Separa traccia"
+    if ((song.status === 'ready' || song.resplit_from) && (song.stems || []).length) {
+      const stems = [...song.stems].sort((a, b) => STEMS_SORT.indexOf(a) - STEMS_SORT.indexOf(b));
+      const prog = stems.map(() => ({ got: 0, total: 0 }));
+      const audios = await Promise.all(stems.map(async (part, i) => decodeToArrays(await fetchWithProgress(sourceUrl(song.id, part), (got, total) => {
+        prog[i] = { got, total };
+        const g = prog.reduce((a, x) => a + x.got, 0), tot = prog.reduce((a, x) => a + x.total, 0);
+        if (tot) setLoader(`Aggiunta di "${song.name}"…`, `${mb(g)} / ${mb(tot)}`, g / tot);
+      }).catch((e) => { throw new Error(`${LABELS[part] || part}: ${e.message}`); }))));
+      if (state.current !== project) return;
+      pushUndo('Aggiungi brano');
+      const created = stems.map((part, i) => engine.addTrack({ name: newTrackName(), song: song.id, part, label: '',
+        clips: [{ id: newClipId(), start, offset: 0, duration: audios[i].l.length / engine.sr }], ...audios[i] }));
+      // un gruppo chiuso: una riga sola, che aperta mostra le tracce
+      state.groups.push({ id: `g${newClipId()}`, name: song.name, tracks: created.map((x) => x.name), anchored: false,
+        folder: true, collapsed: true, muted: false, solo: false, volume: 1 });
+      selectTracks(created.map((x) => x.name));
+      setReference(created[0], true);
+      saveProject();
+      const row = folderOf(created[0].name)?._row; // il gruppo è chiuso: si scorre alla sua riga
+      if (row) scrollTrackIntoView({ row });
+      toast(`"${song.name}" aggiunto con le sue ${created.length} tracce separate: apri il gruppo per vederle`);
+      return;
+    }
     const data = await fetchWithProgress(sourceUrl(song.id, 'original'), (got, total) => {
       if (total) setLoader(`Aggiunta di "${song.name}"…`, `${mb(got)} / ${mb(total)}`, got / total);
     });
