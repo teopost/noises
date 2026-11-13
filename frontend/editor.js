@@ -823,6 +823,12 @@ function openTrackMenu(t, anchor, isRefStem, song) {
   if (t.part === 'original' && !t.ch) {
     items.push({ icon: '⑂', label: waiting ? 'Separazione in corso…' : 'Separa traccia', disabled: waiting || !song, run: () => splitTrack(t) });
   }
+  // brano già separato: nuova separazione con un altro tipo
+  const cur = songById(t.song);
+  if (cur && !t.ch && cur.resplit_from && t.part !== 'original') items.push({ icon: '⑂', label: 'Nuova separazione in corso…', disabled: true });
+  else if (cur && !t.ch && cur.status === 'ready' && !waiting) {
+    items.push({ icon: '⑂', label: 'Separa di nuovo…', run: () => resplitSong(cur, t.part === 'original' ? t : null) });
+  }
   if (isRefStem) {
     items.push({ icon: '♪', label: state.showNotes.has(t.part) ? 'Nascondi note' : 'Mostra note', run: () => toggleNotesLane(t.part) });
     items.push({ icon: '𝄞', label: 'Spartito e tablatura', disabled: !state.notes, run: () => openScore(t.part) });
@@ -992,6 +998,13 @@ function openFolderMenu(g, anchor) {
       return { icon: '🎵', label: all.length > 1 ? `Ricalcola accordi: ${song ? song.name : "brano rimosso"}` : 'Ricalcola accordi',
         disabled: !song || busy, run: () => recomputeChords(kids.find((k) => k.song === id)) };
     }),
+    // nuova separazione, con un altro tipo, dei brani già separati del gruppo
+    ...[...new Set(kids.filter((k) => k.part !== 'original').map((k) => k.song))].map((id, _, all) => {
+      const song = songById(id);
+      if (!song || !(song.status === 'ready' || song.resplit_from)) return null;
+      return { icon: '⑂', label: song.resplit_from ? 'Nuova separazione in corso…' : all.length > 1 ? `Separa di nuovo: ${song.name}` : 'Separa di nuovo…',
+        disabled: !!song.resplit_from, run: () => resplitSong(song) };
+    }).filter(Boolean),
     { icon: '✎', label: 'Rinomina', run: () => { const n = g._row.querySelector('.tname'); n.focus(); n.select(); } },
     { icon: '⤓', label: 'Esporta', run: () => openExport(kids) },
     { icon: '🔗', label: isFixed(kids) ? 'Sblocca i pezzi' : 'Fissa i pezzi', run: () => toggleFixed(kids) },

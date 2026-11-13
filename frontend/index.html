@@ -424,8 +424,9 @@
 
   <dialog id="process-dlg">
     <form method="dialog">
-      <h2>Separa le tracce</h2>
+      <h2 id="proc-title">Separa le tracce</h2>
       <p id="proc-names" class="hint"></p>
+      <p id="proc-redo-hint" class="hint hidden">Le tracce separate attuali restano utilizzabili fino al termine, poi vengono sostituite in tutti i progetti che usano questo brano. Accordi e note vengono ricalcolati; le correzioni fatte a mano restano.</p>
       <label class="field">Separazione delle tracce
         <select id="proc-model">
           <option value="htdemucs">4 tracce — veloce</option>

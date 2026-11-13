@@ -221,8 +221,8 @@ async function createProject(name) {
 
 const LAST_PROJECT_KEY = 'noises.lastProject';
 
-async function openProject(id) {
-  if (state.current && state.current.id === id) return;
+async function openProject(id, force) {
+  if (state.current && state.current.id === id && !force) return;
   try { localStorage.setItem(LAST_PROJECT_KEY, id); } catch {}
   const seq = ++projectSeq;
   if (state.current) {
@@ -303,8 +303,13 @@ async function loadProjectTracks(p) {
   report();
   try {
     await engine.ready;
-    const valid = p.tracks.filter((t) => isEmptyTrack(t) || songById(t.song));
-    if (valid.length < p.tracks.length) toast('Alcune tracce puntano a brani eliminati dalla libreria e sono state tolte');
+    // tolte anche le tracce separate che una nuova separazione non produce più (es. da 6 a 4 tracce)
+    const valid = p.tracks.filter((t) => {
+      if (isEmptyTrack(t)) return true;
+      const s = songById(t.song);
+      return s && (t.part === 'original' || (s.stems || []).includes(t.part));
+    });
+    if (valid.length < p.tracks.length) toast('Alcune tracce puntano a brani o a tracce separate che non esistono più e sono state tolte');
     const list = await Promise.all(valid.map(async (t, i) => {
       if (isEmptyTrack(t)) {
         decoded++;
@@ -465,6 +470,33 @@ async function splitTrack(t) {
   });
 }
 
+/** "Separa di nuovo": ripete la separazione di un brano già separato con un altro tipo di separazione.
+ *  `t`: traccia del brano intero da sostituire con le nuove tracce al termine. */
+function resplitSong(song, t) {
+  if (!song || song.status !== 'ready') return;
+  openProcess([song], (started) => {
+    if (!started) return;
+    if (t && engine.tracks.includes(t)) state.pendingSplits.add(t.name);
+    toast(`Nuova separazione di "${song.name}" avviata: le tracce attuali restano utilizzabili fino al termine`);
+    updateSplitBadges();
+  });
+}
+
+/** Nuova separazione terminata: il progetto aperto ricarica le tracce separate del brano. */
+async function reloadAfterResplit(song) {
+  if (!state.current || state.pending) return;
+  const used = engine.tracks.filter((t) => t.song === song.id && t.part !== 'original');
+  if (!used.length) return;
+  if (rec.active || rec.busy) { toast(`Nuova separazione di "${song.name}" pronta: riapri il progetto per usarla`); return; }
+  // tracce che la nuova separazione non produce più (es. da 6 a 4 tracce)
+  const gone = used.filter((t) => !song.stems.includes(t.part));
+  for (const t of gone) engine.removeTrack(t);
+  try { await saveProjectNow(); } catch (e) { console.error(e); }
+  toast(gone.length ? `Nuova separazione di "${song.name}" pronta: progetto ricaricato, tolte ${gone.length} tracce che non esistono più`
+    : `Nuova separazione di "${song.name}" pronta: progetto ricaricato`);
+  await openProject(state.current.id, true);
+}
+
 async function replaceWithStems(t) {
   const song = songById(t.song);
   const stems = [...song.stems].sort((a, b) => STEMS_SORT.indexOf(a) - STEMS_SORT.indexOf(b));
@@ -545,6 +577,16 @@ async function duplicateTrack(t) {
 function onSongsUpdated() {
   if (state.pendingAdds && state.pendingAdds.size) addPendingImports();
   if ($('#addtrack-dlg').open) renderAddTrackList();
+  // nuove separazioni di brani già separati: al termine il progetto aperto ricarica le tracce
+  for (const s of state.songs) if (s.resplit_from) state.resplits.add(s.id);
+  for (const id of [...state.resplits]) {
+    const s = songById(id);
+    if (s && s.resplit_from) continue;
+    state.resplits.delete(id);
+    if (!s || s.status !== 'ready') continue;
+    if (s.error) toast(`Nuova separazione di "${s.name}" non riuscita: restano le tracce di prima`);
+    else reloadAfterResplit(s);
+  }
   if (!state.current) return;
   for (const name of [...state.pendingSplits]) {
     const t = engine.tracks.find((x) => x.name === name);
@@ -567,7 +609,7 @@ function onSongsUpdated() {
 // --------------------------------------------- trascinamento nell'editor
 
 function setupProjects() {
-  Object.assign(state, { projects: [], refSong: null, refTrack: null, pendingSplits: new Set() });
+  Object.assign(state, { projects: [], refSong: null, refTrack: null, pendingSplits: new Set(), resplits: new Set() });
   $('#project-new').addEventListener('click', async () => {
     const p = await createProject();
     if (p) openProject(p.id);

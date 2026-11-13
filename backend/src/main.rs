@@ -79,6 +79,10 @@ struct Song {
     stems: Vec<String>,
     #[serde(default)]
     error: Option<String>,
+    /// Nuova separazione di un brano già separato: il modello usato finora. Finché è presente le
+    /// tracce attuali restano utilizzabili; al termine vengono sostituite (o tenute, se fallisce).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    resplit_from: Option<String>,
     #[serde(default)]
     source_url: Option<String>,
     /// Fase corrente dell'elaborazione (per la UI).
@@ -113,6 +117,13 @@ struct Song {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     settings: Option<serde_json::Value>,
     created_at: u64,
+}
+
+impl Song {
+    /// Le tracce separate sono su disco e si possono usare (anche mentre se ne preparano di nuove).
+    fn has_stems(&self) -> bool {
+        self.status == Status::Ready || self.resplit_from.is_some()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -569,6 +580,7 @@ async fn upload(
         progress: 0.0,
         stems: vec![],
         error: None,
+        resplit_from: None,
         source_url: None,
         owner: Some(user.id.clone()),
         phase: None,
@@ -710,9 +722,14 @@ struct ProcessRequest {
     model: String,
     chords: bool,
     notes: bool,
+    /// Separa di nuovo un brano già separato (con un altro tipo di separazione).
+    #[serde(default)]
+    redo: bool,
 }
 
 /// Avvia (o ripete dopo un errore) separazione e analisi scelte dall'utente.
+/// Con `redo` su un brano già separato le tracce attuali restano al loro posto finché le nuove
+/// non sono pronte: i progetti che le usano continuano a funzionare.
 async fn start_processing(
     State(st): State<AppState>,
     UrlPath(id): UrlPath<String>,
@@ -722,24 +739,32 @@ async fn start_processing(
         return Err(bad_request(format!("modello non valido: {}", req.model)));
     }
     let song = st.get(&id).ok_or_else(not_found)?;
-    if !matches!(song.status, Status::New | Status::Error) {
+    let redo = req.redo && song.status == Status::Ready;
+    if !redo && !matches!(song.status, Status::New | Status::Error) {
         return Err(AppError(StatusCode::CONFLICT, "elaborazione già avviata o completata".into()));
     }
     let dir = st.song_dir(&id);
-    for sub in ["stems", "sep", "render"] {
-        let _ = tokio::fs::remove_dir_all(dir.join(sub)).await;
-    }
-    for f in ["chords.json", "notes.json"] {
-        let _ = tokio::fs::remove_file(dir.join(f)).await;
+    if !redo {
+        for sub in ["stems", "sep", "render"] {
+            let _ = tokio::fs::remove_dir_all(dir.join(sub)).await;
+        }
+        for f in ["chords.json", "notes.json"] {
+            let _ = tokio::fs::remove_file(dir.join(f)).await;
+        }
     }
     let song = st
         .update(&id, true, |s| {
+            if redo {
+                s.resplit_from = Some(s.model.clone());
+                s.phase = None;
+            } else {
+                s.stems.clear();
+            }
             s.model = req.model.clone();
             s.tasks = Tasks { chords: req.chords, notes: req.notes };
             s.status = Status::Queued;
             s.progress = 0.0;
             s.error = None;
-            s.stems.clear();
         })
         .ok_or_else(not_found)?;
     st.0.queue.send(id).map_err(|_| anyhow!("coda chiusa"))?;
@@ -1350,6 +1375,7 @@ async fn import_url(
         progress: 0.0,
         stems: vec![],
         error: None,
+        resplit_from: None,
         source_url: Some(url),
         owner: Some(user.id.clone()),
         phase: None,
@@ -1505,11 +1531,15 @@ async fn get_stem(
     req: Request,
 ) -> Result<Response, AppError> {
     let song = st.get(&id).ok_or_else(not_found)?;
-    if song.status != Status::Ready || !song.stems.contains(&stem) {
+    if !song.has_stems() || !song.stems.contains(&stem) {
         return Err(not_found());
     }
     let path = stem_path(&st, &id, &stem, q.pitch, q.tempo).await?;
-    Ok(ServeFile::new(path).oneshot(req).await?.into_response())
+    let mut resp = ServeFile::new(path).oneshot(req).await?.into_response();
+    // una nuova separazione sostituisce il file: il browser deve sempre verificare (304 se è lo stesso)
+    resp.headers_mut()
+        .insert(axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-cache"));
+    Ok(resp)
 }
 
 /// Percorso della traccia per la tonalità/velocità richieste (renderizzata se necessario).
@@ -1932,7 +1962,12 @@ async fn worker(st: AppState, mut rx: mpsc::UnboundedReceiver<String>) {
         if st.get(&id).is_none() {
             continue;
         }
-        match separate(&st, &id).await {
+        let resplit = st.get(&id).is_some_and(|s| s.resplit_from.is_some());
+        let done = match separate(&st, &id).await {
+            Ok(stems) if resplit => replace_stems(&st, &id, &stems).await.map(|()| stems),
+            other => other,
+        };
+        match done {
             Ok(stems) => {
                 info!("separazione completata {id}: {stems:?}");
                 let tasks = st.get(&id).map(|s| s.tasks).unwrap_or_default();
@@ -1947,6 +1982,7 @@ async fn worker(st: AppState, mut rx: mpsc::UnboundedReceiver<String>) {
                     s.progress = 1.0;
                     s.stems = stems.clone();
                     s.error = None;
+                    s.resplit_from = None;
                     s.phase = tasks.notes.then(|| "Trascrizione note".into());
                 });
                 // Il brano è già utilizzabile; la trascrizione prosegue (chi la chiede attende il lock).
@@ -1960,13 +1996,50 @@ async fn worker(st: AppState, mut rx: mpsc::UnboundedReceiver<String>) {
             Err(e) => {
                 error!("separazione {id}: {e:#}");
                 st.update(&id, true, |s| {
-                    s.status = Status::Error;
-                    s.error = Some(format!("{e:#}"));
                     s.phase = None;
+                    if let Some(prev) = s.resplit_from.take() {
+                        // nuova separazione fallita: il brano resta separato come prima
+                        s.model = prev;
+                        s.status = Status::Ready;
+                        s.progress = 1.0;
+                        s.error = Some(format!("nuova separazione non riuscita: {e:#}"));
+                    } else {
+                        s.status = Status::Error;
+                        s.error = Some(format!("{e:#}"));
+                    }
                 });
+                if resplit {
+                    let _ = tokio::fs::remove_dir_all(st.song_dir(&id).join("stems.new")).await;
+                }
             }
         }
     }
+}
+
+/// Fine di una nuova separazione: le tracce appena prodotte (`stems.new`) prendono il posto di
+/// quelle precedenti. Le versioni trasposte/rallentate e le analisi automatiche, calcolate sulle
+/// tracce vecchie, vengono scartate; le correzioni fatte a mano (accordi, note, metro) restano.
+async fn replace_stems(st: &AppState, id: &str, stems: &[String]) -> anyhow::Result<()> {
+    let dir = st.song_dir(id);
+    let (cur, new, old) = (dir.join("stems"), dir.join("stems.new"), dir.join("stems.old"));
+    let _ = tokio::fs::remove_dir_all(&old).await;
+    let had_old = cur.exists();
+    if had_old {
+        tokio::fs::rename(&cur, &old).await?;
+    }
+    if let Err(e) = tokio::fs::rename(&new, &cur).await {
+        if had_old {
+            let _ = tokio::fs::rename(&old, &cur).await;
+        }
+        return Err(e).context("sostituzione delle tracce separate");
+    }
+    st.update(id, true, |s| s.stems = stems.to_vec());
+    let _ = tokio::fs::remove_dir_all(&old).await;
+    let _ = tokio::fs::remove_dir_all(dir.join("render")).await;
+    for f in ["chords.json", "notes.json"] {
+        let _ = tokio::fs::remove_file(dir.join(f)).await;
+    }
+    Ok(())
 }
 
 async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
@@ -1980,12 +2053,14 @@ async fn separate(st: &AppState, id: &str) -> anyhow::Result<Vec<String>> {
     let input = find_input(&dir)?;
     let sep_dir = dir.join("sep");
     let _ = tokio::fs::remove_dir_all(&sep_dir).await;
+    // nuova separazione: si scrive accanto alle tracce attuali, che restano in uso fino al termine
+    let _ = tokio::fs::remove_dir_all(dir.join("stems.new")).await;
+    let stems_dir = dir.join(if song.resplit_from.is_some() { "stems.new" } else { "stems" });
 
     let stems = if let Some(demucs_model) = roformer_pair(&song.model) {
-        separate_roformer(st, id, &song.model, demucs_model, &input, &sep_dir, &dir).await?
+        separate_roformer(st, id, &song.model, demucs_model, &input, &sep_dir, &stems_dir).await?
     } else {
         let out_dir = run_demucs(st, id, &song.model, &input, &sep_dir, (0.0, 0.99)).await?;
-        let stems_dir = dir.join("stems");
         tokio::fs::create_dir_all(&stems_dir).await?;
         let mut stems = vec![];
         let mut rd = tokio::fs::read_dir(&out_dir).await.context("output demucs mancante")?;
@@ -2087,7 +2162,7 @@ async fn separate_roformer(
     demucs_model: &str,
     input: &Path,
     sep_dir: &Path,
-    dir: &Path,
+    stems_dir: &Path,
 ) -> anyhow::Result<Vec<String>> {
     let rf_dir = sep_dir.join("roformer");
     let weights = st.0.data_dir.join("models").join("MelBandRoformer.ckpt");
@@ -2143,8 +2218,7 @@ async fn separate_roformer(
     st.update(id, false, |x| x.phase = Some("Strumenti (Demucs)".into()));
     let out_dir = run_demucs(st, id, demucs_model, &rf_dir.join("instrumental.wav"), sep_dir, (voice, 0.99)).await?;
 
-    let stems_dir = dir.join("stems");
-    tokio::fs::create_dir_all(&stems_dir).await?;
+    tokio::fs::create_dir_all(stems_dir).await?;
     let mut stems = vec!["vocals".to_owned()];
     tokio::fs::rename(rf_dir.join("vocals.flac"), stems_dir.join("vocals.flac")).await?;
     let residual = out_dir.join("vocals.flac");

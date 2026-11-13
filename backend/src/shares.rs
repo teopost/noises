@@ -22,7 +22,7 @@ use tracing::{info, warn};
 
 use crate::{
     bad_request, ensure_original, mix_to_file, not_found, now_secs, render_file, AppError, AppState, Clip,
-    ExportRequest, MixInput, Status,
+    ExportRequest, MixInput,
 };
 
 /// Salvataggi in più che si possono includere in un link.
@@ -219,7 +219,7 @@ async fn ensure_audio(st: &AppState, sh: &Share, i: usize) -> Result<PathBuf, Ap
         let src = if t.part == "original" {
             ensure_original(st, &t.song).await?
         } else {
-            if song.status != Status::Ready || !song.stems.contains(&t.part) {
+            if !song.has_stems() || !song.stems.contains(&t.part) {
                 return Err(not_found());
             }
             sdir.join("stems").join(format!("{}.flac", t.part))

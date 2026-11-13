@@ -15,7 +15,9 @@ COPY backend/Cargo.toml backend/Cargo.lock* ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs \
  && cargo build --release && rm -rf src target/release/deps/noises*
 COPY backend/src ./src
-RUN cargo build --release
+# touch: i sorgenti copiati possono avere una data precedente al main.rs fittizio compilato qui sopra,
+# e cargo li crederebbe già compilati (nell'immagine finirebbe il binario vuoto)
+RUN touch src/main.rs && cargo build --release
 
 # ---------- runtime ----------
 FROM python:3.11-slim-bookworm

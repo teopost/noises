@@ -399,7 +399,7 @@ pub async fn export(
         let src = if t.part == "original" {
             ensure_original(&st, &t.song).await?
         } else {
-            if song.status != Status::Ready || !song.stems.contains(&t.part) {
+            if !song.has_stems() || !song.stems.contains(&t.part) {
                 return Err(bad_request(format!("traccia separata non disponibile: {}", t.part)));
             }
             dir.join("stems").join(format!("{}.flac", t.part))

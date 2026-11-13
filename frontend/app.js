@@ -7,7 +7,8 @@ const MODEL_LABELS = { htdemucs: T('4 tracce'), htdemucs_ft: T('4 tracce HQ'), h
 
 const state = { zoom: 40, follow: true, notes: null, showNotes: new Set(), synth: new Set(), selNote: null,
   songs: [], playlists: [], view: 'all', query: '', current: null, pitch: 0, tempo: 100, loadSeq: 0, debounce: null, sel: null, loopOn: false,
-  loopIn: null }; // loopIn: inizio del loop fissato con I, in attesa della fine (O)
+  loopIn: null, // loopIn: inizio del loop fissato con I, in attesa della fine (O)
+  resplits: new Set() }; // brani già separati con una nuova separazione in corso (project.js)
 
 const fmt = (t) => {
   t = Math.max(0, t);
@@ -416,7 +417,7 @@ function statusText(s) {
     case 'new': return 'Non separato';
     case 'queued': return 'In coda…';
     case 'processing': return `Separazione ${Math.round(s.progress * 100)}%${s.phase ? ` · ${T(s.phase)}` : ''}`;
-    case 'ready': return `Separato${s.phase ? ` · ${s.phase}…` : ''}`;
+    case 'ready': return `${T('Separato')}${s.phase ? ` · ${T(s.phase)}…` : ''}${s.error ? ` · ⚠ ${T('nuova separazione non riuscita')}` : ''}`;
     default: return `Errore: ${s.error || 'sconosciuto'}`;
   }
 }
@@ -466,7 +467,7 @@ function renderSongs() {
         <span class="song-name" title="${esc(s.name)}">${esc(s.name)}</span>
         <button class="more" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button>
       </div>
-      <span class="song-status ${s.status === 'error' ? 'error' : s.status === 'new' ? 'new' : ''}">${esc(statusText(s))}${s.status === 'new' ? '' : ` · ${MODEL_LABELS[s.model] || s.model}`}${inPl ? ` · ♫ ${inPl}` : ''}</span>
+      <span class="song-status ${s.status === 'error' ? 'error' : s.status === 'new' ? 'new' : ''}"${s.status === 'ready' && s.error ? ` title="${esc(s.error)}"` : ''}>${esc(statusText(s))}${s.status === 'new' ? '' : ` · ${MODEL_LABELS[s.model] || s.model}`}${inPl ? ` · ♫ ${inPl}` : ''}</span>
       ${['downloading', 'queued', 'processing'].includes(s.status) ? `<div class="bar"><div style="width:${s.progress * 100}%"></div></div>` : ''}`;
     li.addEventListener('dblclick', () => addSongToProject(s.id, null));
     const pv = li.querySelector('.preview');
@@ -702,6 +703,7 @@ function openSongMenu(song, anchor) {
     if (song.status !== 'downloading') items.push({ icon: '＋', label: T('Nuovo progetto con questo brano…'), act: () => { close(); newProjectWithSong(song); } });
     if (song.status === 'new') items.push({ icon: '⑂', label: T('Separa le tracce…'), act: () => { close(); openProcess([song]); } });
     if (song.status === 'error') items.push({ icon: '↻', label: T('Riprova la separazione…'), act: () => { close(); openProcess([song]); } });
+    if (song.status === 'ready') items.push({ icon: '⑂', label: T('Separa di nuovo…'), act: () => { close(); resplitSong(song); } });
     const n = state.playlists.filter((p) => p.songs.includes(song.id)).length;
     items.push({ icon: '♫', label: T('Aggiungi a playlist'), extra: `${n ? `<span class="mi-count">${n}</span>` : ''}<span class="mi-sub">›</span>`, act: playlists });
     if (song.status !== 'downloading') items.push({ icon: '✎', label: T('Rinomina…'), act: () => { close(); renameSong(song); } });
@@ -758,7 +760,16 @@ function openProcess(songs, done) {
   processDone = done || null;
   $('#proc-names').textContent = songs.length === 1 ? songs[0].name : `${songs.length} brani in attesa`;
   const first = songs[0];
-  if (first.status === 'error') {
+  // brano già separato: nuova separazione con un altro tipo (le tracce attuali vengono sostituite)
+  const redo = first.status === 'ready';
+  $('#proc-title').textContent = redo ? 'Separa di nuovo' : 'Separa le tracce';
+  $('#proc-redo-hint').classList.toggle('hidden', !redo);
+  if (redo) {
+    $('#proc-names').textContent = `${first.name} — ${T('separazione attuale')}: ${MODEL_LABELS[first.model] || first.model}`;
+    $('#proc-model').value = first.model;
+    $('#proc-chords').checked = true;
+    $('#proc-notes').checked = true;
+  } else if (first.status === 'error') {
     $('#proc-model').value = first.model;
     $('#proc-chords').checked = first.tasks ? first.tasks.chords : true;
     $('#proc-notes').checked = first.tasks ? first.tasks.notes : true;
@@ -781,10 +792,12 @@ async function startProcess() {
   const body = { model: $('#proc-model').value, chords: $('#proc-chords').checked, notes: $('#proc-notes').checked };
   try { localStorage.setItem('noises.process', JSON.stringify(body)); } catch {}
   for (const s of processTargets) {
+    const redo = s.status === 'ready';
     try {
       await api(`/api/songs/${s.id}/process`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, redo }),
       });
+      if (redo) state.resplits.add(s.id);
     } catch (e) {
       uiAlert(`"${s.name}": ${e.message}`);
     }
