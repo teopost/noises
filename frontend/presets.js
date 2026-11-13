@@ -272,7 +272,7 @@ function presetTrackName(name) {
 function renderPresetsMenu() {
   const menu = $('#presets-menu');
   const list = state.presets || [], cur = activePreset();
-  menu.innerHTML = `<div class="menu-title">Salvataggi</div>` + (list.length
+  menu.innerHTML = `<div class="menu-title">${esc(T('Salvataggi'))}${list.length ? ` (${list.length})` : ''}</div>` + (list.length
     ? list.map((p) => {
       const sh = shareOf(p);
       return `
@@ -317,6 +317,8 @@ function closePresetsMenu() {
 }
 
 let presetsUiKey = '';
+/** Dischetto a tratto, del colore del testo come le altre icone della barra. */
+const PRESET_ICON = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><rect x="8" y="13" width="8" height="7"/></svg>';
 /** Il pulsante mostra il salvataggio in uso (chiamata quando cambiano le impostazioni). */
 function updatePresetsUI() {
   const btn = $('#presets-btn');
@@ -328,8 +330,11 @@ function updatePresetsUI() {
   if (key === presetsUiKey) return;
   presetsUiKey = key;
   if (typeof regionsPresetChanged === 'function') regionsPresetChanged(); // ogni salvataggio ha le sue sezioni
-  btn.textContent = cur ? `💾 ${cur.name}` : n ? `💾 ${T('Salvataggi')} (${n})` : `💾 ${T('Salvataggi')}`;
+  // un campo col suo valore, come il pulsante delle sezioni: il salvataggio in uso oppure "nessuno"
+  // (in grigio); il numero dei salvataggi sta nel titolo dell'elenco
+  btn.innerHTML = `${PRESET_ICON}${esc(cur ? cur.name : T('Salvataggio: nessuno'))}`;
   btn.classList.toggle('on', !!cur);
+  btn.classList.toggle('none', !cur);
   btn.title = cur ? `In uso il salvataggio "${cur.name}": le modifiche vengono salvate qui. Clic per tornare all'inizio del suo loop, ▾ per l'elenco` : 'Salvataggi: stati del progetto con un nome da richiamare (loop, solo voce…)';
 }
 

@@ -538,6 +538,7 @@ const EN = {
   '☰ Sezioni': '☰ Sections',
   '☰ Sezioni ({…})': '☰ Sections ({…})',
   'Sezione: nessuna': 'Section: none',
+  'Salvataggio: nessuno': 'Save: none',
   'Nessuna sezione in uso: clic per scegliere una sezione salvata e ripeterla in loop': 'No section in use: click to pick a saved section and loop it',
   'Sezioni salvate': 'Saved sections',
   'Sezioni salvate: richiamale per ripeterle in loop': 'Saved sections: recall them to loop them',

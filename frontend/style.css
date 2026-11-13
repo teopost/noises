@@ -954,6 +954,8 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 /* ---- salvataggi e link pubblici ---- */
 .presets-btn { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .presets-btn.on { color: var(--accent-2); font-weight: 600; }
+.presets-btn.none { color: var(--muted); }
+.presets-btn .ico { margin-right: 5px; }
 .presets-menu { min-width: 320px; max-width: min(440px, calc(100vw - 32px)); }
 .preset-item .ps-share, .preset-item .ps-over { padding: 2px 6px; border: 0; font-size: 12px; }
 .preset-item .ps-share { filter: grayscale(1); opacity: .6; }
