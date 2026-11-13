@@ -63,6 +63,7 @@
   // browser lo permette (HTTPS); altrimenti la pagina resta quella di sempre, senza il comando.
   const canSpeed = () => !!(info && info.speed) && window.isSecureContext && typeof AudioWorkletNode !== 'undefined';
   let wk = null, wkOn = false;     // motore e stato (sta suonando)
+  let wkFailed = false;            // il motore non è partito: niente comando della velocità
   let rate = 1, speed = 100;       // rate: rispetto al file del mix; speed: % rispetto al brano originale
   let rep = null, repMin = 0;      // ultima posizione comunicata dal motore
   let src = null, playing = false, startedAt = 0, startOffset = 0, pos = 0;
@@ -99,7 +100,8 @@
   const stemsOf = (i) => (info.variants[i] && info.variants[i].stems) || [];
 
   async function setupWorklet() {
-    if (wk || !canSpeed() || !ctx.audioWorklet) return;
+    if (wk || wkFailed || !canSpeed()) return;
+    if (!ctx.audioWorklet) { wkFailed = true; return; }
     try {
       await ctx.audioWorklet.addModule('/stretch-worklet.js');
       const node = new AudioWorkletNode(ctx, 'stretch-player', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
@@ -110,7 +112,7 @@
         else if (m.type === 'ended' && wkOn) { wkOn = false; src = null; playing = false; pos = 0; updatePlayUI(); }
       };
       wk = node;
-    } catch (e) { console.warn(e); }
+    } catch (e) { console.warn(e); wkFailed = true; }
   }
 
   /** Passa l'audio al motore (una copia per canale, ceduta al motore). */
@@ -138,14 +140,19 @@
     if (playing) { startOffset = p; startedAt = ctx.currentTime; rep = null; repMin = Math.round(ctx.currentTime * ctx.sampleRate); }
   }
 
-  function renderSpeed() {
-    $('#speed').classList.toggle('hidden', !wk);
-    if (!wk) return;
+  /** Comando della velocità: c'è da subito (la pagina non si sposta quando l'audio arriva), ma si può
+   *  usare solo con `ready`, cioè quando l'audio è nel motore. */
+  function renderSpeed(ready) {
+    const show = canSpeed() && !wkFailed;
+    $('#speed').classList.toggle('hidden', !show);
+    if (!show) return;
     const r = $('#speed-range');
     r.min = Math.min(50, v.tempo);
     r.max = Math.max(150, v.tempo);
     $('#speed-reset').title = L.speedReset(v.tempo);
     setSpeed(v.tempo);
+    ['#speed-range', '#speed-down', '#speed-up'].forEach((s) => { $(s).disabled = !ready; });
+    if (!ready) $('#speed-reset').disabled = true;
   }
 
   function audioOf(i) {
@@ -266,6 +273,7 @@
     if (stemsOf(i).length) for (const j of [...cache.keys()]) if (j !== i && stemsOf(j).length) cache.delete(j);
     renderVariant();
     renderStems();
+    renderSpeed(false);
     document.querySelectorAll('.variant').forEach((b) => {
       const on = Number(b.dataset.i) === i;
       b.classList.toggle('on', on);
@@ -296,7 +304,7 @@
       bufs = [];
       if (stemsOf(i).length) cache.delete(i);
     }
-    renderSpeed();
+    renderSpeed(!!wk);
     updatePeaks();
     $('#dur').textContent = fmt(buf.duration);
     loop = null;

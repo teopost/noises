@@ -182,6 +182,7 @@ button { font: inherit; color: inherit; }
 .speed-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--violet); height: 28px; cursor: pointer; }
 .speed-row output { min-width: 3.4em; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .speed-row .sec { padding: 5px 12px; font-weight: 700; }
+.speed-row .sec:disabled, .speed-row input:disabled { opacity: .35; cursor: default; }
 .speed + .sections { margin-top: 20px; }
 
 .error { margin: 20px 0 0; text-align: center; color: #ffb3c1; }
