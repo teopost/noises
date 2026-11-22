@@ -1,4 +1,4 @@
-//! Noises — stem separation server.
+//! Noises - stem separation server.
 //!
 //! Il server Rust gestisce upload, coda dei job, persistenza e streaming audio.
 //! Il lavoro pesante è delegato a motori nativi specializzati:

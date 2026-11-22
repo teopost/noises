@@ -390,7 +390,7 @@ pub struct InviteRequest {
     decided_at: Option<u64>,
 }
 
-/// GET /api/admin/requests — prima quelle in attesa, poi le ultime decise.
+/// GET /api/admin/requests - prima quelle in attesa, poi le ultime decise.
 pub async fn requests(State(st): State<AppState>, Extension(me): Extension<User>) -> Result<Json<Vec<InviteRequest>>, AppError> {
     require_admin(&me)?;
     let rows = st
@@ -442,7 +442,7 @@ pub struct ApproveBody {
     role: Option<String>,
 }
 
-/// POST /api/admin/requests/:id/approve — crea l'invito e lo manda a chi l'ha chiesto, nella sua lingua.
+/// POST /api/admin/requests/:id/approve - crea l'invito e lo manda a chi l'ha chiesto, nella sua lingua.
 pub async fn approve_request(
     State(st): State<AppState>,
     Extension(me): Extension<User>,
@@ -470,7 +470,7 @@ pub async fn approve_request(
     }
 }
 
-/// POST /api/admin/requests/:id/reject — nessuna email a chi l'ha chiesta.
+/// POST /api/admin/requests/:id/reject - nessuna email a chi l'ha chiesta.
 pub async fn reject_request(
     State(st): State<AppState>,
     Extension(me): Extension<User>,
@@ -686,7 +686,7 @@ pub struct System {
     pending_requests: i64,
 }
 
-/// GET /api/admin/update — solo la parte leggera (per il badge del menu).
+/// GET /api/admin/update - solo la parte leggera (per il badge del menu).
 #[derive(Serialize)]
 pub struct UpdateInfo {
     version: &'static str,

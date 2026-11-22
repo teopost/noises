@@ -573,7 +573,7 @@ async function replaceWithStems(t) {
     selectTracks(created.map((x) => x.name));
     setReference(created[0], true);
     saveProject();
-    toast(`"${song.name}" separato in ${created.length} tracce (raggruppate) — Ctrl+Z per annullare`);
+    toast(`"${song.name}" separato in ${created.length} tracce (raggruppate) - Ctrl+Z per annullare`);
   } catch (e) {
     uiAlert(`Separazione non riuscita: ${e.message}`);
   } finally {

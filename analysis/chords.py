@@ -1,6 +1,6 @@
 """Riconoscimento accordi con BTC (Bi-directional Transformer for Chord recognition).
 
-Modello: Park et al., ISMIR 2019 — https://github.com/jayg996/BTC-ISMIR19 (MIT),
+Modello: Park et al., ISMIR 2019 - https://github.com/jayg996/BTC-ISMIR19 (MIT),
 vocabolario esteso da 170 classi (12 fondamentali x 14 qualità + N + X).
 
 Uso: python3 chords.py <output.json> <traccia1> [traccia2 ...]

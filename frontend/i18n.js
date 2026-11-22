@@ -23,7 +23,7 @@ try { localStorage.removeItem('noises.lang'); } catch {} // scelta manuale delle
 
 const EN = {
   // ---------------------------------------------------------------- generale
-  'Noises — Stem Splitter': 'Noises — Stem Splitter',
+  'Noises - Stem Splitter': 'Noises - Stem Splitter',
   'Caricamento…': 'Loading…',
   'Annulla': 'Cancel',
   'Salva': 'Save',
@@ -161,7 +161,7 @@ const EN = {
   'Sblocca i pezzi': 'Unlock pieces',
   'Duplica pezzo selezionato (Ctrl+D)': 'Duplicate selected piece (Ctrl+D)',
   'Seleziona il pezzo da duplicare (clic sul pezzo nella timeline)': 'Select the piece to duplicate (click the piece on the timeline)',
-  "Pezzo duplicato — Ctrl+D per un'altra ripetizione": 'Piece duplicated — Ctrl+D for another repeat',
+  "Pezzo duplicato - Ctrl+D per un'altra ripetizione": 'Piece duplicated - Ctrl+D for another repeat',
   'Servono almeno due pezzi da fissare insieme': 'You need at least two pieces to lock together',
   'Pezzi sbloccati: ora si spostano uno alla volta': 'Pieces unlocked: they now move one at a time',
   'Pezzi fissati: trascinandone uno si spostano tutti': 'Pieces locked: drag one and they all move',
@@ -212,10 +212,10 @@ const EN = {
   "Pan del gruppo": "Group pan",
   "Pan (solo canale sinistro)": "Pan (left channel only)",
   "Pan (solo canale destro)": "Pan (right channel only)",
-  "{…}: {…} — doppio clic per il centro": "{…}: {…} — double-click to center",
+  "{…}: {…} - doppio clic per il centro": "{…}: {…} - double-click to center",
   "Divisione di \"{…}\"…": "Splitting \"{…}\"…",
   "Divisione non riuscita: {…}": "Split failed: {…}",
-  "Traccia divisa in sinistro (S) e destro (D): regola il pan di ognuna — Ctrl+Z per annullare": "Track split into left (S) and right (D): set the pan of each — Ctrl+Z to undo",
+  "Traccia divisa in sinistro (S) e destro (D): regola il pan di ognuna - Ctrl+Z per annullare": "Track split into left (S) and right (D): set the pan of each - Ctrl+Z to undo",
   "Canali riuniti in una traccia stereo": "Channels joined into a stereo track",
   "Volume abbassato di 10 dB nella selezione: trascina la linea per regolarlo": "Volume lowered by 10 dB in the selection: drag the line to adjust it",
   // ---------------------------------------------------------------- effetti
@@ -268,8 +268,8 @@ const EN = {
   "Piano: più chiaro": "Piano: brighter",
   "Pulisci registrazione dal vivo": "Clean up a live recording",
   '6 tracce': '6 tracks',
-  '4 tracce — veloce': '4 tracks — fast',
-  '4 tracce — alta qualità (4× più lento)': '4 tracks — high quality (4× slower)',
+  '4 tracce - veloce': '4 tracks - fast',
+  '4 tracce - alta qualità (4× più lento)': '4 tracks - high quality (4× slower)',
   '6 tracce (+ chitarra, piano)': '6 tracks (+ guitar, piano)',
   'Analisi dopo la separazione': 'Analysis after separation',
   'Riconoscimento accordi (pochi secondi)': 'Chord recognition (a few seconds)',
@@ -581,8 +581,8 @@ const EN = {
   'Gruppo': 'Group',
   'Creato il {…}': 'Created {…}',
   'Gruppo sciolto: le tracce ora sono indipendenti': 'Ungrouped: the tracks are now independent',
-  'Gruppo "{…}" eliminato — Ctrl+Z per annullare': 'Group "{…}" deleted — Ctrl+Z to undo',
-  'Gruppo: {…} tracce — clic per rinominare': 'Group: {…} tracks — click to rename',
+  'Gruppo "{…}" eliminato - Ctrl+Z per annullare': 'Group "{…}" deleted - Ctrl+Z to undo',
+  'Gruppo: {…} tracce - clic per rinominare': 'Group: {…} tracks - click to rename',
   '{…} · {…} tracce': '{…} · {…} tracks',
   'Apri il gruppo': 'Open the group',
   'Chiudi il gruppo': 'Close the group',
@@ -605,11 +605,11 @@ const EN = {
   'Traccia': 'Track',
   'Traccia vuota': 'Empty track',
   "Trascina per cambiare l'ordine (Alt+↑/↓)": 'Drag to reorder (Alt+↑/↓)',
-  '{…} — clic per rinominare': '{…} — click to rename',
+  '{…} - clic per rinominare': '{…} - click to rename',
   'Rinomina traccia': 'Rename track',
   'Sposta traccia': 'Move track',
   'Elimina traccia': 'Delete track',
-  'Traccia "{…}" eliminata — Ctrl+Z per annullare': 'Track "{…}" deleted — Ctrl+Z to undo',
+  'Traccia "{…}" eliminata - Ctrl+Z per annullare': 'Track "{…}" deleted - Ctrl+Z to undo',
   'Duplica traccia': 'Duplicate track',
   'Duplicazione di "{…}"…': 'Duplicating "{…}"…',
   'Duplicazione non riuscita: {…}': 'Duplication failed: {…}',
@@ -623,7 +623,7 @@ const EN = {
   'Separazione di "{…}" non riuscita': 'Splitting "{…}" failed',
   'Separazione non riuscita: {…}': 'Splitting failed: {…}',
   'Tracce separate di "{…}"…': 'Split tracks of "{…}"…',
-  '"{…}" separato in {…} tracce (raggruppate) — Ctrl+Z per annullare': '"{…}" split into {…} tracks (grouped) — Ctrl+Z to undo',
+  '"{…}" separato in {…} tracce (raggruppate) - Ctrl+Z per annullare': '"{…}" split into {…} tracks (grouped) - Ctrl+Z to undo',
   'Mostra note': 'Show notes',
   'Nascondi note': 'Hide notes',
   'Spartito e tablatura': 'Sheet music and tabs',
@@ -687,7 +687,7 @@ const EN = {
   'Sposta segnalibro': 'Move bookmark',
   'Elimina segnalibro': 'Delete bookmark',
   'Nome (es. Assolo)': 'Name (e.g. Solo)',
-  '{…} — {…} · clic: vai e modifica · trascina: sposta (Shift: senza griglia)': '{…} — {…} · click: go and edit · drag: move (Shift: no grid)',
+  '{…} - {…} · clic: vai e modifica · trascina: sposta (Shift: senza griglia)': '{…} - {…} · click: go and edit · drag: move (Shift: no grid)',
   '⟳ Loop sezione': '⟳ Loop section',
   'Seleziona e ripete la sezione fino al segnalibro "{…}"': 'Selects and loops the section up to the bookmark "{…}"',
   'Seleziona e ripete la sezione fino al fine del brano': 'Selects and loops the section up to the end of the song',
@@ -775,9 +775,9 @@ const EN = {
   'Chitarra Drop D (D A D G B E)': 'Drop D guitar (D A D G B E)',
   'Chitarra Drop C (C G C F A D)': 'Drop C guitar (C G C F A D)',
   'nome@esempio.it': 'name@example.com',
-  "4 tracce — voce massima qualità, RoFormer (molto lento)": "4 tracks — best-quality vocals, RoFormer (very slow)",
-  "6 tracce — voce massima qualità, RoFormer (molto lento)": "6 tracks — best-quality vocals, RoFormer (very slow)",
-  "4 tracce — tutto alla massima qualità, RoFormer + HQ (il più lento)": "4 tracks — best quality for every track, RoFormer + HQ (slowest)",
+  "4 tracce - voce massima qualità, RoFormer (molto lento)": "4 tracks - best-quality vocals, RoFormer (very slow)",
+  "6 tracce - voce massima qualità, RoFormer (molto lento)": "6 tracks - best-quality vocals, RoFormer (very slow)",
+  "4 tracce - tutto alla massima qualità, RoFormer + HQ (il più lento)": "4 tracks - best quality for every track, RoFormer + HQ (slowest)",
   "La voce si separa con Mel-Band RoFormer, più pulita di Demucs (meno strumenti nella voce e meno voce nella base); gli strumenti con Demucs. Sulla CPU richiede circa 8–10 minuti per ogni minuto di brano; la prima volta scarica il modello (900 MB).": "Vocals are separated with Mel-Band RoFormer, cleaner than Demucs (less instruments in the vocals and less vocals in the backing track); the instruments with Demucs. On a CPU it takes about 8–10 minutes per minute of song; the first time it downloads the model (900 MB).",
   "4 tracce RoFormer": "4 tracks RoFormer",
   "6 tracce RoFormer": "6 tracks RoFormer",
@@ -1114,7 +1114,7 @@ if (LANG === 'en') {
       if (it !== norm(it)) EXACT.set(it, en);
     }
   }
-  // prima le frasi con più testo fisso: "Gruppo: {…} tracce — clic…" prima di "{…} — clic…"
+  // prima le frasi con più testo fisso: "Gruppo: {…} tracce - clic…" prima di "{…} - clic…"
   PATTERNS.sort((a, b) => b[0].source.replace(/\(\[\\s\\S\]\+\?\)/g, '').length - a[0].source.replace(/\(\[\\s\\S\]\+\?\)/g, '').length);
 }
 

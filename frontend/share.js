@@ -447,7 +447,7 @@
 
   function renderVariant() {
     const title = info.title || 'Noises';
-    document.title = `${v.name ? `${title} · ${v.name}` : title} — Noises`;
+    document.title = `${v.name ? `${title} · ${v.name}` : title} - Noises`;
     // nome del salvataggio come sottotitolo
     $('#subtitle').textContent = v.name && v.name !== title ? v.name : '';
     $('#songs').textContent = (v.songs || []).filter((s) => s !== title).join(' · ');

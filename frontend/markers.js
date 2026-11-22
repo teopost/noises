@@ -48,8 +48,8 @@ function renderMarkers() {
   lane.innerHTML = state.markers.length
     ? state.markers.map((m) => `
       <div class="marker ${m.id === markerMenuId ? 'editing' : ''} ${m.t * k * z < 50 ? 'edge' : ''}" data-id="${m.id}" style="left:${m.t * k * z}px"
-        title="${esc(m.name)} — ${fmt(m.t * k)} · clic: vai e modifica · trascina: sposta (Shift: senza griglia)">
-        <span class="flag">${esc(m.name || '—')}</span>
+        title="${esc(m.name)} - ${fmt(m.t * k)} · clic: vai e modifica · trascina: sposta (Shift: senza griglia)">
+        <span class="flag">${esc(m.name || '-')}</span>
       </div>`).join('')
     : '';
   lines.innerHTML = state.markers.map((m) => `<div class="mline" style="left:${hw + m.t * k * z}px"></div>`).join('');

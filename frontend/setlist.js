@@ -206,7 +206,7 @@ function updateSetlistBar() {
   const waiting = sl.pause < 0 && !engine.playing && state.current && state.current.id === sl.projects[idx];
   $('#slb-status').textContent = countdown != null ? `"${projectName(sl.projects[idx]) || ''}" parte tra ${countdown} s`
     : waiting ? 'Premi ▶ quando sei pronto'
-    : next ? `Prossimo: ${projectName(next) || '—'}` : 'Ultimo brano della scaletta';
+    : next ? `Prossimo: ${projectName(next) || '-'}` : 'Ultimo brano della scaletta';
   $('#slb-now').classList.toggle('hidden', countdown == null);
   $('#slb-prev').disabled = idx <= 0;
   $('#slb-next').disabled = idx >= sl.projects.length - 1;

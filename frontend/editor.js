@@ -529,7 +529,7 @@ function duplicateSelectedClip() {
   state.selClip = { ...state.selClip, cid: mainCopy.id };
   clipsChanged(items.map((v) => v.t));
   updateEditUI();
-  toast('Pezzo duplicato — Ctrl+D per un\'altra ripetizione');
+  toast('Pezzo duplicato - Ctrl+D per un\'altra ripetizione');
 }
 
 /** Tracce su cui agisce "Fissa i pezzi": quelle selezionate, con i loro gruppi. */
@@ -576,7 +576,7 @@ function deleteTrack(t) {
   saveLayout();
   layoutTimeline();
   buildTracks();
-  toast(`Traccia "${trackLabel(t)}" eliminata — Ctrl+Z per annullare`);
+  toast(`Traccia "${trackLabel(t)}" eliminata - Ctrl+Z per annullare`);
 }
 
 function clipAt(t, clientX) {
@@ -900,7 +900,7 @@ function buildFolderRow(g, kids) {
   row.innerHTML = `
     <div class="track-head">
       <div class="track-title"><span class="grip" title="Trascina per spostare tutto il gruppo (Alt+↑/↓)">⠿</span><button class="fold" title="${g.collapsed ? 'Apri il gruppo' : 'Chiudi il gruppo'}">${g.collapsed ? '▸' : '▾'}</button>
-        <input class="tname" value="${esc(g.name)}" maxlength="60" title="Gruppo: ${kids.length} tracce — clic per rinominare">
+        <input class="tname" value="${esc(g.name)}" maxlength="60" title="Gruppo: ${kids.length} tracce - clic per rinominare">
         <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
       <div class="track-btns">
         <button class="m" title="Muto (tutto il gruppo)">M</button>
@@ -1042,7 +1042,7 @@ function openFolderMenu(g, anchor) {
       saveProject();
       layoutTimeline();
       buildTracks();
-      toast(`Gruppo "${g.name}" eliminato — Ctrl+Z per annullare`);
+      toast(`Gruppo "${g.name}" eliminato - Ctrl+Z per annullare`);
     } },
   ];
   menu.innerHTML = `<div class="menu-title">${esc(g.name)} · ${kids.length} tracce</div>` + items.map((it, i) => it.sep

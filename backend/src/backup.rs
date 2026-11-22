@@ -142,7 +142,7 @@ fn write_zip(path: &Path, project: &projects::Project, songs: &[Song], song_root
     Ok(())
 }
 
-/// GET /api/projects/:pid/backup — zip del progetto con tutti i suoi brani.
+/// GET /api/projects/:pid/backup - zip del progetto con tutti i suoi brani.
 pub async fn download(State(st): State<AppState>, UrlPath(pid): UrlPath<String>) -> Result<Response, AppError> {
     let project = projects::get(&st, &pid)?;
     let songs: Vec<Song> = {
@@ -269,7 +269,7 @@ fn unpack(zip_path: &Path, work: &Path) -> anyhow::Result<Unpacked> {
     Ok(Unpacked { project, songs })
 }
 
-/// POST /api/backup/restore (multipart, campo "file") — ripristina un progetto dal suo backup.
+/// POST /api/backup/restore (multipart, campo "file") - ripristina un progetto dal suo backup.
 pub async fn restore(
     State(st): State<AppState>,
     Extension(user): Extension<crate::auth::User>,

@@ -112,7 +112,7 @@ make open                 # apre http://localhost:8080
 Al primo accesso **registra un account**: il primo utente diventa amministratore. Se l'SMTP non è configurato, il link di conferma lo trovi nei log:
 
 ```sh
-make logs   # cerca la riga "[email non inviata — SMTP assente] … → http://…/api/auth/verify?token=…"
+make logs   # cerca la riga "[email non inviata - SMTP assente] … → http://…/api/auth/verify?token=…"
 ```
 
 > In alternativa, imposta `EMAIL_VERIFICATION=false` in `.env` per attivare gli account senza conferma.
@@ -260,8 +260,8 @@ Tutte le variabili si possono impostare in `.env` (vedi [`.env.example`](.env.ex
 | `ALLOW_INVITE_REQUESTS` | `false` | con la registrazione chiusa mostra **Richiedi un invito** nella pagina di accesso: nome, email e messaggio arrivano via email agli amministratori, che approvano o rifiutano in **Amministrazione → Richieste**; approvando parte l'invito |
 | `UPDATE_CHECK` | `true` | controlla ogni 6 ore se su GitHub c'è una versione più recente (`false` per disattivare) |
 | `UPDATE_REPO` | `teopost/noises` | repository GitHub da cui leggere le versioni |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | attivano l'accesso con Google |
-| `SMTP_*` | — | invio delle email (senza SMTP i link vanno nei log) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | - | attivano l'accesso con Google |
+| `SMTP_*` | - | invio delle email (senza SMTP i link vanno nei log) |
 | `DEMUCS_DEVICE` | `cpu` | `cuda` richiede un'immagine PyTorch con GPU |
 | `DEMUCS_THREADS` | `4` | thread PyTorch per la separazione (sulle CPU ibride 4 è spesso il valore più veloce) |
 | `RUBBERBAND_ARGS` | *(vuoto)* | vuoto = motore R2, veloce; `-3` = motore R3, qualità migliore ma ~6× più lento |
@@ -289,7 +289,7 @@ flowchart LR
 | Livello | Tecnologia | Percorso |
 |---|---|---|
 | Server HTTP, coda, autenticazione, streaming | Rust · axum · tokio · tokio-postgres · argon2 · lettre · reqwest | `backend/` |
-| Separazione | Demucs v4 e Mel-Band RoFormer (PyTorch, CPU) | — |
+| Separazione | Demucs v4 e Mel-Band RoFormer (PyTorch, CPU) | - |
 | Tonalità e velocità | AudioWorklet nel browser (ascolto) · Rubber Band (export) | `frontend/stretch-worklet.js` |
 | Linea del volume | calcolata per campione nel motore (AudioWorklet) · file del guadagno moltiplicato da ffmpeg (export, link) | `frontend/envelope.js`, `backend/src/env.rs` |
 | Pan e canali | matrice 2×2 per traccia nel motore (AudioWorklet) · filtro `pan` di ffmpeg (export, link) | `frontend/pan.js` |

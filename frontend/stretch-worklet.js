@@ -59,7 +59,7 @@ function envGain(s, p) {
 class StretchPlayer extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.stems = [];        // { l, r, gain, target, clips? } — clips: tracce utente [{ s, o, d }] in campioni
+    this.stems = [];        // { l, r, gain, target, clips? } - clips: tracce utente [{ s, o, d }] in campioni
     this.len = 0;
     this.playing = false;
     this.startFrame = 0;

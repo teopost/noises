@@ -95,7 +95,7 @@ const engine = {
   k() { return 100 / this.tempo; },
   toSrc(t) { return (t / this.k()) * this.sr; },
 
-  /** list: [{ name, song, part, label, clips, fx, l, r, peaks }] — ogni traccia è un insieme di clip. */
+  /** list: [{ name, song, part, label, clips, fx, l, r, peaks }] - ogni traccia è un insieme di clip. */
   setTracks(list, keepMix, initialMix) {
     const prev = keepMix ? Object.fromEntries(this.tracks.map((t) => [t.name, t])) : (initialMix || {});
     this.releaseAllFx();
@@ -767,7 +767,7 @@ function openProcess(songs, done) {
   $('#proc-title').textContent = redo ? 'Separa di nuovo' : 'Separa le tracce';
   $('#proc-redo-hint').classList.toggle('hidden', !redo);
   if (redo) {
-    $('#proc-names').textContent = `${first.name} — ${T('separazione attuale')}: ${MODEL_LABELS[first.model] || first.model}`;
+    $('#proc-names').textContent = `${first.name} - ${T('separazione attuale')}: ${MODEL_LABELS[first.model] || first.model}`;
     $('#proc-model').value = first.model;
     $('#proc-chords').checked = true;
     $('#proc-notes').checked = true;
@@ -1123,7 +1123,7 @@ function buildTracks() {
     row.innerHTML = `
       <div class="track-head">
         <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>
-          <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} — clic per rinominare">
+          <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} - clic per rinominare">
           <button class="fxb hidden" aria-label="Effetti">FX</button>
           <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
         <div class="track-btns">
@@ -2134,7 +2134,7 @@ function renderChords(message) {
   lane.innerHTML = sheet.chords.map((c, i) => `
     <div class="chord-block ${c.root == null ? 'nc' : ''} ${i === chordIdx ? 'current' : ''}" data-i="${i}"
       style="left:${(c.start + a) * scale}px;width:${(c.end - c.start) * scale}px"
-      title="${esc(chordName(c))}${c.quality ? ` — ${QUALITY[c.quality][1]}` : ''}">
+      title="${esc(chordName(c))}${c.quality ? ` - ${QUALITY[c.quality][1]}` : ''}">
       ${i > 0 ? '<span class="chord-handle" title="Trascina per spostare il cambio di accordo"></span>' : ''}${esc(chordName(c))}
     </div>`).join('');
   lastChordShown = null;

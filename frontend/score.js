@@ -315,7 +315,7 @@ function renderTab() {
     parts.push(`</g>`);
   });
   const H = systems.length * sysH + 10;
-  box.innerHTML = `<h2 class="tab-title">${esc(state.refSong.name)} — ${esc(LABELS[sc.stem] || sc.stem)} · ${esc(TUNINGS[tuning].label)}</h2>
+  box.innerHTML = `<h2 class="tab-title">${esc(state.refSong.name)} - ${esc(LABELS[sc.stem] || sc.stem)} · ${esc(TUNINGS[tuning].label)}</h2>
     <svg class="tab-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}
       <line id="tab-cursor" class="tab-cursor" x1="0" x2="0" y1="0" y2="0" style="display:none"/></svg>`;
 }

@@ -139,7 +139,7 @@ impl Mailer {
         match t.test_connection().await {
             Ok(true) => info!("SMTP raggiungibile, email da {}", self.from),
             Ok(false) => warn!("SMTP: il server non risponde correttamente: le email potrebbero non partire"),
-            Err(e) => warn!("SMTP non raggiungibile: {e:#} — le email non partiranno (controlla SMTP_HOST, SMTP_PORT, SMTP_TLS, SMTP_USER, SMTP_PASSWORD)"),
+            Err(e) => warn!("SMTP non raggiungibile: {e:#} - le email non partiranno (controlla SMTP_HOST, SMTP_PORT, SMTP_TLS, SMTP_USER, SMTP_PASSWORD)"),
         }
     }
 
@@ -149,7 +149,7 @@ impl Mailer {
 
     pub(crate) async fn send(&self, to: &str, subject: &str, text: &str, link: &str, en: bool) -> anyhow::Result<()> {
         let Some(t) = &self.transport else {
-            warn!("[email non inviata — SMTP assente] a {to}: {subject} → {link}");
+            warn!("[email non inviata - SMTP assente] a {to}: {subject} → {link}");
             return Ok(());
         };
         let html = format!(
@@ -771,7 +771,7 @@ pub struct InviteInfo {
     email: String,
 }
 
-/// GET /api/auth/invite?token= — l'invito è valido? (per precompilare la registrazione)
+/// GET /api/auth/invite?token= - l'invito è valido? (per precompilare la registrazione)
 pub async fn invite_info(State(st): State<AppState>, Query(q): Query<TokenQuery>) -> Result<Json<InviteInfo>, AppError> {
     let (_, email, _) = st
         .0
@@ -1006,7 +1006,7 @@ pub struct InviteRequestBody {
     message: String,
 }
 
-/// POST /api/auth/request-invite — chi non ha un account chiede di essere invitato (ALLOW_INVITE_REQUESTS).
+/// POST /api/auth/request-invite - chi non ha un account chiede di essere invitato (ALLOW_INVITE_REQUESTS).
 /// La risposta è sempre la stessa: non rivela se l'indirizzo è già registrato o ha già una richiesta.
 pub async fn request_invite(State(st): State<AppState>, headers: HeaderMap, Json(b): Json<InviteRequestBody>) -> Result<Json<Msg>, AppError> {
     let auth = &st.0.auth;

@@ -49,7 +49,7 @@ function panControl(get, set, title) {
   el.className = 'pan';
   el.min = '-1'; el.max = '1'; el.step = '0.01';
   el.value = String(get());
-  const upd = () => { el.title = `${title}: ${panLabel(get())} — doppio clic per il centro`; el.style.setProperty('--p', String(get())); };
+  const upd = () => { el.title = `${title}: ${panLabel(get())} - doppio clic per il centro`; el.style.setProperty('--p', String(get())); };
   el.addEventListener('input', () => {
     let v = Number(el.value);
     if (Math.abs(v) < 0.04) v = 0; // il centro "aggancia"
@@ -104,7 +104,7 @@ async function splitStereo(t) {
     selectTracks([t.name, right.name]);
     saveProject();
     buildTracks();
-    toast('Traccia divisa in sinistro (S) e destro (D): regola il pan di ognuna — Ctrl+Z per annullare');
+    toast('Traccia divisa in sinistro (S) e destro (D): regola il pan di ognuna - Ctrl+Z per annullare');
   } catch (e) {
     uiAlert(`Divisione non riuscita: ${e.message}`);
   } finally {

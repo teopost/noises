@@ -458,7 +458,7 @@ async fn ensure_og(st: &AppState, sh: &Share) -> Result<PathBuf, AppError> {
     Ok(out)
 }
 
-/// GET /api/public/:token/og.jpg — anteprima per i social; se non si può preparare, quella generica.
+/// GET /api/public/:token/og.jpg - anteprima per i social; se non si può preparare, quella generica.
 pub async fn public_og(State(st): State<AppState>, UrlPath(token): UrlPath<String>, req: Request) -> Response {
     let generic = st.0.static_dir.join("share-og.jpg");
     let path = match find(&st, &token) {
@@ -871,7 +871,7 @@ pub async fn page(State(st): State<AppState>, UrlPath(token): UrlPath<String>) -
     let (title, desc) = match &sh {
         Some(s) => {
             let what = if s.subtitle.is_empty() { s.title.clone() } else { format!("{} · {}", s.title, s.subtitle) };
-            let songs = if s.mix.songs.is_empty() { String::new() } else { format!(" — {}", s.mix.songs.join(", ")) };
+            let songs = if s.mix.songs.is_empty() { String::new() } else { format!(" - {}", s.mix.songs.join(", ")) };
             (what, format!("Ascolta e ripeti in loop su Noises{songs}"))
         }
         None => ("Link non disponibile".to_owned(), "Questo link non è più attivo.".to_owned()),

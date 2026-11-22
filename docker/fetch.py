@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fetch URL DESTINAZIONE SHA256 — scarica un file per l'immagine Docker e ne verifica l'impronta.
+"""fetch URL DESTINAZIONE SHA256 - scarica un file per l'immagine Docker e ne verifica l'impronta.
 
 Si usa al posto di `ADD <url>`: riusando la cache, BuildKit ricontrolla gli URL degli ADD e da
 GitHub Actions raw.githubusercontent.com a volte risponde 501, facendo fallire la build. Con un RUN
