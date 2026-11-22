@@ -397,10 +397,23 @@ const engine = {
 // ======================================================================= library
 
 let pollTimer;
+/** Importato da un link ma il download non è riuscito: niente audio (il server lo toglie dopo un po'). */
+const isFailedImport = (s) => s.status === 'error' && !!s.source_url && s.duration == null && !(s.stems || []).length;
+const notifiedFailures = new Set();
+
 async function refreshSongs() {
   clearTimeout(pollTimer);
   try {
-    state.songs = await api('/api/songs');
+    const all = await api('/api/songs');
+    // i download non riusciti non stanno in libreria né si possono usare: solo un avviso, una volta
+    state.failedImports = all.filter(isFailedImport).map((s) => s.id);
+    for (const s of all.filter(isFailedImport)) {
+      if (notifiedFailures.has(s.id)) continue;
+      notifiedFailures.add(s.id);
+      const name = s.name && !/^https?:\/\//.test(s.name) ? `"${s.name}"` : s.source_url;
+      toast(`${T('Download non riuscito')}: ${name}. ${s.error || ''}`.trim());
+    }
+    state.songs = all.filter((s) => !isFailedImport(s));
     renderPlaylists();
     renderSongs();
     onSongsUpdated();

@@ -482,6 +482,8 @@ const EN = {
   'Le modifiche a loop, sezioni, volumi e velocità vengono salvate in "{…}"': 'Changes to loop, sections, volumes and speed are saved into "{…}"',
   '＋ Nuovo salvataggio dallo stato attuale…': '＋ New save from the current state…',
   'Predefinito': 'Default',
+  'Download non riuscito': 'Download failed',
+  'Aggiunta non riuscita: {…}': 'Could not add: {…}',
   "Non si può eliminare l'unico salvataggio: creane prima un altro": "The only save can't be deleted: create another one first",
   "È l'unico salvataggio: non si può eliminare": "It's the only save: it can't be deleted",
   'Salvataggio "{…}" aggiornato': 'Save "{…}" updated',

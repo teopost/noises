@@ -120,6 +120,12 @@ struct Song {
 }
 
 impl Song {
+    /// Importato da un link ma il download non è riuscito: nessun audio, non va mostrato né usato.
+    /// (Un brano con l'audio e una separazione fallita ha la durata e resta in libreria.)
+    fn is_failed_import(&self) -> bool {
+        self.status == Status::Error && self.source_url.is_some() && self.duration.is_none() && self.stems.is_empty()
+    }
+
     /// Le tracce separate sono su disco e si possono usare (anche mentre se ne preparano di nuove).
     fn has_stems(&self) -> bool {
         self.status == Status::Ready || self.resplit_from.is_some()
@@ -539,19 +545,51 @@ async fn delete_song(
     State(st): State<AppState>,
     UrlPath(id): UrlPath<String>,
 ) -> Result<StatusCode, AppError> {
-    if st.0.songs.write().unwrap().remove(&id).is_none() {
+    if !remove_song(&st, &id).await? {
         return Err(not_found());
     }
-    projects::forget_song(&st, &id);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Toglie un brano: dalla libreria, dai progetti, dalle playlist e dal disco. false se non c'era.
+async fn remove_song(st: &AppState, id: &str) -> anyhow::Result<bool> {
+    if st.0.songs.write().unwrap().remove(id).is_none() {
+        return Ok(false);
+    }
+    projects::forget_song(st, id);
     st.edit_playlists(|pls| {
-        pls.iter_mut().for_each(|p| p.songs.retain(|s| s != &id));
+        pls.iter_mut().for_each(|p| p.songs.retain(|s| s != id));
         Ok(())
-    })?;
-    let dir = st.song_dir(&id);
+    })
+    .map_err(|e| anyhow!("playlist: {}", e.1))?;
+    let dir = st.song_dir(id);
     if dir.exists() {
         tokio::fs::remove_dir_all(dir).await?;
     }
-    Ok(StatusCode::NO_CONTENT)
+    Ok(true)
+}
+
+/// Quanto resta un download non riuscito, perché chi l'ha chiesto ne veda l'errore; poi sparisce.
+const FAILED_IMPORT_KEEP_SECS: u64 = 15 * 60;
+
+/// Cancella i download non riusciti più vecchi di `older_than` secondi.
+async fn purge_failed_imports(st: &AppState, older_than: u64) {
+    let now = now_secs();
+    let ids: Vec<(String, String)> = st
+        .0
+        .songs
+        .read()
+        .unwrap()
+        .values()
+        .filter(|s| s.is_failed_import() && now.saturating_sub(s.created_at) >= older_than)
+        .map(|s| (s.id.clone(), s.name.clone()))
+        .collect();
+    for (id, name) in ids {
+        match remove_song(st, &id).await {
+            Ok(_) => info!("download non riuscito tolto dalla libreria: {name} ({id})"),
+            Err(e) => warn!("pulizia del download {id}: {e:#}"),
+        }
+    }
 }
 
 async fn upload(
@@ -1482,8 +1520,43 @@ async fn import_url(
     Ok(Json(song))
 }
 
+/// Tentativi per un download da link: YouTube a volte risponde 403 o 429 per poco tempo.
+const DOWNLOAD_ATTEMPTS: u32 = 3;
+/// Tempo massimo di un download (un yt-dlp bloccato non deve restare "in download" per sempre).
+const DOWNLOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// Errore che può sparire riprovando (limiti di YouTube, rete, server occupato).
+fn transient_download_error(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    ["http error 403", "http error 429", "http error 5", "timed out", "timeout", "connection", "temporarily", "bloccato"]
+        .iter()
+        .any(|w| m.contains(w))
+}
+
 async fn download_task(st: AppState, id: String) {
-    match download(&st, &id).await {
+    let mut attempt = 1;
+    let result = loop {
+        let r = match tokio::time::timeout(DOWNLOAD_TIMEOUT, download(&st, &id)).await {
+            Ok(r) => r,
+            Err(_) => Err(anyhow!("download bloccato: nessun risultato in {} minuti", DOWNLOAD_TIMEOUT.as_secs() / 60)),
+        };
+        // l'audio si converte prima di dire che il brano è pronto: un file che ffmpeg non legge è un errore
+        let r = match r {
+            Ok(title) => ensure_original(&st, &id).await.map(|_| title).context("conversione dell'audio scaricato"),
+            Err(e) => Err(e),
+        };
+        match r {
+            Err(e) if attempt < DOWNLOAD_ATTEMPTS && transient_download_error(&format!("{e:#}")) && st.get(&id).is_some() => {
+                let wait = 15 * 3u64.pow(attempt - 1); // 15 s, 45 s
+                warn!("download {id}, tentativo {attempt} di {DOWNLOAD_ATTEMPTS}: {e:#}; riprovo tra {wait} s");
+                st.update(&id, false, |s| s.progress = 0.0);
+                tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                attempt += 1;
+            }
+            r => break r,
+        }
+    };
+    match result {
         Ok(title) => {
             info!("download completato {id}: {title}");
             let done = st.update(&id, true, |s| {
@@ -1491,25 +1564,28 @@ async fn download_task(st: AppState, id: String) {
                 s.status = Status::New;
                 s.progress = 0.0;
             });
-            if done.is_some() {
-                if let Err(e) = ensure_original(&st, &id).await {
-                    warn!("conversione {id}: {e:#}");
-                }
-            } else {
+            if done.is_none() {
                 // eliminato durante il download: yt-dlp potrebbe aver ricreato la cartella
                 let _ = tokio::fs::remove_dir_all(st.song_dir(&id)).await;
             }
         }
         Err(e) => {
-            error!("download {id}: {e:#}");
+            error!("download {id} non riuscito dopo {attempt} tentativi: {e:#}");
+            // l'errore resta visibile per un po' (avviso a chi l'ha chiesto), poi il brano sparisce
             let gone = st
                 .update(&id, true, |s| {
                     s.status = Status::Error;
                     s.error = Some(format!("{e:#}"));
+                    s.duration = None;
                 })
                 .is_none();
+            let dir = st.song_dir(&id);
             if gone {
-                let _ = tokio::fs::remove_dir_all(st.song_dir(&id)).await;
+                let _ = tokio::fs::remove_dir_all(dir).await;
+            } else {
+                for f in ["original.flac", "original.tmp.flac"] {
+                    let _ = tokio::fs::remove_file(dir.join(f)).await;
+                }
             }
         }
     }
@@ -1545,6 +1621,9 @@ async fn download(st: &AppState, id: &str) -> anyhow::Result<String> {
             "--progress",
             "--max-filesize",
             "1G",
+            // una connessione ferma diventa un errore (poi si riprova) invece di bloccare tutto
+            "--socket-timeout",
+            "30",
             "-f",
             "bestaudio/best",
             "-o",
@@ -2530,6 +2609,17 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(download_task(st.clone(), id));
     }
     projects::migrate(&st);
+    // download non riusciti: quelli rimasti da prima si tolgono subito, i nuovi dopo un po'
+    purge_failed_imports(&st, 0).await;
+    {
+        let st2 = st.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5 * 60)).await;
+                purge_failed_imports(&st2, FAILED_IMPORT_KEEP_SECS).await;
+            }
+        });
+    }
     backup::clean_tmp(&st.0.data_dir);
     admin::spawn_update_check(&st);
     {
@@ -2647,4 +2737,20 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod download_tests {
+    use super::*;
+
+    #[test]
+    fn errori_temporanei_di_download() {
+        assert!(transient_download_error("download fallito: unable to download video data: HTTP Error 403: Forbidden"));
+        assert!(transient_download_error("HTTP Error 429: Too Many Requests"));
+        assert!(transient_download_error("HTTP Error 503: Service Unavailable"));
+        assert!(transient_download_error("download bloccato: nessun risultato in 30 minuti"));
+        assert!(!transient_download_error("download fallito: Video unavailable. This video is private"));
+        assert!(!transient_download_error("download fallito: Unsupported URL: https://example.com"));
+        assert!(!transient_download_error("conversione dell'audio scaricato: file audio non riconosciuto"));
+    }
 }

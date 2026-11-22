@@ -803,8 +803,9 @@ function renderPendingImports() {
 function addPendingImports() {
   for (const id of [...state.pendingAdds]) {
     const s = songById(id);
+    // download non riuscito: l'avviso lo dà l'aggiornamento della libreria (refreshSongs)
     if (!s) { state.pendingAdds.delete(id); continue; }
-    if (s.status === 'error') { state.pendingAdds.delete(id); toast(`Download non riuscito: ${s.error || ''}`); continue; }
+    if (s.status === 'error') { state.pendingAdds.delete(id); toast(`Aggiunta non riuscita: ${s.error || ''}`); continue; }
     if (s.status !== 'downloading' && state.current) { state.pendingAdds.delete(id); addSongToProject(id, null); }
   }
   renderPendingImports();
