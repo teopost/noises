@@ -611,30 +611,26 @@ pub struct CreateBody {
     all_loops: Option<bool>,
 }
 
-/// Sezioni (loop) che si vedono nel salvataggio `preset`: le sue e quelle comuni a tutti.
+/// Sezioni (loop) che si vedono nel salvataggio `preset`: tutte, a meno che il salvataggio mostri
+/// soltanto le proprie.
 fn regions_of(p: &crate::projects::Project, preset: Option<&str>) -> Vec<Named> {
+    let save = preset.and_then(|id| p.presets.iter().find(|x| x.id == id));
     p.regions
         .iter()
-        .filter(|r| r.visible_in(preset))
+        .filter(|r| r.visible_in(save))
         .map(|r| Named { name: r.name.clone(), start: r.start, end: Some(r.end) })
         .collect()
 }
 
-/// Tutti i loop del progetto, per i link con `all_loops`: le sezioni di ogni salvataggio (quelle di un
-/// salvataggio solo portano anche il suo nome) e il loop di ogni salvataggio, senza doppioni (stessi
-/// istanti), in ordine di inizio. Tempi in secondi alla velocità originale, come le sezioni.
+/// Tutti i loop del progetto, per i link con `all_loops`: tutte le sezioni (anche quelle che un
+/// salvataggio tiene per sé) e il loop di ogni salvataggio, senza doppioni (stessi istanti), in ordine
+/// di inizio. Tempi in secondi alla velocità originale, come le sezioni.
 fn all_loops_of(p: &crate::projects::Project) -> Vec<Named> {
     let same = |a: &Named, s: f64, e: f64| (a.start - s).abs() < 0.05 && a.end.is_some_and(|x| (x - e).abs() < 0.05);
-    let preset_name = |id: &str| p.presets.iter().find(|x| x.id == id).map(|x| x.name.clone());
     let mut out: Vec<Named> = vec![];
     for r in p.regions.iter().filter(|r| r.end > r.start) {
-        let only_one = !r.all.unwrap_or(r.preset.is_none());
-        let name = match r.preset.as_deref().filter(|_| only_one).and_then(preset_name) {
-            Some(save) => format!("{} · {save}", r.name),
-            None => r.name.clone(),
-        };
         if !out.iter().any(|a| same(a, r.start, r.end)) {
-            out.push(Named { name, start: r.start, end: Some(r.end) });
+            out.push(Named { name: r.name.clone(), start: r.start, end: Some(r.end) });
         }
     }
     for pr in &p.presets {
@@ -951,13 +947,12 @@ mod tests {
     use super::*;
     use crate::projects::{Preset, Project, Region};
 
-    fn region(name: &str, start: f64, end: f64, preset: Option<&str>, all: Option<bool>) -> Region {
-        Region { id: name.into(), name: name.into(), start, end, preset: preset.map(Into::into), all }
+    fn region(name: &str, start: f64, end: f64, preset: Option<&str>) -> Region {
+        Region { id: name.into(), name: name.into(), start, end, preset: preset.map(Into::into), all: None }
     }
 
-    #[test]
-    fn tutti_i_loop_del_progetto() {
-        let preset = |id: &str, name: &str, sel: Option<(f64, f64)>| Preset {
+    fn preset(id: &str, name: &str, sel: Option<(f64, f64)>, own_loops: bool) -> Preset {
+        Preset {
             id: id.into(),
             name: name.into(),
             created_at: 0,
@@ -966,8 +961,12 @@ mod tests {
                 Some((s, e)) => serde_json::json!({ "selection": { "start": s, "end": e } }),
                 None => serde_json::json!({}),
             },
-        };
-        let p = Project {
+            own_loops,
+        }
+    }
+
+    fn project() -> Project {
+        Project {
             id: "p".into(),
             owner: None,
             name: "Brano".into(),
@@ -977,19 +976,34 @@ mod tests {
             groups: vec![],
             markers: vec![],
             regions: vec![
-                region("Strofa", 10.0, 30.0, None, None),
-                region("Assolo", 60.0, 75.0, Some("b"), Some(false)),
-                region("Ritornello", 30.0, 45.0, Some("a"), Some(true)),
-                region("Vuota", 5.0, 5.0, None, None),
+                region("Strofa", 10.0, 30.0, None),
+                region("Assolo", 60.0, 75.0, Some("b")),
+                region("Ritornello", 30.0, 45.0, Some("a")),
+                region("Vuota", 5.0, 5.0, None),
             ],
             presets: vec![
-                preset("a", "Solo voce", Some((30.02, 44.98))), // uguale al ritornello: niente doppione
-                preset("b", "Chitarra", Some((80.0, 90.0))),
-                preset("c", "Tutto", None),
+                preset("a", "Solo voce", Some((30.02, 44.98)), false), // uguale al ritornello: niente doppione
+                preset("b", "Chitarra", Some((80.0, 90.0)), true),
+                preset("c", "Tutto", None, false),
             ],
             settings: None,
-        };
-        let names: Vec<String> = all_loops_of(&p).into_iter().map(|n| n.name).collect();
-        assert_eq!(names, ["Strofa", "Ritornello", "Assolo · Chitarra", "Chitarra"]);
+        }
+    }
+
+    #[test]
+    fn sezioni_in_tutti_i_salvataggi_salvo_opzione() {
+        let p = project();
+        let names = |preset: Option<&str>| regions_of(&p, preset).into_iter().map(|n| n.name).collect::<Vec<_>>();
+        // senza opzione: tutte le sezioni del progetto, anche quelle create in un altro salvataggio
+        assert_eq!(names(Some("a")), ["Strofa", "Assolo", "Ritornello", "Vuota"]);
+        assert_eq!(names(Some("c")), names(None));
+        // "Chitarra" mostra soltanto le sezioni create mentre era in uso
+        assert_eq!(names(Some("b")), ["Assolo"]);
+    }
+
+    #[test]
+    fn tutti_i_loop_del_progetto() {
+        let names: Vec<String> = all_loops_of(&project()).into_iter().map(|n| n.name).collect();
+        assert_eq!(names, ["Strofa", "Ritornello", "Assolo", "Chitarra"]);
     }
 }

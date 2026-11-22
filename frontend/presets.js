@@ -214,7 +214,7 @@ async function deletePreset(p) {
   if (!(await uiConfirm(msg, { title: 'Elimina salvataggio', ok: 'Elimina', danger: true }))) return;
   if (sh) await unshare(sh, true);
   state.presets = state.presets.filter((x) => x !== p);
-  // le sue sezioni non si perdono: restano visibili quando non c'è nessun salvataggio in uso
+  // le sezioni create in quel salvataggio restano, senza più un salvataggio di origine
   for (const r of state.regions || []) if (r.preset === p.id) r.preset = null;
   if (state.presetId === p.id) setActivePreset(null);
   presetsChanged();
@@ -329,7 +329,7 @@ function updatePresetsUI() {
   const key = `${cur ? cur.id + cur.name : ''}|${n}`;
   if (key === presetsUiKey) return;
   presetsUiKey = key;
-  if (typeof regionsPresetChanged === 'function') regionsPresetChanged(); // ogni salvataggio ha le sue sezioni
+  if (typeof regionsPresetChanged === 'function') regionsPresetChanged(); // un salvataggio può mostrare solo le sue sezioni
   // un campo col suo valore, come il pulsante delle sezioni: il salvataggio in uso oppure "nessuno"
   // (in grigio); il numero dei salvataggi sta nel titolo dell'elenco
   btn.innerHTML = `${PRESET_ICON}${esc(cur ? cur.name : T('Salvataggio: nessuno'))}`;

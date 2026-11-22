@@ -51,18 +51,24 @@ pub struct Region {
     pub name: String,
     pub start: f64,
     pub end: f64,
-    /// salvataggio a cui appartiene la sezione (None = creata senza un salvataggio in uso)
+    /// salvataggio in uso quando la sezione è stata creata (None = nessuno): conta solo per i
+    /// salvataggi che mostrano soltanto le proprie sezioni (`Preset::own_loops`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
-    /// visibile in tutti i salvataggi; assente = sezione di quando erano tutte comuni (vale come sì)
+    /// vecchia scelta "visibile in tutti i salvataggi", non più usata: ora le sezioni si vedono in
+    /// tutti i salvataggi; resta per leggere i progetti di prima senza perdere niente
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub all: Option<bool>,
 }
 
 impl Region {
-    /// La sezione si vede nel salvataggio `preset`: è la sua, oppure è comune a tutti.
-    pub fn visible_in(&self, preset: Option<&str>) -> bool {
-        self.all.unwrap_or(self.preset.is_none()) || self.preset.as_deref() == preset
+    /// La sezione si vede nel salvataggio `preset` (None = nessun salvataggio in uso): sempre, a meno
+    /// che quel salvataggio mostri soltanto le proprie sezioni.
+    pub fn visible_in(&self, preset: Option<&Preset>) -> bool {
+        match preset {
+            Some(p) if p.own_loops => self.preset.as_deref() == Some(p.id.as_str()),
+            _ => true,
+        }
     }
 }
 
@@ -77,6 +83,10 @@ pub struct Preset {
     #[serde(default)]
     pub updated_at: u64,
     pub settings: serde_json::Value,
+    /// il salvataggio mostra soltanto le sezioni create mentre era in uso, non quelle di tutto il
+    /// progetto
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub own_loops: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

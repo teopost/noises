@@ -1,12 +1,14 @@
 'use strict';
 // Sezioni salvate: porzioni del progetto con un nome (es. "Assolo 1") da richiamare e ripetere in loop
 // per esercitarsi. Inizio e fine in secondi originali, come i segnalibri: restano giuste a ogni velocità.
-// Ogni salvataggio ha le sue sezioni: una sezione appartiene al salvataggio in uso quando viene creata
-// (`preset`; null = nessun salvataggio in uso) e si vede solo lì, a meno che sia segnata 📌 "in tutti
-// i salvataggi" (`all`).
+// Le sezioni si vedono in tutti i salvataggi. Ognuna ricorda il salvataggio in uso quando è stata creata
+// (`preset`; null = nessuno): serve ai salvataggi con l'opzione "solo le sue sezioni" (`own_loops`),
+// che mostrano soltanto quelle create mentre erano in uso.
 
-const regionVisible = (r) => !!r.all || (r.preset || null) === (state.presetId || null);
-/** Sezioni del salvataggio in uso, più quelle comuni a tutti. */
+/** Il salvataggio in uso mostra soltanto le proprie sezioni? */
+const ownLoopsOnly = () => { const p = typeof activePreset === 'function' ? activePreset() : null; return !!(p && p.own_loops); };
+const regionVisible = (r) => !ownLoopsOnly() || (r.preset || null) === (state.presetId || null);
+/** Sezioni che si vedono ora: tutte, oppure solo quelle del salvataggio in uso se lo chiede. */
 const visibleRegions = () => (state.regions || []).filter(regionVisible);
 
 const rk = () => 100 / engine.tempo; // secondi originali → timeline corrente
@@ -35,7 +37,7 @@ async function saveSelectionAsRegion() {
   if (!name || !s) return;
   pushUndo('Salva sezione');
   const k = rk();
-  state.regions.push({ id: newRegionId(), name, start: +(s.start / k).toFixed(3), end: +(s.end / k).toFixed(3), preset: state.presetId || null, all: false });
+  state.regions.push({ id: newRegionId(), name, start: +(s.start / k).toFixed(3), end: +(s.end / k).toFixed(3), preset: state.presetId || null });
   state.regions.sort((a, b) => a.start - b.start);
   regionsChanged();
   toast(`Sezione "${name}" salvata`);
@@ -56,13 +58,17 @@ function deleteRegion(r) {
   toast(`Sezione "${r.name}" eliminata (Ctrl+Z per annullare)`);
 }
 
-/** 📌: la sezione si vede in tutti i salvataggi, oppure torna solo di quello in uso. */
-function toggleRegionAll(r) {
-  pushUndo('Sezione in tutti i salvataggi');
-  r.all = !r.all;
-  if (!r.all) r.preset = state.presetId || null;
-  regionsChanged();
-  toast(r.all ? `Sezione "${r.name}" visibile in tutti i salvataggi` : `Sezione "${r.name}" solo in questo salvataggio`);
+/** Opzione del salvataggio in uso: mostrare soltanto le sezioni create mentre era in uso. */
+function toggleOwnLoops() {
+  const p = activePreset();
+  if (!p) return;
+  p.own_loops = !p.own_loops;
+  if (!p.own_loops) delete p.own_loops;
+  presetsChanged();
+  if (typeof refreshSharesWith === 'function') refreshSharesWith(p); // i suoi link mostrano altre sezioni
+  updateRegionsUI(regionOfSelection());
+  if (!$('#regions-menu').classList.contains('hidden')) renderRegionsMenu();
+  toast(p.own_loops ? `"${p.name}" mostra solo le sue sezioni` : `"${p.name}" mostra tutte le sezioni`);
 }
 
 /** Cambio del salvataggio in uso: cambiano le sezioni che si vedono. */
@@ -96,18 +102,21 @@ function renderRegionsMenu() {
   const k = rk(), cur = regionOfSelection();
   const list = visibleRegions();
   const save = typeof activePreset === 'function' ? activePreset() : null;
-  menu.innerHTML = `<div class="menu-title">${esc(save ? `${T('Sezioni di')} "${save.name}"` : T('Sezioni salvate'))}${list.length ? ` (${list.length})` : ''}</div>` + (list.length
+  const own = !!(save && save.own_loops);
+  menu.innerHTML = `<div class="menu-title">${esc(own ? `${T('Sezioni di')} "${save.name}"` : T('Sezioni salvate'))}${list.length ? ` (${list.length})` : ''}</div>`
+    // opzione del salvataggio in uso: tutte le sezioni del progetto (normale) o solo le sue
+    + (save ? `<label class="menu-check" title="${esc(T('Con questa opzione il salvataggio mostra soltanto le sezioni create mentre era in uso, anche nei suoi link pubblici'))}"><input type="checkbox" class="rg-own" ${own ? 'checked' : ''}> ${esc(T('Solo le sezioni di questo salvataggio'))}</label>` : '')
+    + (list.length
     ? list.map((r) => `
       <div class="region-item ${r === cur ? 'active' : ''}" data-id="${r.id}">
         <button class="rg-go" title="Seleziona la sezione e ripetila in loop">
           <span class="rg-name">${esc(r.name)}</span>
           <span class="rg-time">${fmtPrecise(r.start * k)} – ${fmtPrecise(r.end * k)}</span>
         </button>
-        <button class="rg-all ghost ${r.all ? 'on' : ''}" title="${r.all ? 'Visibile in tutti i salvataggi: clic per tenerla solo in questo' : 'Solo in questo salvataggio: clic per mostrarla in tutti'}" aria-pressed="${!!r.all}">📌</button>
         <button class="rg-ren ghost" title="Rinomina">✎</button>
         <button class="rg-del ghost" title="Elimina">🗑</button>
       </div>`).join('')
-    : '<div class="menu-empty">Nessuna sezione: trascina sulla timeline per selezionare una porzione, poi salvala da qui con un nome.</div>')
+    : `<div class="menu-empty">${own ? 'Nessuna sezione creata in questo salvataggio: togli la spunta qui sopra per vedere quelle del progetto, oppure seleziona un tratto e salvalo.' : 'Nessuna sezione: trascina sulla timeline per selezionare una porzione, poi salvala da qui con un nome.'}</div>`)
     // come nel menu dei salvataggi: l'ultima voce salva ciò che c'è ora (qui, la selezione)
     + '<div class="menu-sep"></div>'
     + (cur ? `<div class="menu-hint">${esc(T('La selezione è già la sezione'))} "${esc(cur.name)}"</div>`
@@ -117,10 +126,10 @@ function renderRegionsMenu() {
     + (state.sel ? `<button class="menu-item rg-leave" title="Toglie la selezione dalla timeline (Esc)">${cur ? 'Esci dalla sezione' : 'Togli la selezione'}</button>` : '');
   menu.querySelector('.rg-new').addEventListener('click', () => { closeRegionsMenu(); saveSelectionAsRegion(); });
   menu.querySelector('.rg-leave')?.addEventListener('click', () => { closeRegionsMenu(); setSelection(null); });
+  menu.querySelector('.rg-own')?.addEventListener('change', toggleOwnLoops);
   menu.querySelectorAll('.region-item').forEach((row) => {
     const r = list.find((x) => x.id === row.dataset.id);
     row.querySelector('.rg-go').addEventListener('click', () => { closeRegionsMenu(); goRegion(r); });
-    row.querySelector('.rg-all').addEventListener('click', () => toggleRegionAll(r));
     row.querySelector('.rg-ren').addEventListener('click', () => renameRegion(r));
     row.querySelector('.rg-del').addEventListener('click', () => deleteRegion(r));
   });
