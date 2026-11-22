@@ -115,6 +115,10 @@ pub struct Share {
     /// la pagina offre il comando per cambiare la velocità (in tempo reale, nel browser)
     #[serde(default)]
     speed_choice: bool,
+    /// l'elenco dei loop contiene quelli di tutti i salvataggi del progetto (sezioni e loop di
+    /// ogni salvataggio), non solo quelli del salvataggio scelto
+    #[serde(default)]
+    all_loops: bool,
 }
 
 fn yes() -> bool {
@@ -507,6 +511,8 @@ pub struct ShareSummary {
     loop_buttons: bool,
     /// comando della velocità nella pagina
     speed_buttons: bool,
+    /// nell'elenco dei loop anche quelli degli altri salvataggi
+    all_loops: bool,
 }
 
 impl From<&Share> for ShareSummary {
@@ -522,6 +528,7 @@ impl From<&Share> for ShareSummary {
             stem_buttons: s.stem_toggles,
             loop_buttons: s.loop_choice,
             speed_buttons: s.speed_choice,
+            all_loops: s.all_loops,
         }
     }
 }
@@ -598,6 +605,10 @@ pub struct CreateBody {
     /// comando della velocità nella pagina; se manca, come `stem_buttons`
     #[serde(default)]
     speed_buttons: Option<bool>,
+    /// loop di tutti i salvataggi nell'elenco; se manca: come prima per un link che esiste già,
+    /// spento per un link nuovo
+    #[serde(default)]
+    all_loops: Option<bool>,
 }
 
 /// Sezioni (loop) che si vedono nel salvataggio `preset`: le sue e quelle comuni a tutti.
@@ -607,6 +618,44 @@ fn regions_of(p: &crate::projects::Project, preset: Option<&str>) -> Vec<Named> 
         .filter(|r| r.visible_in(preset))
         .map(|r| Named { name: r.name.clone(), start: r.start, end: Some(r.end) })
         .collect()
+}
+
+/// Tutti i loop del progetto, per i link con `all_loops`: le sezioni di ogni salvataggio (quelle di un
+/// salvataggio solo portano anche il suo nome) e il loop di ogni salvataggio, senza doppioni (stessi
+/// istanti), in ordine di inizio. Tempi in secondi alla velocità originale, come le sezioni.
+fn all_loops_of(p: &crate::projects::Project) -> Vec<Named> {
+    let same = |a: &Named, s: f64, e: f64| (a.start - s).abs() < 0.05 && a.end.is_some_and(|x| (x - e).abs() < 0.05);
+    let preset_name = |id: &str| p.presets.iter().find(|x| x.id == id).map(|x| x.name.clone());
+    let mut out: Vec<Named> = vec![];
+    for r in p.regions.iter().filter(|r| r.end > r.start) {
+        let only_one = !r.all.unwrap_or(r.preset.is_none());
+        let name = match r.preset.as_deref().filter(|_| only_one).and_then(preset_name) {
+            Some(save) => format!("{} · {save}", r.name),
+            None => r.name.clone(),
+        };
+        if !out.iter().any(|a| same(a, r.start, r.end)) {
+            out.push(Named { name, start: r.start, end: Some(r.end) });
+        }
+    }
+    for pr in &p.presets {
+        let sel = &pr.settings["selection"];
+        let (Some(s), Some(e)) = (sel["start"].as_f64(), sel["end"].as_f64()) else { continue };
+        if s.is_finite() && e.is_finite() && s >= 0.0 && e > s && !out.iter().any(|a| same(a, s, e)) {
+            out.push(Named { name: pr.name.clone(), start: s, end: Some(e) });
+        }
+    }
+    out.sort_by(|a, b| a.start.total_cmp(&b.start));
+    out
+}
+
+/// Con `all_loops` ogni salvataggio del link offre tutti i loop del progetto.
+fn apply_all_loops(sh: &mut Share, every: &[Named]) {
+    if sh.all_loops {
+        sh.regions = every.to_vec();
+        for v in &mut sh.extra {
+            v.regions = Some(every.to_vec());
+        }
+    }
 }
 
 /// Fotografa le tracce del progetto con i volumi del salvataggio.
@@ -698,8 +747,10 @@ pub async fn create(
         stem_toggles: b.stem_buttons.unwrap_or(true),
         loop_choice: b.loop_buttons.unwrap_or(true),
         speed_choice: b.speed_buttons.unwrap_or(true),
+        all_loops: b.all_loops.unwrap_or(false),
     };
-    let (stem_buttons, loop_buttons, speed_buttons) = (b.stem_buttons, b.loop_buttons, b.speed_buttons);
+    let (stem_buttons, loop_buttons, speed_buttons, all_loops) = (b.stem_buttons, b.loop_buttons, b.speed_buttons, b.all_loops);
+    let every = all_loops_of(&p);
     // lo stesso salvataggio ricondiviso tiene il suo link
     let sh = edit(&st, |all| {
         if let Some(old) = sh.preset.as_ref().and_then(|id| all.iter_mut().find(|x| x.project == pid && x.preset.as_ref() == Some(id))) {
@@ -722,8 +773,11 @@ pub async fn create(
                 v.mix.click = before(Some(v.preset.as_str()));
             }
             sh.speed_choice = speed_buttons.unwrap_or(old.speed_choice);
+            sh.all_loops = all_loops.unwrap_or(old.all_loops);
+            apply_all_loops(&mut sh, &every);
             *old = sh.clone();
         } else {
+            apply_all_loops(&mut sh, &every);
             all.push(sh.clone());
         }
         Ok(sh)
@@ -890,4 +944,52 @@ pub async fn page(State(st): State<AppState>, UrlPath(token): UrlPath<String>) -
         );
     let status = if sh.is_some() { StatusCode::OK } else { StatusCode::NOT_FOUND };
     (status, [(header::CACHE_CONTROL, "no-cache")], Html(html)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::projects::{Preset, Project, Region};
+
+    fn region(name: &str, start: f64, end: f64, preset: Option<&str>, all: Option<bool>) -> Region {
+        Region { id: name.into(), name: name.into(), start, end, preset: preset.map(Into::into), all }
+    }
+
+    #[test]
+    fn tutti_i_loop_del_progetto() {
+        let preset = |id: &str, name: &str, sel: Option<(f64, f64)>| Preset {
+            id: id.into(),
+            name: name.into(),
+            created_at: 0,
+            updated_at: 0,
+            settings: match sel {
+                Some((s, e)) => serde_json::json!({ "selection": { "start": s, "end": e } }),
+                None => serde_json::json!({}),
+            },
+        };
+        let p = Project {
+            id: "p".into(),
+            owner: None,
+            name: "Brano".into(),
+            created_at: 0,
+            updated_at: 0,
+            tracks: vec![],
+            groups: vec![],
+            markers: vec![],
+            regions: vec![
+                region("Strofa", 10.0, 30.0, None, None),
+                region("Assolo", 60.0, 75.0, Some("b"), Some(false)),
+                region("Ritornello", 30.0, 45.0, Some("a"), Some(true)),
+                region("Vuota", 5.0, 5.0, None, None),
+            ],
+            presets: vec![
+                preset("a", "Solo voce", Some((30.02, 44.98))), // uguale al ritornello: niente doppione
+                preset("b", "Chitarra", Some((80.0, 90.0))),
+                preset("c", "Tutto", None),
+            ],
+            settings: None,
+        };
+        let names: Vec<String> = all_loops_of(&p).into_iter().map(|n| n.name).collect();
+        assert_eq!(names, ["Strofa", "Ritornello", "Assolo · Chitarra", "Chitarra"]);
+    }
 }

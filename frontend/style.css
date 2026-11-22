@@ -982,6 +982,8 @@ body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
 .share-dlg menu { align-items: center; }
 .share-dlg .share-opts { display: flex; flex-direction: column; gap: 16px; }
 .share-dlg .share-stems { cursor: pointer; }
+.share-dlg .share-sub { margin-left: 1.6rem; }
+.share-dlg .share-sub.off { opacity: .5; cursor: default; }
 .share-dlg menu .spacer { flex: 1; }
 .danger-text { color: var(--danger); }
 

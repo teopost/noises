@@ -401,7 +401,7 @@ function presetMix(p) {
  * Crea o aggiorna il link del salvataggio `p`. `extra`: id di altri salvataggi da poter scegliere
  * nella pagina (se omesso restano quelli già inclusi).
  */
-async function sharePreset(p, { silent = false, extra = null, stems = null, loops = null, speed = null } = {}) {
+async function sharePreset(p, { silent = false, extra = null, stems = null, loops = null, speed = null, allLoops = null } = {}) {
   const proj = state.current;
   if (!proj) return null;
   const mix = presetMix(p);
@@ -411,6 +411,8 @@ async function sharePreset(p, { silent = false, extra = null, stems = null, loop
   const stemButtons = stems ?? ((shareOf(p) || {}).stem_buttons ?? true);
   const loopButtons = loops ?? ((shareOf(p) || {}).loop_buttons ?? true);
   const speedButtons = speed ?? ((shareOf(p) || {}).speed_buttons ?? true);
+  // loop di tutti i salvataggi nell'elenco della pagina: spenti se non si è scelto altrimenti
+  const everyLoop = allLoops ?? ((shareOf(p) || {}).all_loops ?? false);
   const extras = ids
     .map((id) => (state.presets || []).find((x) => x.id === id && x.id !== p.id))
     .filter(Boolean)
@@ -420,7 +422,7 @@ async function sharePreset(p, { silent = false, extra = null, stems = null, loop
     await saveProjectNow(); // il link usa le clip salvate del progetto
     const sh = await api(`/api/projects/${proj.id}/shares`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preset: p.id, subtitle: p.name, ...mix, extra: extras, stem_buttons: stemButtons, loop_buttons: loopButtons, speed_buttons: speedButtons }),
+      body: JSON.stringify({ preset: p.id, subtitle: p.name, ...mix, extra: extras, stem_buttons: stemButtons, loop_buttons: loopButtons, speed_buttons: speedButtons, all_loops: everyLoop }),
     });
     if (state.current !== proj) return null;
     state.shares = [...(state.shares || []).filter((x) => x.token !== sh.token), sh];
@@ -469,6 +471,7 @@ function openShareDialog(p, sh) {
   $('#share-stems').disabled = false;
   $('#share-loops').checked = !!sh.loop_buttons;
   $('#share-loops').disabled = false;
+  syncAllLoops(sh);
   $('#share-speed').checked = !!sh.speed_buttons;
   $('#share-speed').disabled = false;
   renderShareExtras(p, sh);
@@ -485,6 +488,14 @@ function openShareDialog(p, sh) {
   $('#share-native').classList.toggle('hidden', !navigator.share);
   $('#share-dlg').showModal();
   $('#share-url').select();
+}
+
+/** "Includi i loop di tutti i salvataggi" vale solo con la scelta dei loop accesa. */
+function syncAllLoops(sh) {
+  const on = !!sh.loop_buttons;
+  $('#share-allloops').checked = !!sh.all_loops;
+  $('#share-allloops').disabled = !on;
+  $('#share-allloops-row').classList.toggle('off', !on);
 }
 
 async function copyShareUrl() {
@@ -512,15 +523,18 @@ function setupPresets() {
   document.addEventListener('keydown', (e) => { if (e.code === 'Escape') closePresetsMenu(); });
   $('#share-copy').addEventListener('click', copyShareUrl);
   // opzioni della pagina: pulsanti delle tracce separate, scelta dei loop, velocità
-  for (const [sel, opt, field] of [['#share-stems', 'stems', 'stem_buttons'], ['#share-loops', 'loops', 'loop_buttons'], ['#share-speed', 'speed', 'speed_buttons']]) {
+  for (const [sel, opt, field] of [['#share-stems', 'stems', 'stem_buttons'], ['#share-loops', 'loops', 'loop_buttons'], ['#share-speed', 'speed', 'speed_buttons'], ['#share-allloops', 'allLoops', 'all_loops']]) {
     $(sel).addEventListener('change', async () => {
       const p = shareDlgPreset, cb = $(sel);
       if (!p) return;
       const want = cb.checked;
       cb.disabled = true;
       const res = await sharePreset(p, { silent: true, [opt]: want });
-      if (shareDlgPreset === p) cb.checked = !!(res || shareOf(p) || { [field]: !want })[field];
+      const now = res || shareOf(p) || { [field]: !want };
+      if (shareDlgPreset === p) cb.checked = !!now[field];
       cb.disabled = false;
+      const known = res || shareOf(p);
+      if (shareDlgPreset === p && known) syncAllLoops(known);
     });
   }
   $('#share-open').addEventListener('click', () => window.open($('#share-url').value, '_blank', 'noopener'));
