@@ -262,7 +262,6 @@ async function openProject(id, force) {
   $('#chord-song').textContent = '';
   initLayout(p);
   state.markers = (p.markers || []).map((m) => ({ ...m }));
-  // le sezioni di quando erano tutte comuni restano comuni a tutti i salvataggi (📌)
   // il vecchio `all` (📌 "in tutti i salvataggi") non serve più: le sezioni si vedono ovunque
   state.regions = (p.regions || []).map(({ all, ...r }) => ({ ...r, preset: r.preset || null }));
   state.presets = (p.presets || []).map((x) => ({ ...x }));

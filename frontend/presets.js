@@ -29,8 +29,9 @@ function presetKey(c) {
   return JSON.stringify({ ...n, groups });
 }
 
-// Salvataggio in uso: richiamato o appena creato, resta attivo finché non se ne sceglie un altro
-// (o si esce). Le modifiche a loop, sezioni, volumi, muto/solo, tonalità e velocità finiscono lì.
+// Salvataggio in uso: c'è sempre (all'apertura del progetto, se manca, si crea "Predefinito"); resta
+// attivo finché non se ne sceglie un altro. Le modifiche a loop, sezioni, volumi, muto/solo,
+// tonalità e velocità finiscono lì.
 const presetStoreKey = (pid) => `noises.preset.${pid}`;
 let applyingPreset = false, presetShareTimer = null, presetShareFor = null;
 
@@ -48,18 +49,50 @@ function setActivePreset(p) {
   } catch {}
 }
 
-/** All'apertura del progetto: torna nel salvataggio in uso l'ultima volta (chiamata a tracce caricate). */
+/**
+ * C'è sempre un salvataggio in uso (chiamata a tracce caricate). All'apertura del progetto si torna in
+ * quello dell'ultima volta; se non c'è, in quello che corrisponde allo stato del progetto; altrimenti
+ * se ne crea uno, "Predefinito", con lo stato attuale (così non si perde niente).
+ */
 function restoreActivePreset() {
+  if (!state.current || !engine.tracks.length || state.pending || state.presetApplying || applyingPreset) return;
+  if (activePreset()) { state.presetRestore = null; return; }
   const id = state.presetRestore;
-  if (!id || !state.current || !engine.tracks.length || state.pending) return;
   state.presetRestore = null;
-  const p = (state.presets || []).find((x) => x.id === id);
-  if (!p) { setActivePreset(null); return; }
-  if (presetKey(p.settings || {}) === presetKey(presetSnapshot())) state.presetId = p.id;
-  else {
-    const proj = state.current; // fuori dal caricamento in corso
-    setTimeout(() => { if (state.current === proj) applyPreset(p); });
+  const list = state.presets || [];
+  const p = id && list.find((x) => x.id === id);
+  if (p) {
+    if (presetKey(p.settings || {}) === presetKey(presetSnapshot())) setActivePreset(p);
+    else {
+      // le impostazioni si applicano appena finisce il caricamento; intanto non se ne crea un altro
+      state.presetApplying = true;
+      const proj = state.current;
+      setTimeout(() => {
+        state.presetApplying = false;
+        if (state.current === proj) applyPreset(p);
+      });
+    }
+    return;
   }
+  const key = presetKey(presetSnapshot());
+  const same = list.find((x) => presetKey(x.settings || {}) === key);
+  if (same) { setActivePreset(same); return; }
+  createDefaultPreset();
+}
+
+/** Crea il salvataggio "Predefinito" con lo stato attuale e lo mette in uso. */
+function createDefaultPreset() {
+  const list = state.presets || [];
+  const names = new Set(list.map((x) => x.name));
+  const base = T('Predefinito');
+  let name = base;
+  for (let i = 2; names.has(name); i++) name = `${base} ${i}`;
+  const now = Math.floor(Date.now() / 1000);
+  const p = { id: newPresetId(), name, created_at: now, updated_at: now, settings: presetSnapshot() };
+  state.presets = [...list, p];
+  setActivePreset(p);
+  presetsChanged();
+  return p;
 }
 
 /** Copia lo stato attuale nel salvataggio in uso; true se è cambiato. */
@@ -180,15 +213,6 @@ function applyPresetSettings(p) {
   updateSaveUI();
 }
 
-/** Esce dal salvataggio: le modifiche successive non toccano più nessun salvataggio. */
-function leavePreset() {
-  if (syncPresetNow()) saveProject();
-  flushPresetShares();
-  setActivePreset(null);
-  presetsUiKey = '';
-  updatePresetsUI();
-}
-
 async function overwritePreset(p) {
   if (!(await uiConfirm(`Sostituire "${p.name}" con lo stato attuale?`, { ok: 'Sostituisci' }))) return;
   p.settings = presetSnapshot();
@@ -207,6 +231,11 @@ async function renamePreset(p) {
 }
 
 async function deletePreset(p) {
+  // c'è sempre almeno un salvataggio
+  if ((state.presets || []).length <= 1) {
+    toast(T('Non si può eliminare l\'unico salvataggio: creane prima un altro'));
+    return;
+  }
   const sh = shareOf(p);
   const msg = sh
     ? `Eliminare il salvataggio "${p.name}"?\n\nAnche il suo link pubblico smetterà di funzionare.`
@@ -216,7 +245,11 @@ async function deletePreset(p) {
   state.presets = state.presets.filter((x) => x !== p);
   // le sezioni create in quel salvataggio restano, senza più un salvataggio di origine
   for (const r of state.regions || []) if (r.preset === p.id) r.preset = null;
-  if (state.presetId === p.id) setActivePreset(null);
+  // era quello in uso: si passa subito al salvataggio modificato più di recente
+  if (state.presetId === p.id) {
+    const next = [...state.presets].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))[0];
+    applyPreset(next);
+  }
   presetsChanged();
   refreshSharesWith(p); // sparisce dai link in cui era incluso
 }
@@ -284,14 +317,13 @@ function renderPresetsMenu() {
         ${p === cur ? '<span class="ps-over ghost ph" aria-hidden="true">⟳</span>' : '<button class="ps-over ghost" title="Sostituisci con lo stato attuale">⟳</button>'}
         <button class="ps-share ghost ${sh ? 'on' : ''}" title="${sh ? 'Link pubblico attivo: clic per copiarlo o gestirlo' : 'Crea un link pubblico da condividere'}">🔗</button>
         <button class="rg-ren ghost" title="Rinomina">✎</button>
-        <button class="rg-del ghost" title="Elimina">🗑</button>
+        <button class="rg-del ghost" title="${list.length > 1 ? 'Elimina' : 'È l\'unico salvataggio: non si può eliminare'}" ${list.length > 1 ? '' : 'disabled'}>🗑</button>
       </div>`;
     }).join('')
     : '<div class="menu-empty">Nessun salvataggio: imposta volumi, muto/solo, velocità e loop, poi salva lo stato con un nome per richiamarlo in seguito.</div>')
     + `<div class="menu-sep"></div>`
     + (cur ? `<div class="menu-hint">Le modifiche a loop, sezioni, volumi e velocità vengono salvate in "${esc(cur.name)}"</div>` : '')
-    + `<button class="menu-item ps-new">＋ ${cur ? 'Nuovo salvataggio dallo stato attuale…' : 'Salva lo stato attuale…'}</button>`
-    + (cur ? `<button class="menu-item ps-leave" title="Le modifiche successive non cambiano nessun salvataggio">Esci dal salvataggio</button>` : '');
+    + '<button class="menu-item ps-new">＋ Nuovo salvataggio dallo stato attuale…</button>';
   menu.querySelectorAll('.preset-item').forEach((row) => {
     const p = list.find((x) => x.id === row.dataset.id);
     row.querySelector('.rg-go').addEventListener('click', () => { closePresetsMenu(); applyPreset(p); });
@@ -301,7 +333,6 @@ function renderPresetsMenu() {
     row.querySelector('.rg-del').addEventListener('click', () => deletePreset(p));
   });
   menu.querySelector('.ps-new').addEventListener('click', () => { closePresetsMenu(); savePreset(); });
-  menu.querySelector('.ps-leave')?.addEventListener('click', () => { closePresetsMenu(); leavePreset(); });
 }
 
 function openPresetsMenu() {
@@ -330,9 +361,9 @@ function updatePresetsUI() {
   if (key === presetsUiKey) return;
   presetsUiKey = key;
   if (typeof regionsPresetChanged === 'function') regionsPresetChanged(); // un salvataggio può mostrare solo le sue sezioni
-  // un campo col suo valore, come il pulsante delle sezioni: il salvataggio in uso oppure "nessuno"
-  // (in grigio); il numero dei salvataggi sta nel titolo dell'elenco
-  btn.innerHTML = `${PRESET_ICON}${esc(cur ? cur.name : T('Salvataggio: nessuno'))}`;
+  // un campo col suo valore, come il pulsante delle sezioni: il salvataggio in uso (c'è sempre; solo
+  // durante il caricamento il pulsante dice "Salvataggio"); il numero sta nel titolo dell'elenco
+  btn.innerHTML = `${PRESET_ICON}${esc(cur ? cur.name : T('Salvataggio'))}`;
   btn.classList.toggle('on', !!cur);
   btn.classList.toggle('none', !cur);
   btn.title = cur ? `In uso il salvataggio "${cur.name}": le modifiche vengono salvate qui. Clic per tornare all'inizio del suo loop, ▾ per l'elenco` : 'Salvataggi: stati del progetto con un nome da richiamare (loop, solo voce…)';
