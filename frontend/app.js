@@ -593,7 +593,7 @@ function renderPlaylists() {
     li.className = state.view === id ? 'active' : '';
     li.innerHTML = `<span class="pl-icon">${editable ? '♫' : '▤'}</span>
       <span class="pl-name" title="${esc(name)}">${esc(name)}</span>
-      ${editable ? '<button class="ren" title="Rinomina">✎</button><button class="del" title="Elimina playlist">✕</button>' : ''}
+      ${editable ? '<button class="ren" title="Rinomina">✎</button><button class="del" title="Elimina playlist">🗑</button>' : ''}
       <span class="count">${count}</span>`;
     li.addEventListener('click', () => setView(id));
     if (editable) {
@@ -723,7 +723,7 @@ function openSongMenu(song, anchor) {
     items.push({ icon: '♫', label: T('Aggiungi a playlist'), extra: `${n ? `<span class="mi-count">${n}</span>` : ''}<span class="mi-sub">›</span>`, act: playlists });
     if (song.status !== 'downloading') items.push({ icon: '✎', label: T('Rinomina…'), act: () => { close(); renameSong(song); } });
     items.push({ sep: true });
-    items.push({ icon: '✕', label: T('Elimina…'), danger: true, act: () => { close(); deleteSong(song); } });
+    items.push({ icon: '🗑', label: T('Elimina…'), danger: true, act: () => { close(); deleteSong(song); } });
     menu.innerHTML = items.map((it, i) => it.sep ? '<div class="menu-sep"></div>'
       : `<button class="menu-item${it.danger ? ' danger' : ''}" data-i="${i}"><span class="mi">${it.icon}</span><span class="mi-label">${esc(it.label)}</span>${it.extra || ''}</button>`).join('');
     menu.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => items[b.dataset.i].act()));

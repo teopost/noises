@@ -105,7 +105,7 @@ function renderProjects() {
     li.className = state.current && state.current.id === p.id ? 'active' : '';
     li.innerHTML = `<span class="pl-icon">◧</span>
       <span class="pl-name" title="${esc(p.songs.join(', ') || 'vuoto')}">${esc(p.name)}</span>
-      <button class="bak" title="Backup completo (.zip): progetto e brani, da ripristinare anche su un'altra installazione">⤓</button><button class="ren" title="Rinomina">✎</button><button class="del" title="Elimina progetto">✕</button>
+      <button class="bak" title="Backup completo (.zip): progetto e brani, da ripristinare anche su un'altra installazione">⤓</button><button class="ren" title="Rinomina">✎</button><button class="del" title="Elimina progetto">🗑</button>
       <span class="count">${p.songs.length || ''}</span>`;
     li.addEventListener('click', () => openProject(p.id));
     li.querySelector('.ren').addEventListener('click', async (e) => {
