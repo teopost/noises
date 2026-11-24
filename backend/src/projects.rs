@@ -41,6 +41,9 @@ pub struct PTrack {
     /// solo un canale del brano: "L" (sinistro) o "R" (destro), per le tracce divise
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ch: Option<String>,
+    /// colore scelto dall'utente ("#rrggbb"); assente = colore del tipo di traccia
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// Sezione salvata del progetto (es. "Assolo"): intervallo da riascoltare in loop.
@@ -325,6 +328,9 @@ pub async fn put_state(
             t.fx = t.fx.map(crate::fx::Fx::clamped);
             t.env = crate::env::clean(t.env);
             t.ch = t.ch.take().filter(|c| c == "L" || c == "R");
+            t.color = t.color.take().map(|c| c.to_ascii_lowercase()).filter(|c| {
+                c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit())
+            });
             t
         })
         .collect();
@@ -481,7 +487,7 @@ pub fn migrate(st: &AppState) {
             let clips = layout.stem_clips.get(stem).cloned().unwrap_or_else(|| {
                 vec![Clip { id: format!("{stem}-0"), start: 0.0, offset: 0.0, duration, link: None }]
             });
-            tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false, fx: None, env: None, ch: None });
+            tracks.push(PTrack { name: stem.clone(), label: String::new(), song: song.id.clone(), part: stem.clone(), clips, rec: false, fx: None, env: None, ch: None, color: None });
         }
         for ut in &song.user_tracks {
             let tname = format!("user:{}", ut.id);
@@ -516,7 +522,7 @@ pub fn migrate(st: &AppState) {
             ns.created_at = now_secs();
             st.0.songs.write().unwrap().insert(new_id.clone(), ns.clone());
             let _ = st.save_meta(&ns);
-            tracks.push(PTrack { name: tname, label: ut.name.clone(), song: new_id, part: "original".into(), clips: ut.clips.clone(), rec: false, fx: None, env: None, ch: None });
+            tracks.push(PTrack { name: tname, label: ut.name.clone(), song: new_id, part: "original".into(), clips: ut.clips.clone(), rec: false, fx: None, env: None, ch: None, color: None });
         }
         if !layout.order.is_empty() {
             let pos = |n: &String| layout.order.iter().position(|x| x == n).unwrap_or(usize::MAX);

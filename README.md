@@ -210,6 +210,7 @@ Le modifiche che toccano solo la documentazione e il sito (`docs/`) non avviano 
 | Zoom | `Ctrl` + rotella, pinch, slider, oppure i bordi del riquadro nella panoramica |
 | Scorrere | trascina il riquadro della panoramica, `Shift` + rotella, trackpad |
 | Separare, rinominare, duplicare, esportare, eliminare una traccia | menu **⋯** della traccia |
+| Cambiare il colore di una traccia (pallino e forma d'onda) | clic sul pallino colorato, oppure menu **⋯** → *Cambia colore…* (*Colore predefinito* per tornare a quello automatico) |
 | Linea del volume | seleziona la traccia, poi 📈 nella barra o `V` (oppure ⋯ della traccia → *Linea del volume*): clic per un nuovo punto, trascina per spostarlo (`Shift`: solo in verticale, `Ctrl`: aggancio al click), trascina la linea tra due punti per alzarla o abbassarla, doppio clic o `Canc` per togliere un punto; menu **⋯** → *Abbassa il volume nella selezione* · *Cancella la linea del volume* |
 | Pan di una traccia o di un gruppo | cursore piccolo accanto al volume; doppio clic per il centro |
 | Separare i due canali di una registrazione | ⋯ della traccia → *Dividi sinistro/destro* (e *Riunisci in stereo* per tornare indietro) |

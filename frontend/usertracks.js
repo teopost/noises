@@ -66,7 +66,7 @@ function setupUserTracks() {
       : 'Rilascia: il file va nella libreria e nel progetto';
     const lanes = overLanes(e) && engine.tracks.length;
     tl.classList.toggle('drop-lanes', !!lanes);
-    if (lanes) $('#drop-hint').style.left = `${headWidth() + Math.max(0, timeAt(e.clientX)) * state.zoom}px`;
+    if (lanes) $('#drop-hint').style.left = `${headWidth() + Math.max(0, timeAt(e.clientX, true)) * state.zoom}px`;
   });
   main.addEventListener('dragleave', () => {
     // dragleave scatta anche passando sopra gli elementi interni: si chiude solo se non riprende
@@ -76,7 +76,7 @@ function setupUserTracks() {
     const k = kind(e);
     if (!k) return;
     e.preventDefault();
-    const start = overLanes(e) && engine.tracks.length ? timeAt(e.clientX) : null;
+    const start = overLanes(e) && engine.tracks.length ? timeAt(e.clientX, true) : null;
     main.classList.remove('drop-target');
     tl.classList.remove('drop-lanes');
     if (k === 'song') await addSongToProject(e.dataTransfer.getData('application/x-noises-song'), start);

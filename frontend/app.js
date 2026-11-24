@@ -117,7 +117,7 @@ const engine = {
     const peakSet = t.r && t.r !== t.l ? { S: both, L: computePeaks(t.l), R: computePeaks(t.r) } : { S: both, L: both, R: both };
     const ch = t.ch === 'L' || t.ch === 'R' ? t.ch : null;
     return {
-      name: t.name, song: t.song, part: t.part, label: t.label || '', peaks: peakSet[ch || 'S'], peakSet, rec: !!t.rec,
+      name: t.name, song: t.song, part: t.part, label: t.label || '', userColor: normColor(t.color), peaks: peakSet[ch || 'S'], peakSet, rec: !!t.rec,
       clips: t.clips.map((c) => ({ ...c })), srcDuration: t.l.length / this.sr, fx: normFx(t.fx), env: normEnv(t.env),
       ch,
       muted: !!(p && p.muted), solo: !!(p && p.solo), volume: p && p.volume != null ? p.volume : 1, pan: clampPan(p && p.pan),
@@ -1135,7 +1135,7 @@ function buildTracks() {
     row.className = `track audio-row${item.child ? ' child' : ''}${isRecTrack(t) ? ' rec-track' : ''}`;
     row.innerHTML = `
       <div class="track-head">
-        <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><span class="swatch" style="background:${color}"></span>
+        <div class="track-title"><span class="grip" title="Trascina per cambiare l'ordine (Alt+↑/↓)">⠿</span><label class="swatch pick" style="background:${color}" title="Cambia colore"><input type="color" value="${color}" tabindex="-1"></label>
           <input class="tname" value="${esc(t.label)}" placeholder="${esc(title)}" maxlength="60" title="${esc(title)} - clic per rinominare">
           <button class="fxb hidden" aria-label="Effetti">FX</button>
           <button class="tmenu" title="Altre azioni…" aria-label="Altre azioni…" aria-haspopup="menu">⋯</button></div>
@@ -1164,9 +1164,29 @@ function buildTracks() {
     row.querySelector('.s').addEventListener('click', () => { t.solo = !t.solo; syncTrackButtons(); });
     row.querySelector('.vol').addEventListener('input', (e) => { t.volume = Number(e.target.value); engine.updateGains(); });
     row.querySelector('.vol').after(panControl(() => t.pan || 0, (v) => { t.pan = v; engine.updateGains(); }, t.ch ? `Pan (solo canale ${t.ch === 'L' ? 'sinistro' : 'destro'})` : 'Pan'));
+    // colore della traccia (pallino e forma d'onda): il selettore del browser si apre con un clic sul pallino
+    const swatch = row.querySelector('.swatch'), picker = swatch.querySelector('input');
+    let recoloring = false;
+    picker.addEventListener('click', () => { recoloring = false; });
+    picker.addEventListener('input', () => {
+      if (!recoloring) { pushUndo('Colore traccia'); recoloring = true; }
+      t.userColor = normColor(picker.value);
+      t.color = trackColor(t);
+      swatch.style.background = t.color;
+      requestRedraw();
+    });
+    picker.addEventListener('change', () => { saveProject(); buildTracks(); });
     const name = row.querySelector('.tname');
     let renaming = false;
-    name.addEventListener('focus', () => { renaming = false; });
+    // Senza un nome proprio il campo è vuoto e mostra il placeholder: al focus ci copia il nome
+    // mostrato, così se ne può modificare una parte; lasciato com'è torna vuoto (nome automatico).
+    name.addEventListener('focus', () => {
+      renaming = false;
+      if (!name.value) name.value = name.placeholder;
+    });
+    name.addEventListener('blur', () => {
+      if (!renaming && name.value === name.placeholder) name.value = '';
+    });
     name.addEventListener('input', () => {
       if (!renaming) { pushUndo('Rinomina traccia'); renaming = true; }
       t.label = name.value.trim();
@@ -1223,8 +1243,13 @@ function syncTrackButtons() {
 /** Ricalcola larghezze (contenuto, area visibile) e ridisegna. */
 function layoutTimeline() {
   const tl = tlEl();
-  const contentW = Math.max(1, Math.ceil(engine.duration * state.zoom));
-  const viewW = Math.max(1, Math.min(tl.clientWidth - headWidth(), contentW));
+  const laneW = tl.clientWidth - headWidth();
+  const songW = Math.max(1, Math.ceil(engine.duration * state.zoom));
+  // Spazio vuoto dopo la fine (metà della vista) quando la timeline scorre: la fine del brano può arrivare
+  // a metà schermo e le clip si possono spostare oltre. Con il brano tutto in vista non serve (niente barra).
+  const contentW = songW > laneW ? songW + Math.round(laneW / 2) : songW;
+  state.tlEnd = contentW / state.zoom;
+  const viewW = Math.max(1, Math.min(laneW, contentW));
   tl.style.setProperty('--content-w', `${contentW}px`);
   tl.style.setProperty('--view-w', `${viewW}px`);
   $('#tl-inner').style.width = `${headWidth() + contentW}px`;
@@ -1435,10 +1460,13 @@ function placeMenu(menu, r, { gap = 4, flip = true } = {}) {
   menu.style.top = `${top / z}px`;
 }
 
-function timeAt(clientX) {
+/** Tempo nel punto clientX, entro la fine del brano; con past=true anche nello spazio vuoto dopo la fine
+ *  (spostamento delle clip, rilascio di un brano). */
+function timeAt(clientX, past = false) {
   const tl = tlEl();
   const x = (clientX - tl.getBoundingClientRect().left) / uiZoom() - headWidth() + tl.scrollLeft;
-  return Math.min(Math.max(0, x / state.zoom), engine.duration);
+  const max = past ? Math.max(engine.duration, state.tlEnd || 0) : engine.duration;
+  return Math.min(Math.max(0, x / state.zoom), max);
 }
 
 /** Click = sposta la posizione; trascinamento = seleziona una porzione. */

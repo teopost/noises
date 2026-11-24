@@ -82,7 +82,7 @@ async function splitStereo(t) {
     pushUndo('Dividi sinistro/destro');
     const base = t.label || trackTitle(t);
     const right = engine.addTrack({
-      name: newTrackName(), song: t.song, part: t.part, rec: t.rec, ch: 'R', label: `${base} · D`,
+      name: newTrackName(), song: t.song, part: t.part, rec: t.rec, ch: 'R', color: t.userColor, label: `${base} · D`,
       fx: t.fx ? { ...t.fx } : null, env: t.env ? t.env.map((p) => ({ ...p })) : null,
       clips: t.clips.map((c) => ({ ...c, id: newClipId() })), ...audio,
     });

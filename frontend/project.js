@@ -33,9 +33,13 @@ function trackTitle(t) {
   return t.part === 'original' ? name : `${LABELS[t.part] || t.part} · ${name}`;
 }
 
+/** Colore scelto dall'utente (#rrggbb) oppure null. */
+const normColor = (c) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : null);
+
 function trackColor(t) {
+  if (t.userColor) return t.userColor;
   if (isRecTrack(t)) return EMPTY_COLOR;
-  return t.part === 'original' ? USER_COLOR : COLORS[t.part] || '#aaa';
+  return t.part === 'original' ? USER_COLOR : COLORS[t.part] || '#aaaaaa';
 }
 
 function sourceUrl(songId, part) {
@@ -367,7 +371,7 @@ function fitTitle() {
 function projectState() {
   return {
     name: (state.current && state.current.name) || 'Progetto',
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, ...(t.fx ? { fx: t.fx } : {}), ...(t.env ? { env: t.env } : {}), ...(t.ch ? { ch: t.ch } : {}) })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, ...(t.fx ? { fx: t.fx } : {}), ...(t.env ? { env: t.env } : {}), ...(t.ch ? { ch: t.ch } : {}), ...(t.userColor ? { color: t.userColor } : {}) })),
     groups: deep(state.groups),
     markers: state.markers || [],
     regions: state.regions || [],
@@ -603,7 +607,7 @@ async function duplicateTrack(t) {
       audio = await decodeToArrays(await r.arrayBuffer());
     }
     pushUndo('Duplica traccia');
-    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part, rec: t.rec, ch: t.ch, fx: t.fx ? { ...t.fx } : null, env: t.env ? t.env.map((p) => ({ ...p })) : null,
+    const copy = engine.addTrack({ name: newTrackName(), song: t.song, part: t.part, rec: t.rec, ch: t.ch, color: t.userColor, fx: t.fx ? { ...t.fx } : null, env: t.env ? t.env.map((p) => ({ ...p })) : null,
       label: tr(`${trackTitle(t)} (copia)`), clips: t.clips.map((c) => ({ ...c, id: newClipId() })), ...audio });
     engine.tracks.splice(engine.tracks.indexOf(copy), 1);
     engine.tracks.splice(engine.tracks.indexOf(t) + 1, 0, copy);

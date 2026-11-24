@@ -83,7 +83,7 @@ function saveLayout() {
 
 function snapshot() {
   return JSON.stringify({
-    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null, env: t.env || null, ch: t.ch || null, pan: t.pan || 0 })),
+    tracks: engine.tracks.map((t) => ({ name: t.name, label: t.label || '', song: t.song, part: t.part, clips: t.clips, rec: !!t.rec, fx: t.fx || null, env: t.env || null, ch: t.ch || null, pan: t.pan || 0, color: t.userColor || null })),
     groups: state.groups, markers: state.markers || [], regions: state.regions || [],
   }, plain);
 }
@@ -125,6 +125,7 @@ async function restoreSnapshot(json) {
     if (!t) continue;
     t.clips = deep(st.clips);
     t.label = st.label || '';
+    t.userColor = normColor(st.color);
     t.rec = isEmptyTrack(st) || !!st.rec;
     engine.setClips(t);
     t.env = normEnv(st.env);
@@ -580,7 +581,7 @@ function deleteTrack(t) {
 }
 
 function clipAt(t, clientX) {
-  const time = timeAt(clientX) / ek();
+  const time = timeAt(clientX, true) / ek();
   const pxPerSec = state.zoom * ek();
   for (const c of t.clips) {
     const left = (time - c.start) * pxPerSec, right = (c.start + c.duration - time) * pxPerSec;
@@ -643,7 +644,7 @@ function setupClipCanvas(t, canvas = t.canvas, peers = null, folder = null) {
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!drag) return;
-    const time = timeAt(e.clientX) / ek();
+    const time = timeAt(e.clientX, true) / ek();
     if (!drag.moved && Math.abs(time - drag.t0) * state.zoom * ek() < 3) return;
     if (!drag.undone) { pushUndo(drag.mode === 'move' ? 'Sposta clip' : 'Accorcia clip'); drag.undone = true; }
     const free = e.shiftKey;
@@ -856,6 +857,8 @@ function openTrackMenu(t, anchor, isRefStem, song) {
   if (t.ch) items.push({ icon: '⇆', label: 'Riunisci in stereo', run: () => joinStereo(t) });
   else if (!isEmptyTrack(t)) items.push({ icon: '⇆', label: 'Dividi sinistro/destro', run: () => splitStereo(t) });
   items.push({ icon: '✎', label: 'Rinomina', run: () => { const n = t.row.querySelector('.tname'); n.focus(); n.select(); } });
+  items.push({ icon: '🎨', label: 'Cambia colore…', run: () => t.row.querySelector('.swatch input').click() });
+  if (t.userColor) items.push({ icon: '🎨', label: 'Colore predefinito', run: () => { pushUndo('Colore traccia'); t.userColor = null; saveProject(); buildTracks(); } });
   items.push({ icon: '⧉', label: 'Duplica traccia', run: () => duplicateTrack(t) });
   const sel = state.selClip && state.selClip.name === t.name && !state.selClip.folder;
   items.push({ icon: '⧉', label: 'Duplica pezzo selezionato (Ctrl+D)', disabled: !sel, run: duplicateSelectedClip });
